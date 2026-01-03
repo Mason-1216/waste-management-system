@@ -1,0 +1,1304 @@
+<template>
+
+  <div class="fault-report-page">
+
+    <el-tabs v-model="activeTab" type="border-card">
+
+      <el-tab-pane label="故障上报" name="report">
+
+        <div class="report-form-card">
+
+          <el-form :model="form" :rules="rules" ref="formRef" label-width="120px">
+
+            <el-form-item label="设备编号" prop="equipmentCode">
+
+              <el-input
+
+                v-model="form.equipmentCode"
+
+                placeholder="请输入设备编号"
+
+                @blur="handleEquipmentCodeBlur"
+
+                style="width: 300px;"
+
+              />
+
+            </el-form-item>
+
+
+
+            <el-form-item label="设备名称" prop="equipmentName">
+
+              <el-input v-model="form.equipmentName" placeholder="自动获取" disabled style="width: 300px;" />
+
+            </el-form-item>
+
+
+
+            <el-form-item label="安装地点" prop="installationLocation">
+
+              <el-input v-model="form.installationLocation" placeholder="自动获取" disabled style="width: 300px;" />
+
+            </el-form-item>
+
+
+
+            <el-form-item label="故障类型" prop="faultType">
+
+              <el-select v-model="form.faultType" placeholder="请选择故障类型">
+
+                <el-option label="机械故障" value="mechanical" />
+
+                <el-option label="电气故障" value="electrical" />
+
+                <el-option label="液压故障" value="hydraulic" />
+
+                <el-option label="控制系统故障" value="control" />
+
+                <el-option label="其他" value="other" />
+
+              </el-select>
+
+            </el-form-item>
+
+
+
+            <el-form-item label="紧急程度" prop="urgencyLevel">
+
+              <el-radio-group v-model="form.urgencyLevel">
+
+                <el-radio label="low">低</el-radio>
+
+                <el-radio label="medium">中</el-radio>
+
+                <el-radio label="high">高</el-radio>
+
+                <el-radio label="critical">紧急</el-radio>
+
+              </el-radio-group>
+
+            </el-form-item>
+
+
+
+            <el-form-item label="故障描述" prop="description">
+
+              <el-input
+
+                v-model="form.description"
+
+                type="textarea"
+
+                :rows="4"
+
+                placeholder="请输入故障现象"
+
+              />
+
+            </el-form-item>
+
+
+
+            <el-form-item label="发现时间" prop="discoveryTime">
+
+              <el-date-picker
+
+                v-model="form.discoveryTime"
+
+                type="datetime"
+
+                placeholder="请选择发现时间"
+
+                value-format="YYYY-MM-DD HH:mm"
+
+                format="YYYY-MM-DD HH:mm"
+
+              />
+
+            </el-form-item>
+
+
+
+            <el-form-item label="现场照片">
+
+              <el-upload
+
+                :action="uploadUrl"
+
+                :headers="uploadHeaders"
+
+                :on-success="handleUploadSuccess"
+
+                :on-remove="handleRemove"
+
+                :file-list="photoList"
+
+                list-type="picture-card"
+
+                accept="image/*"
+
+              >
+
+                <el-icon><Plus /></el-icon>
+
+                <template #tip>
+
+                  <div class="el-upload__tip">仅支持 jpg/png 格式，大小不超过 5MB</div>
+
+                </template>
+
+              </el-upload>
+
+            </el-form-item>
+
+
+
+            <el-form-item>
+
+              <el-button type="primary" @click="submitReport" :loading="submitting" size="large">
+
+                提交上报
+
+              </el-button>
+
+              <el-button @click="resetForm" size="large">重置</el-button>
+
+            </el-form-item>
+
+          </el-form>
+
+        </div>
+
+
+
+        <div class="recent-reports">
+
+          <h3>近期上报记录</h3>
+
+          <el-table :data="recentReports" stripe border>
+
+            <el-table-column prop="reportCode" label="上报编号" width="150" />
+
+            <el-table-column prop="equipmentCode" label="设备编号" width="120" />
+
+            <el-table-column prop="equipmentName" label="设备名称" width="140" />
+
+            <el-table-column prop="installationLocation" label="安装地点" width="140" show-overflow-tooltip />
+
+            <el-table-column label="紧急程度" width="100">
+
+              <template #default="{ row }">
+
+                <el-tag :type="getUrgencyType(row.urgencyLevel)">
+
+                  {{ getUrgencyLabel(row.urgencyLevel) }}
+
+                </el-tag>
+
+              </template>
+
+            </el-table-column>
+
+            <el-table-column prop="faultDescription" label="故障描述" width="200" show-overflow-tooltip />
+
+            <el-table-column prop="faultDate" label="上报日期" width="120">
+
+              <template #default="{ row }">
+
+                {{ formatDate(row.faultDate) }}
+
+              </template>
+
+            </el-table-column>
+
+            <el-table-column prop="faultTime" label="上报时间" width="110" />
+
+            <el-table-column prop="reporterName" label="上报人" width="100" />
+
+            <el-table-column label="状态" width="100">
+
+              <template #default="{ row }">
+
+                <el-tag :type="getStatusType(row.displayStatus)">
+
+                  {{ getStatusLabel(row.displayStatus) }}
+
+                </el-tag>
+
+              </template>
+
+            </el-table-column>
+
+          </el-table>
+
+        </div>
+
+      </el-tab-pane>
+
+
+
+      <el-tab-pane label="设备管理" name="equipment" v-if="canManageEquipment">
+
+        <div class="equipment-panel">
+
+          <div class="panel-header">
+
+            <h4>设备管理</h4>
+
+            <div class="header-actions">
+
+              <el-button @click="downloadEquipmentTemplate">
+
+                <el-icon><Download /></el-icon>下载模板
+
+              </el-button>
+
+              <el-upload
+
+                ref="uploadEquipmentRef"
+
+                :auto-upload="false"
+
+                :show-file-list="false"
+
+                :on-change="handleEquipmentFileChange"
+
+                accept=".xlsx,.xls"
+
+              >
+
+                <el-button type="success">
+
+                  <el-icon><Download /></el-icon>导入
+
+                </el-button>
+
+              </el-upload>
+
+              <el-button type="primary" @click="showAddEquipmentDialog">
+
+                <el-icon><Plus /></el-icon>新增
+
+              </el-button>
+
+            </div>
+
+          </div>
+
+
+
+          <el-table :data="equipmentList" stripe border v-loading="loadingEquipment">
+
+            <el-table-column label="场站" width="150">
+
+              <template #default="{ row }">
+
+                {{ row.station?.station_name || '-' }}
+
+              </template>
+
+            </el-table-column>
+
+            <el-table-column prop="equipment_code" label="设备编号" width="150" />
+
+            <el-table-column prop="equipment_name" label="设备名称" width="200" />
+
+            <el-table-column prop="installation_location" label="安装地点" show-overflow-tooltip />
+
+            <el-table-column label="操作" width="160" fixed="right">
+
+              <template #default="{ row }">
+
+                <el-button link size="small" @click="editEquipment(row)">编辑</el-button>
+
+                <el-button link size="small" type="danger" @click="deleteEquipmentItem(row.id)">删除</el-button>
+
+              </template>
+
+            </el-table-column>
+
+          </el-table>
+
+        </div>
+
+      </el-tab-pane>
+
+    </el-tabs>
+
+
+
+    <el-dialog v-model="equipmentDialogVisible" :title="equipmentForm.id ? '编辑璁惧' : '新增璁惧'" width="500px">
+
+      <el-form :model="equipmentForm" :rules="equipmentRules" ref="equipmentFormRef" label-width="100px">
+
+        <el-form-item label="设备编号" prop="equipmentCode">
+
+          <el-input v-model="equipmentForm.equipmentCode" placeholder="请输入设备编号" />
+
+        </el-form-item>
+
+        <el-form-item label="设备名称" prop="equipmentName">
+
+          <el-input v-model="equipmentForm.equipmentName" placeholder="请输入设备名称" />
+
+        </el-form-item>
+
+        <el-form-item label="安装地点" prop="installationLocation">
+
+          <el-input v-model="equipmentForm.installationLocation" placeholder="请输入安装地点" />
+
+        </el-form-item>
+
+      </el-form>
+
+      <template #footer>
+
+        <el-button @click="equipmentDialogVisible = false">取消</el-button>
+
+        <el-button type="primary" @click="saveEquipment" :loading="savingEquipment">保存</el-button>
+
+      </template>
+
+    </el-dialog>
+
+  </div>
+
+</template>
+
+<script setup>
+
+import { ref, computed, onMounted } from 'vue';
+
+import { useUserStore } from '@/store/user';
+
+import { ElMessage, ElMessageBox } from 'element-plus';
+
+import { Plus, Download, Upload } from '@element-plus/icons-vue';
+
+import dayjs from 'dayjs';
+
+import * as XLSX from 'xlsx';
+
+import request from '@/api/request';
+
+import {
+
+  getEquipment,
+
+  getEquipmentByCode,
+
+  createEquipment,
+
+  batchCreateEquipment,
+
+  updateEquipment,
+
+  deleteEquipment
+
+} from '@/api/equipment';
+
+
+
+const userStore = useUserStore();
+
+const formRef = ref(null);
+
+const submitting = ref(false);
+
+const recentReports = ref([]);
+
+const photoList = ref([]);
+
+
+
+// Tab 控制
+
+const activeTab = ref('report');
+
+const equipmentManageRoles = ['station_manager', 'department_manager', 'deputy_manager'];
+
+const canManageEquipment = computed(() => equipmentManageRoles.includes(userStore.roleCode) || equipmentManageRoles.includes(userStore.baseRoleCode));
+
+
+
+// 故障上报琛ㄥ崟
+
+const form = ref({
+
+  equipmentCode: '',
+
+  equipmentName: '',
+
+  installationLocation: '',
+
+  faultType: '',
+
+  urgencyLevel: 'medium',
+
+  description: '',
+
+  discoveryTime: dayjs().format('YYYY-MM-DD HH:mm')
+
+});
+
+
+
+const rules = {
+
+  equipmentCode: [{ required: true, message: '请输入设备编号', trigger: 'blur' }],
+
+  equipmentName: [{ required: true, message: '请输入设备名称', trigger: 'blur' }],
+
+  faultType: [{ required: true, message: '请选择故障类型', trigger: 'change' }],
+
+  urgencyLevel: [{ required: true, message: '请选择紧急程度', trigger: 'change' }],
+
+  description: [{ required: true, message: '请输入故障描述', trigger: 'blur' }]
+
+};
+
+
+
+// 设备管理相关状态
+
+const loadingEquipment = ref(false);
+
+const equipmentList = ref([]);
+
+const equipmentDialogVisible = ref(false);
+
+const equipmentFormRef = ref(null);
+
+const savingEquipment = ref(false);
+
+
+
+const equipmentForm = ref({
+
+  id: null,
+
+  equipmentCode: '',
+
+  equipmentName: '',
+
+  installationLocation: ''
+
+});
+
+
+
+const equipmentRules = {
+
+  equipmentCode: [{ required: true, message: '请输入设备编号', trigger: 'blur' }],
+
+  equipmentName: [{ required: true, message: '请输入设备名称', trigger: 'blur' }],
+
+  installationLocation: [{ required: true, message: '请输入安装地点', trigger: 'blur' }]
+
+};
+
+
+
+const uploadUrl = computed(() => `${import.meta.env.VITE_API_BASE_URL}/upload`);
+
+const uploadHeaders = computed(() => ({
+
+  Authorization: `Bearer ${userStore.token}`
+
+}));
+
+
+
+const getFaultTypeLabel = (type) => {
+
+  const labels = {
+
+    mechanical: '机械故障',
+
+    electrical: '电气故障',
+
+    hydraulic: '液压故障',
+
+    control: '控制系统故障',
+
+    other: '其他'
+
+  };
+
+  return labels[type] || type;
+
+};
+
+
+
+const getUrgencyType = (level) => {
+
+  const types = { low: 'info', medium: 'warning', high: 'danger', critical: 'danger' };
+
+  return types[level] || 'info';
+
+};
+
+
+
+const getUrgencyLabel = (level) => {
+
+  const labels = { low: '低', medium: '中', high: '高', critical: '紧急' };
+
+  return labels[level] || level;
+
+};
+
+
+
+const getStatusType = (status) => {
+
+  const types = {
+
+    pending: 'info',
+
+    assigned: 'warning',
+
+    in_progress: 'primary',
+
+    pending_verify: 'warning',
+
+    completed: 'success',
+
+    observe: 'warning',
+
+    unsolved: 'danger'
+
+  };
+
+  return types[status] || 'info';
+
+};
+
+
+
+const getStatusLabel = (status) => {
+
+  const labels = {
+
+    pending: '待处理',
+
+    assigned: '已派发',
+
+    in_progress: '维修中',
+
+    pending_verify: '待验收',
+
+    completed: '已完成',
+
+    observe: '待观察',
+
+    unsolved: '未解决'
+
+  };
+
+  return labels[status] || status;
+
+};
+
+const formatDateTime = (date) => dayjs(date).format('YYYY-MM-DD HH:mm');
+
+const formatDate = (date) => date ? dayjs(date).format('YYYY-MM-DD') : '-';
+
+const resolveDisplayStatus = (item) => {
+
+  const repair = item.repairRecord || item.repair_record;
+
+  if (repair?.status === 'repairing') return 'in_progress';
+
+  if (repair?.status === 'repaired_submitted') {
+
+    if (repair.repair_result === 'observe') return 'observe';
+
+    if (repair.repair_result === 'unsolved') return 'unsolved';
+
+    return 'pending_verify';
+
+  }
+
+  if (repair?.status === 'accepted') return 'completed';
+
+  if (repair?.status === 'dispatched') return 'assigned';
+
+  if (repair?.status === 'submitted_report') return 'pending';
+
+
+
+  if (item.status === 'processing') return 'in_progress';
+
+  if (item.status === 'assigned') return 'assigned';
+
+  if (item.status === 'completed' || item.status === 'closed') return 'completed';
+
+  return 'pending';
+
+};
+
+
+
+const normalizeFaultReport = (item) => ({
+
+  reportCode: item.reportCode || item.report_code,
+
+  equipmentCode: item.equipmentCode || item.equipment_code,
+
+  equipmentName: item.equipmentName || item.equipment_name,
+
+  installationLocation: item.installationLocation || item.installation_location || item.location,
+
+  urgencyLevel: item.urgencyLevel || item.urgency_level,
+
+  faultDescription: item.faultDescription || item.fault_description || item.description,
+
+  faultDate: item.faultDate || item.fault_date,
+
+  faultTime: item.faultTime || item.fault_time,
+
+  reporterName: item.reporterName || item.reporter_name || item.reporter?.realName,
+
+  status: item.status,
+
+  displayStatus: resolveDisplayStatus(item),
+
+  createdAt: item.createdAt || item.created_at
+
+});
+
+
+
+const handleUploadSuccess = (response) => {
+
+  if (response.code === 0) {
+
+    photoList.value.push({
+
+      name: response.data.filename,
+
+      url: response.data.url
+
+    });
+
+  }
+
+};
+
+
+
+const handleRemove = (file) => {
+
+  const index = photoList.value.findIndex(p => p.url === file.url);
+
+  if (index > -1) {
+
+    photoList.value.splice(index, 1);
+
+  }
+
+};
+
+
+
+const submitReport = async () => {
+
+  await formRef.value.validate();
+
+  submitting.value = true;
+
+  try {
+
+    await request.post('/fault-reports', {
+
+      ...form.value,
+
+      stationId: userStore.currentStationId,
+
+      photos: photoList.value.map(p => p.url).join(',')
+
+    });
+
+    ElMessage.success('涓婃姤鎴愬姛');
+
+    resetForm();
+
+    loadRecentReports();
+
+  } catch (e) {
+
+    
+
+  } finally {
+
+    submitting.value = false;
+
+  }
+
+};
+
+
+
+const resetForm = () => {
+
+  formRef.value?.resetFields();
+
+  photoList.value = [];
+
+  form.value.discoveryTime = dayjs().format('YYYY-MM-DD HH:mm');
+
+};
+
+
+
+const loadRecentReports = async () => {
+
+  try {
+
+    const res = await request.get('/fault-reports', {
+
+      params: {
+
+        reporterId: userStore.userId,
+
+        pageSize: 10
+
+      }
+
+    });
+
+    recentReports.value = (res.list || []).map(normalizeFaultReport);
+
+  } catch (e) {
+
+    
+
+  }
+
+};
+
+
+
+// 设备编码失焦时自动填充设备信息
+
+const handleEquipmentCodeBlur = async () => {
+
+  const code = form.value.equipmentCode?.trim();
+
+  if (!code) {
+
+    form.value.equipmentName = '';
+
+    form.value.installationLocation = '';
+
+    return;
+
+  }
+
+
+
+  try {
+
+    const equipment = await getEquipmentByCode({
+
+      stationId: userStore.currentStationId,
+
+      equipmentCode: code
+
+    });
+
+
+
+    if (equipment) {
+
+      form.value.equipmentName = equipment.equipment_name;
+
+      form.value.installationLocation = equipment.installation_location || '';
+
+    } else {
+
+      ElMessage.warning('未找到该设备编号，请先在设备管理中添加设备');
+
+      form.value.equipmentName = '';
+
+      form.value.installationLocation = '';
+
+    }
+
+  } catch (e) {
+
+    // 静默处理错误
+
+  }
+
+};
+
+const loadEquipmentList = async () => {
+
+  loadingEquipment.value = true;
+
+  try {
+
+    const res = await getEquipment({
+
+      stationId: userStore.currentStationId
+
+    });
+
+    equipmentList.value = res || [];
+
+  } catch (e) {
+
+    ElMessage.error('加载设备列表失败');
+
+  } finally {
+
+    loadingEquipment.value = false;
+
+  }
+
+};
+
+
+
+// 新增设备
+
+const showAddEquipmentDialog = () => {
+
+  equipmentForm.value = {
+
+    id: null,
+
+    equipmentCode: '',
+
+    equipmentName: '',
+
+    installationLocation: ''
+
+  };
+
+  equipmentDialogVisible.value = true;
+
+};
+
+
+
+// 编辑设备
+
+const editEquipment = (row) => {
+
+  equipmentForm.value = {
+
+    id: row.id,
+
+    equipmentCode: row.equipment_code,
+
+    equipmentName: row.equipment_name,
+
+    installationLocation: row.installation_location || ''
+
+  };
+
+  equipmentDialogVisible.value = true;
+
+};
+
+
+
+// 保存设备
+
+const saveEquipment = async () => {
+
+  await equipmentFormRef.value.validate();
+
+  savingEquipment.value = true;
+
+
+
+  try {
+
+    if (equipmentForm.value.id) {
+
+      // 编辑
+
+      await updateEquipment(equipmentForm.value.id, {
+
+        equipmentCode: equipmentForm.value.equipmentCode,
+
+        equipmentName: equipmentForm.value.equipmentName,
+
+        installationLocation: equipmentForm.value.installationLocation
+
+      });
+
+      ElMessage.success('保存成功');
+
+    } else {
+
+      // 新增
+
+      await createEquipment({
+
+        stationId: userStore.currentStationId,
+
+        equipmentCode: equipmentForm.value.equipmentCode,
+
+        equipmentName: equipmentForm.value.equipmentName,
+
+        installationLocation: equipmentForm.value.installationLocation
+
+      });
+
+      ElMessage.success('新增成功');
+
+    }
+
+    equipmentDialogVisible.value = false;
+
+    loadEquipmentList();
+
+  } catch (e) {
+
+    ElMessage.error(e.message || '保存失败');
+
+  } finally {
+
+    savingEquipment.value = false;
+
+  }
+
+};
+
+
+
+// 删除设备
+
+const deleteEquipmentItem = async (id) => {
+
+  try {
+
+    await ElMessageBox.confirm('确认删除该设备吗？删除后无法恢复。', '提示', {
+      type: 'warning'
+
+    });
+
+
+
+    await deleteEquipment(id);
+
+    ElMessage.success('删除成功');
+
+    loadEquipmentList();
+
+  } catch (e) {
+
+    if (e !== 'cancel') {
+
+      ElMessage.error(e.message || '删除失败');
+
+    }
+
+  }
+
+};
+
+
+
+// 下载导入模板
+
+const downloadEquipmentTemplate = () => {
+  const templateData = [
+    { 'åºç«': 'ç«ç¹A', 'è®¾å¤ç¼å·': 'EQ001', 'è®¾å¤åç§°': 'è®¾å¤A', 'å®è£å°ç¹': 'ä½ç½®A' },
+    { 'åºç«': 'ç«ç¹B', 'è®¾å¤ç¼å·': 'EQ002', 'è®¾å¤åç§°': 'è®¾å¤B', 'å®è£å°ç¹': 'ä½ç½®B' },
+    { 'åºç«': 'ç«ç¹C', 'è®¾å¤ç¼å·': 'EQ003', 'è®¾å¤åç§°': 'è®¾å¤C', 'å®è£å°ç¹': 'ä½ç½®C' }
+  ];
+
+  const ws = XLSX.utils.json_to_sheet(templateData);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, '设备导入模板');
+  XLSX.writeFile(wb, '设备导入模板.xlsx');
+};
+
+
+
+// 处理设备导入文件
+
+const handleEquipmentFileChange = async (file) => {
+
+  const rawFile = file.raw;
+
+  if (!rawFile) return;
+
+
+
+  try {
+
+    const data = await readExcelFile(rawFile);
+
+    await importEquipmentData(data);
+
+  } catch (e) {
+
+    ElMessage.error(e.message || '导入失败');
+
+  }
+
+};
+
+
+
+// 读取 Excel 文件
+
+const readExcelFile = (file) => {
+
+  return new Promise((resolve, reject) => {
+
+    const reader = new FileReader();
+
+    reader.onload = (e) => {
+
+      try {
+
+        const data = new Uint8Array(e.target.result);
+
+        const workbook = XLSX.read(data, { type: 'array' });
+
+        const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+
+        const jsonData = XLSX.utils.sheet_to_json(firstSheet);
+
+        resolve(jsonData);
+
+      } catch (error) {
+
+        reject(new Error('Excel 解析失败'));
+
+      }
+
+    };
+
+    reader.onerror = () => reject(new Error('Excel 读取失败'));
+
+    reader.readAsArrayBuffer(file);
+
+  });
+
+};
+
+
+
+// 导入设备数据
+
+const importEquipmentData = async (data) => {
+
+  if (!data || data.length === 0) {
+
+    ElMessage.warning('Excel 内容为空');
+
+    return;
+
+  }
+
+
+
+  const requiredFields = ['场站', '设备编号', '设备名称', '安装地点'];
+
+  const firstRow = data[0];
+
+  const hasAllFields = requiredFields.every(field => field in firstRow);
+
+
+
+  if (!hasAllFields) {
+
+    ElMessage.error('Excel 字段不匹配，请使用模板');
+
+    return;
+
+  }
+
+
+
+  const loading = ElMessage({
+
+    message: '正在导入设备...',
+
+    duration: 0,
+
+    type: 'info'
+
+  });
+
+
+
+  try {
+
+    const equipmentList = data
+
+      .filter(row => row['设备编号'] && row['设备名称'])
+
+      .map(row => ({
+
+        stationId: userStore.currentStationId,
+
+        equipmentCode: row['设备编号'].toString().trim(),
+
+        equipmentName: row['设备名称'].trim(),
+
+        installationLocation: row['安装地点']?.trim() || ''
+
+      }));
+
+
+
+    if (equipmentList.length === 0) {
+
+      loading.close();
+
+      ElMessage.warning('未找到有效设备数据');
+
+      return;
+
+    }
+
+
+
+    await batchCreateEquipment({ equipmentList });
+
+
+
+    loading.close();
+
+    ElMessage.success(`成功导入 ${equipmentList.length} 条设备`);
+
+    loadEquipmentList();
+
+  } catch (e) {
+
+    loading.close();
+
+    ElMessage.error(e.message || '导入失败');
+
+  }
+
+};
+
+
+
+onMounted(() => {
+
+  loadRecentReports();
+
+  loadEquipmentList();
+
+});
+
+</script>
+
+
+
+<style lang="scss" scoped>
+
+.fault-report-page {
+
+  .report-form-card {
+
+    background: #fff;
+
+    border-radius: 8px;
+
+    padding: 24px;
+
+    margin-bottom: 24px;
+
+  }
+
+
+
+  .recent-reports {
+
+    background: #fff;
+
+    border-radius: 8px;
+
+    padding: 20px;
+
+
+
+    h3 {
+
+      margin: 0 0 16px;
+
+      font-size: 16px;
+
+      color: #303133;
+
+    }
+
+  }
+
+
+
+  .equipment-panel {
+
+    background: #fff;
+
+    border-radius: 8px;
+
+    padding: 16px;
+
+
+
+    .panel-header {
+
+      display: flex;
+
+      justify-content: space-between;
+
+      align-items: center;
+
+      margin-bottom: 16px;
+
+
+
+      h4 {
+
+        margin: 0;
+
+        font-size: 14px;
+
+        font-weight: 500;
+
+      }
+
+
+
+      .header-actions {
+
+        display: flex;
+
+        gap: 8px;
+
+      }
+
+    }
+
+  }
+
+}
+
+</style>
+
+
+
+
+
+
+
+
+
+
+

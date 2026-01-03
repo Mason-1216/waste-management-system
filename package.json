@@ -1,0 +1,13 @@
+{
+  "name": "waste-management-system",
+  "version": "1.0.0",
+  "description": "废弃物处理场站运行管理系统",
+  "type": "module",
+  "scripts": {
+    "update-context": "node update-context.js"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
+

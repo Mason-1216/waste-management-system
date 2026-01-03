@@ -1,0 +1,37 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(docker-compose ps:*)",
+      "Bash(docker logs:*)",
+      "Bash(docker-compose down:*)",
+      "Bash(docker-compose up:*)",
+      "Bash(docker image rm:*)",
+      "Bash(docker pull:*)",
+      "Bash(docker run:*)",
+      "Bash(docker-compose build:*)",
+      "Bash(docker exec wms-backend wget -qO- \"http://localhost:3000/api/schedules/today?stationId=1\")",
+      "Bash(docker-compose stop:*)",
+      "Bash(docker-compose run:*)",
+      "Bash(node --check:*)",
+      "Bash(dir:*)",
+      "Bash(findstr:*)",
+      "Bash(docker-compose:*)",
+      "Bash(docker exec:*)",
+      "Bash(timeout /t 5)",
+      "Bash(del \"C:\\\\Users\\\\LiLei\\\\Desktop\\\\运行项目APP\\\\waste-management-system\\\\frontend\\\\src\\\\views\\\\approval\\\\WorkHoursApproval.vue\")",
+      "Bash(timeout 10 sh:*)",
+      "Bash(cat:*)",
+      "Bash(timeout:*)",
+      "Bash(ping:*)",
+      "Bash(del \"C:\\\\Users\\\\LiLei\\\\Desktop\\\\运行项目APP\\\\waste-management-system\\\\frontend\\\\src\\\\views\\\\inspection\\\\SelfInspection.vue\")",
+      "Bash(del \"C:\\\\Users\\\\LiLei\\\\Desktop\\\\运行项目APP\\\\waste-management-system\\\\backend\\\\sync-db.js\")",
+      "Bash(docker builder prune:*)",
+      "Bash(curl:*)",
+      "Bash(docker cp:*)",
+      "Bash(xxd:*)",
+      "Bash(TOKEN=\"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOjEsInVzZXJuYW1lIjoiYWRtaW4iLCJyb2xlSWQiOjEsImlhdCI6MTc2NzI4MTM3NCwiZXhwIjoxNzY3ODg2MTc0fQ.sjB8pW09cm0BDs7-H2hbEYF0037GNDV0Oe1TiMC4Xak\" docker exec wms-backend wget -qO- \"http://localhost:3000/api/schedules?year=2026&month=1\" --header=\"Authorization: Bearer $TOKEN\")",
+      "Bash(TOKEN=\"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOjEsInVzZXJuYW1lIjoiYWRtaW4iLCJyb2xlSWQiOjEsImlhdCI6MTc2NzM2ODA0MiwiZXhwIjoxNzY3OTcyODQyfQ.V0b6EInh9qJeoFyx2WkkRzxOrqIjjLtv-gXoUgoSljo\")",
+      "Bash(python3:*)"
+    ]
+  }
+}

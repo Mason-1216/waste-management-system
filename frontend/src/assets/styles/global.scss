@@ -1,0 +1,214 @@
+// 全局样式变量
+:root {
+  --primary-color: #409EFF;
+  --success-color: #67C23A;
+  --warning-color: #E6A23C;
+  --danger-color: #F56C6C;
+  --info-color: #909399;
+  --text-color: #303133;
+  --text-secondary: #606266;
+  --border-color: #DCDFE6;
+  --bg-color: #F5F7FA;
+  --sidebar-width: 220px;
+  --header-height: 60px;
+}
+
+// 重置样式
+* {
+  box-sizing: border-box;
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  background-color: var(--bg-color);
+}
+
+// 滚动条样式
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-thumb {
+  background-color: #C0C4CC;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-track {
+  background-color: #F5F7FA;
+}
+
+// 通用类
+.flex {
+  display: flex;
+}
+
+.flex-center {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.flex-between {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.flex-1 {
+  flex: 1;
+}
+
+.text-center {
+  text-align: center;
+}
+
+.text-right {
+  text-align: right;
+}
+
+.mb-10 {
+  margin-bottom: 10px;
+}
+
+.mb-20 {
+  margin-bottom: 20px;
+}
+
+.mt-10 {
+  margin-top: 10px;
+}
+
+.mt-20 {
+  margin-top: 20px;
+}
+
+.mr-10 {
+  margin-right: 10px;
+}
+
+.ml-10 {
+  margin-left: 10px;
+}
+
+.p-10 {
+  padding: 10px;
+}
+
+.p-20 {
+  padding: 20px;
+}
+
+// 页面容器
+.page-container {
+  padding: 20px;
+  background-color: #fff;
+  border-radius: 4px;
+  min-height: calc(100vh - var(--header-height) - 60px);
+}
+
+// 表格操作栏
+.table-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+// 搜索表单
+.search-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+
+  .el-form-item {
+    margin-bottom: 0;
+  }
+}
+
+// 卡片网格
+.card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 16px;
+}
+
+// 统计卡片
+.stat-card {
+  background: #fff;
+  border-radius: 8px;
+  padding: 20px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.1);
+
+  .stat-title {
+    font-size: 14px;
+    color: var(--text-secondary);
+    margin-bottom: 8px;
+  }
+
+  .stat-value {
+    font-size: 28px;
+    font-weight: bold;
+    color: var(--text-color);
+  }
+
+  .stat-footer {
+    margin-top: 12px;
+    font-size: 12px;
+    color: var(--text-secondary);
+  }
+}
+
+// 状态标签颜色
+.status-pending {
+  color: var(--warning-color);
+}
+
+.status-approved {
+  color: var(--success-color);
+}
+
+.status-rejected {
+  color: var(--danger-color);
+}
+
+// 移动端适配
+@media screen and (max-width: 768px) {
+  .page-container {
+    padding: 12px;
+  }
+
+  .table-toolbar {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .search-form {
+    width: 100%;
+
+    .el-form-item {
+      width: 100%;
+    }
+
+    .el-input, .el-select {
+      width: 100% !important;
+    }
+  }
+
+  // 隐藏某些列
+  .hide-on-mobile {
+    display: none !important;
+  }
+}
+
+// 打印样式
+@media print {
+  .no-print {
+    display: none !important;
+  }
+}

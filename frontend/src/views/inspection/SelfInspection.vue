@@ -1,0 +1,1221 @@
+﻿<template>
+  <div class="safety-inspection-page">
+    <div class="page-header">
+      <h2>安全自检</h2>
+    </div>
+
+    <el-tabs v-model="activeTab" class="inspection-tabs">
+      <!-- 我的自检 -->
+      <el-tab-pane label="我的安全自检" name="my">
+        <div class="header-controls">
+          <el-date-picker
+            v-model="dateRange"
+            type="daterange"
+            start-placeholder="开始日期"
+            end-placeholder="结束日期"
+            format="YYYY-MM-DD"
+            value-format="YYYY-MM-DD"
+            @change="loadRangeInspections"
+          />
+        </div>
+
+        <!-- 状态提示 -->
+        <div class="status-card" :class="{ completed: hasCompletedBasicWork }">
+          <div class="status-content">
+            <el-icon class="status-icon" :class="{ warning: !hasCompletedBasicWork }">
+              <CircleCheck v-if="hasCompletedBasicWork" />
+              <Warning v-else />
+            </el-icon>
+            <div class="status-info">
+              <div class="status-title">今日安全自检状态</div>
+              <div class="status-lines">
+                <div class="status-line">
+                  <span class="status-label">基本工作</span>
+                  <el-tag size="small" :type="hasCompletedBasicWork ? 'success' : 'warning'">
+                    {{ hasCompletedBasicWork ? '已完成' : '未完成' }}
+                  </el-tag>
+                </div>
+                <div class="status-line" v-if="operationCompleted">
+                  <span class="status-label">操作</span>
+                  <el-tag size="small" :type="operationWorkStatus.type">
+                    {{ operationWorkStatus.text }}
+                  </el-tag>
+                </div>
+                <div
+                  v-for="wt in extraCompletedWorkTypes"
+                  :key="wt.id"
+                  class="status-line"
+                >
+                  <span class="status-label">{{ wt.work_type_name }}</span>
+                  <el-tag size="small" type="success">已完成</el-tag>
+                </div>
+              </div>
+              <div class="status-time">已完成{{ todayInspections.length }} 次自检</div>
+            </div>
+            <el-button type="primary" @click="startInspection" v-if="!hasCompletedBasicWork || hasAvailableWorkTypes">
+              自检
+            </el-button>
+          </div>
+        </div>
+
+        <!-- 今日自检列表 -->
+        <div class="today-inspections" v-if="rangeInspections.length > 0">
+          <h3>自检记录</h3>
+          <div class="inspection-list">
+            <div
+              v-for="inspection in rangeInspections"
+              :key="inspection.id"
+              class="inspection-item"
+            >
+              <div class="inspection-item-info">
+                <span class="work-types">{{ getWorkTypeNames(inspection.work_type_ids) }}</span>
+                <span class="submit-time">{{ formatDateTime(inspection.submit_time) }}</span>
+              </div>
+              <el-button link type="primary" @click="viewDetail(inspection)">查看详情</el-button>
+            </div>
+          </div>
+        </div>
+
+        <!-- 历史记录 -->
+        <div class="history-section">
+          <h3>历史记录</h3>
+          <el-table :data="historyList" stripe border v-loading="loadingHistory">
+            <el-table-column prop="inspection_date" label="日期" width="120" />
+            <el-table-column label="工作性质" min-width="150">
+              <template #default="{ row }">
+                {{ getWorkTypeNames(row.work_type_ids) }}
+              </template>
+            </el-table-column>
+            <el-table-column label="检查结果" width="100">
+              <template #default="{ row }">
+                <el-tag :type="getInspectionResult(row).type">
+                  {{ getInspectionResult(row).text }}
+                </el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column prop="submit_time" label="提交时间" width="160">
+              <template #default="{ row }">
+                {{ formatDateTime(row.submit_time) }}
+              </template>
+            </el-table-column>
+            <el-table-column label="操作" width="100">
+              <template #default="{ row }">
+                <el-button link type="primary" @click="viewDetail(row)">详情</el-button>
+              </template>
+            </el-table-column>
+          </el-table>
+        </div>
+      </el-tab-pane>
+
+      <!-- 人员安全自检 -->
+      <el-tab-pane label="人员安全自检" name="staff" v-if="canViewStaff">
+        <div class="filter-bar">
+          <el-date-picker
+            v-model="staffFilters.dateRange"
+            type="daterange"
+            start-placeholder="开始日期"
+            end-placeholder="结束日期"
+            value-format="YYYY-MM-DD"
+            style="width: 240px"
+          />
+          <el-select
+            v-model="staffFilters.stationId"
+            placeholder="场站"
+            clearable
+            filterable
+            style="width: 150px"
+          >
+            <el-option
+              v-for="station in stationList"
+              :key="station.id"
+              :label="station.stationName"
+              :value="station.id"
+            />
+          </el-select>
+          <el-input
+            v-model="staffFilters.fillerName"
+            placeholder="姓名"
+            clearable
+            style="width: 120px"
+          />
+          <el-select
+            v-model="staffFilters.workTypeIds"
+            placeholder="工作性质"
+            clearable
+            filterable
+            multiple
+            collapse-tags
+            collapse-tags-tooltip
+            style="width: 200px"
+          >
+            <el-option
+              v-for="wt in workTypes"
+              :key="wt.id"
+              :label="wt.work_type_name"
+              :value="wt.id"
+            />
+          </el-select>
+          <el-select
+            v-model="staffFilters.result"
+            placeholder="检查结果"
+            clearable
+            style="width: 120px"
+          >
+            <el-option label="全部合格" value="all_yes" />
+            <el-option label="有不合格" value="has_no" />
+          </el-select>
+          <el-button @click="resetStaffFilters">重置</el-button>
+        </div>
+
+        <el-table :data="staffInspectionList" stripe border v-loading="loadingStaff">
+          <el-table-column prop="inspection_date" label="日期" width="120" />
+          <el-table-column label="场站" width="150">
+            <template #default="{ row }">
+              {{ row.station?.station_name || '-' }}
+            </template>
+          </el-table-column>
+          <el-table-column label="姓名" width="100">
+            <template #default="{ row }">
+              {{ row.filler?.real_name || row.filler_name || '-' }}
+            </template>
+          </el-table-column>
+          <el-table-column label="工作性质" min-width="150">
+            <template #default="{ row }">
+              {{ getWorkTypeNames(row.work_type_ids) }}
+            </template>
+          </el-table-column>
+          <el-table-column label="检查结果" width="100">
+            <template #default="{ row }">
+              <el-tag :type="getInspectionResult(row).type">
+                {{ getInspectionResult(row).text }}
+              </el-tag>
+            </template>
+          </el-table-column>
+            <el-table-column prop="submit_time" label="提交时间" width="160">
+            <template #default="{ row }">
+              {{ formatDateTime(row.submit_time) }}
+            </template>
+          </el-table-column>
+          <el-table-column label="操作" width="100">
+            <template #default="{ row }">
+              <el-button link type="primary" @click="viewDetail(row)">详情</el-button>
+            </template>
+          </el-table-column>
+        </el-table>
+
+        <div class="pagination-wrapper">
+          <el-pagination
+            v-model:current-page="staffPagination.page"
+            v-model:page-size="staffPagination.pageSize"
+            :total="staffPagination.total"
+            layout="total, prev, pager, next"
+            @current-change="loadStaffInspections"
+          />
+        </div>
+      </el-tab-pane>
+    </el-tabs>
+
+    <!-- 自检对话框 -->
+    <el-dialog
+      v-model="inspectionDialogVisible"
+      title="安全自检"
+      width="750px"
+      :close-on-click-modal="false"
+    >
+      <el-form :model="inspectionForm" label-width="100px">
+        <!-- 工作性质选择 -->
+        <el-form-item label="工作性质">
+          <el-checkbox-group v-model="inspectionForm.selectedWorkTypes" @change="handleWorkTypesChange">
+            <el-checkbox
+              v-for="wt in workTypes"
+              :key="wt.id"
+              :label="wt.id"
+              :disabled="isWorkTypeDisabled(wt)"
+            >
+              {{ wt.work_type_name }}
+              <el-tag v-if="wt.is_default === 1" size="small" type="info" style="margin-left: 5px;">默认</el-tag>
+              <el-tag v-if="completedWorkTypeIds.has(wt.id)" size="small" type="success" style="margin-left: 5px;">已完成</el-tag>
+            </el-checkbox>
+          </el-checkbox-group>
+        </el-form-item>
+
+        <!-- 检查项目 -->
+        <div v-if="groupedCheckItems.length > 0">
+          <div v-for="group in groupedCheckItems" :key="group.workType.id" class="check-group">
+            <el-divider content-position="left">{{ group.workType.work_type_name }}</el-divider>
+            <div class="check-item-list">
+              <div v-for="item in group.items" :key="item.id" class="check-item">
+                <div class="check-item-header">
+                  <div class="check-item-title">{{ item.item_name }}</div>
+                  <el-radio-group v-model="item.checkStatus">
+                    <el-radio :label="1">是</el-radio>
+                    <el-radio :label="0">否</el-radio>
+                  </el-radio-group>
+                </div>
+                <div class="check-item-standard" v-if="item.item_standard">
+                  标准：{{ item.item_standard }}
+                </div>
+                <div class="check-item-photo" v-if="item.checkStatus === 0">
+                  <div class="photo-label">不合格可上传照片（选填）：</div>
+                  <el-upload
+                    :action="uploadUrl"
+                    :headers="uploadHeaders"
+                    :on-success="(res, file) => handleItemUploadSuccess(item, res, file)"
+                    :on-remove="(file) => handleItemRemove(item, file)"
+                    :file-list="item.photoList || []"
+                    list-type="picture-card"
+                    accept="image/*"
+                    :limit="3"
+                  >
+                    <el-icon><Plus /></el-icon>
+                  </el-upload>
+                  <el-input
+                    v-model="item.unqualifiedRemark"
+                    type="textarea"
+                    :rows="2"
+                    placeholder="不合格备注说明（选填）"
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <el-empty v-else description="请先选择工作性质" />
+
+        <el-divider content-position="left">备注</el-divider>
+        <el-form-item label="备注说明">
+          <el-input
+            v-model="inspectionForm.remark"
+            type="textarea"
+            :rows="3"
+            placeholder="如有未勾选项，请说明原因"
+          />
+        </el-form-item>
+      </el-form>
+
+      <template #footer>
+        <el-button @click="inspectionDialogVisible = false">取消</el-button>
+        <el-button type="primary" @click="submitInspection" :loading="submitting">
+          提交自检
+        </el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 详情对话框 -->
+    <el-dialog
+      v-model="detailDialogVisible"
+      title="自检详情"
+      width="700px"
+    >
+      <div class="detail-content" v-if="detailData">
+        <el-descriptions :column="2" border>
+          <el-descriptions-item label="填报人">{{ detailData.filler?.real_name || detailData.filler_name }}</el-descriptions-item>
+          <el-descriptions-item label="场站">{{ detailData.station?.station_name || detailData.station_name || '-' }}</el-descriptions-item>
+          <el-descriptions-item label="填报日期">{{ detailData.inspection_date }}</el-descriptions-item>
+          <el-descriptions-item label="提交时间">{{ formatDateTime(detailData.submit_time) }}</el-descriptions-item>
+          <el-descriptions-item label="工作性质" :span="2">
+            {{ getWorkTypeNames(detailData.work_type_ids) }}
+          </el-descriptions-item>
+        </el-descriptions>
+
+        <div class="detail-items" v-if="detailData.inspection_items?.length">
+          <h4>检查项目</h4>
+          <el-table :data="detailData.inspection_items" border size="small">
+            <el-table-column prop="workTypeName" label="工作性质" width="120" />
+            <el-table-column prop="itemName" label="检查项目" min-width="150" />
+            <el-table-column prop="itemStandard" label="检查标准" min-width="150">
+              <template #default="{ row }">
+                {{ row.itemStandard || '-' }}
+              </template>
+            </el-table-column>
+            <el-table-column label="结果" width="90">
+              <template #default="{ row }">
+                <span v-if="getItemStatusValue(row) === null">-</span>
+                <el-tag
+                  v-else
+                  :type="getItemStatusValue(row) === 1 ? 'success' : 'danger'"
+                  size="small"
+                >
+                  {{ getItemStatusValue(row) === 1 ? '是' : '否' }}
+                </el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column label="照片" width="120">
+              <template #default="{ row }">
+                <div v-if="row.photoUrls?.length" class="photo-preview">
+                  <el-image
+                    v-for="(url, idx) in row.photoUrls"
+                    :key="idx"
+                    :src="url"
+                    :preview-src-list="row.photoUrls"
+                    fit="cover"
+                    style="width: 40px; height: 40px; margin-right: 4px;"
+                  />
+                </div>
+                <span v-else>-</span>
+              </template>
+            </el-table-column>
+          </el-table>
+        </div>
+      </div>
+      <template #footer>
+        <el-button @click="detailDialogVisible = false">关闭</el-button>
+      </template>
+    </el-dialog>
+  </div>
+</template>
+
+<script setup>
+import { ref, reactive, computed, onMounted, watch } from 'vue';
+import { ElMessage } from 'element-plus';
+import { CircleCheck, Warning, Plus } from '@element-plus/icons-vue';
+import { useUserStore } from '@/store/user';
+import request from '@/api/request';
+import dayjs from 'dayjs';
+
+const userStore = useUserStore();
+
+// 标签页
+const activeTab = ref('my');
+
+// 当前日期
+const dateRange = ref([]);
+
+// 今日自检列表（用于状态卡片）
+const todayInspections = ref([]);
+// 日期范围自检列表（用于记录展示）
+const rangeInspections = ref([]);
+// 兼容旧逻辑：第一条记录
+const todayInspection = computed(() => todayInspections.value.length > 0 ? todayInspections.value[0] : null);
+// 今日已完成的工作性质ID列表
+const completedWorkTypeIds = computed(() => {
+  const ids = new Set();
+  todayInspections.value.forEach(inspection => {
+    const workTypeIds = inspection.work_type_ids || [];
+    workTypeIds.forEach(id => ids.add(id));
+  });
+  return ids;
+});
+// 是否已完成基本工作自检
+const hasCompletedBasicWork = computed(() => {
+  const defaultWorkTypes = workTypes.value.filter(wt => wt.is_default === 1);
+  if (defaultWorkTypes.length === 0) return todayInspections.value.length > 0;
+  return defaultWorkTypes.every(wt => completedWorkTypeIds.value.has(wt.id));
+});
+
+const operationWorkTypeId = computed(() => {
+  const target = workTypes.value.find(wt => (wt.work_type_name || '').includes('操作'));
+  return target?.id || null;
+});
+
+const operationWorkStatus = computed(() => {
+  if (!operationWorkTypeId.value) {
+    return { text: '未配置', type: 'info' };
+  }
+  const done = completedWorkTypeIds.value.has(operationWorkTypeId.value);
+  return { text: done ? '已完成' : '未完成', type: done ? 'success' : 'warning' };
+});
+
+const operationCompleted = computed(() => {
+  if (!operationWorkTypeId.value) return false;
+  return completedWorkTypeIds.value.has(operationWorkTypeId.value);
+});
+
+const extraCompletedWorkTypes = computed(() => {
+  return workTypes.value.filter(wt => {
+    if (wt.is_default === 1) return false;
+    if (operationWorkTypeId.value && wt.id === operationWorkTypeId.value) return false;
+    return completedWorkTypeIds.value.has(wt.id);
+  });
+});
+
+// 可选的工作性质（未完成的非默认工作性质）
+const availableWorkTypes = computed(() => {
+  return workTypes.value.filter(wt =>
+    wt.is_default !== 1 && !completedWorkTypeIds.value.has(wt.id)
+  );
+});
+
+// 是否还有可添加的工作性质
+const hasAvailableWorkTypes = computed(() => {
+  return availableWorkTypes.value.length > 0;
+});
+
+// 判断工作性质是否禁用
+const isWorkTypeDisabled = (wt) => {
+  // 已完成的工作性质禁用
+  if (completedWorkTypeIds.value.has(wt.id)) {
+    return true;
+  }
+  // 首次自检时，默认工作性质为必选（禁用但默认勾选）
+  if (!hasCompletedBasicWork.value && wt.is_default === 1) {
+    return true;
+  }
+  return false;
+};
+
+// 历史记录
+const historyList = ref([]);
+const loadingHistory = ref(false);
+
+// 工作性质列表
+const workTypes = ref([]);
+const workTypesMap = ref({});
+const isActiveStatus = (status) => status === undefined || status === null || status === '' || status === 'active' || status === 1 || status === '1' || status === true;
+
+// 上传配置
+const uploadUrl = computed(() => `${import.meta.env.VITE_API_BASE_URL}/upload`);
+const uploadHeaders = computed(() => ({
+  Authorization: `Bearer ${userStore.token}`
+}));
+
+// 权限控制
+const canViewStaff = computed(() => {
+  const privilegedRoles = ['station_manager', 'deputy_manager', 'department_manager', 'senior_management', 'admin', 'safety_inspector'];
+  return privilegedRoles.includes(userStore.userInfo?.roleCode);
+});
+
+// 筛选显示控制
+const showStationFilter = computed(() => {
+  const user = userStore.userInfo;
+  if (user?.roleCode === 'station_manager' && user?.stations?.length > 1) {
+    return true;
+  }
+  return ['deputy_manager', 'department_manager', 'senior_management', 'admin'].includes(user?.roleCode);
+});
+
+// 场站列表
+const stationList = ref([]);
+
+// 人员自检
+const staffInspectionList = ref([]);
+const loadingStaff = ref(false);
+const staffFilters = reactive({
+  dateRange: [],
+  stationId: null,
+  fillerName: '',
+  workTypeIds: [],
+  result: ''
+});
+const staffPagination = reactive({
+  page: 1,
+  pageSize: 20,
+  total: 0
+});
+
+const handleStaffFilterChange = () => {
+  staffPagination.page = 1;
+  loadStaffInspections();
+};
+
+const resetStaffFilters = () => {
+  staffFilters.dateRange = [];
+  staffFilters.stationId = null;
+  staffFilters.fillerName = '';
+  staffFilters.workTypeIds = [];
+  staffFilters.result = '';
+};
+
+// 自检对话框
+const inspectionDialogVisible = ref(false);
+const submitting = ref(false);
+const inspectionForm = reactive({
+  selectedWorkTypes: [],
+  remark: ''
+});
+
+// 检查项目数组
+const allCheckItems = ref([]);
+
+// 按工作性质分组的检查项
+const groupedCheckItems = computed(() => {
+  const groups = [];
+  inspectionForm.selectedWorkTypes.forEach(wtId => {
+    const workType = workTypesMap.value[wtId];
+    if (workType) {
+      const items = allCheckItems.value.filter(item => item.work_type_id === wtId);
+      if (items.length > 0) {
+        groups.push({
+          workType,
+          items
+        });
+      }
+    }
+  });
+  return groups;
+});
+
+// 详情对话框
+const detailDialogVisible = ref(false);
+const detailData = ref(null);
+
+// 工作性质列表
+const loadWorkTypes = async () => {
+  try {
+    const res = await request.get('/safety-work-types');
+    workTypes.value = (res || []).filter(wt => isActiveStatus(wt.status));
+    workTypesMap.value = {};
+    workTypes.value.forEach(wt => {
+      workTypesMap.value[wt.id] = wt;
+    });
+  } catch (error) {
+    
+  }
+};
+
+// 检查项
+const loadCheckItems = async (workTypeIds) => {
+  if (!workTypeIds || workTypeIds.length === 0) {
+    allCheckItems.value = [];
+    return;
+  }
+  try {
+    const res = await request.get('/safety-check-items/by-work-types', {
+      params: { workTypeIds: workTypeIds.join(',') }
+    });
+    const items = (res || []).flatMap(group => group.items || []);
+// 添加 checkStatus 字段，默认为 null；添加 photoList、photoUrls 用于图片上传
+    allCheckItems.value = items.map(item => ({
+      ...item,
+      checkStatus: null,
+      unqualifiedRemark: '',
+      photoList: [],
+      photoUrls: []
+    }));
+  } catch (error) {
+    
+  }
+};
+
+// 处理检查项图片上传成功
+const handleItemUploadSuccess = (item, res) => {
+  if (res && res.url) {
+    if (!item.photoUrls) item.photoUrls = [];
+    if (!item.photoList) item.photoList = [];
+    item.photoUrls.push(res.url);
+    item.photoList.push({ url: res.url, name: res.url });
+  }
+};
+
+// 处理检查项图片移除
+const handleItemRemove = (item, file) => {
+  const url = file.url || file.response?.url;
+  if (url && item.photoUrls) {
+    const index = item.photoUrls.indexOf(url);
+    if (index > -1) {
+      item.photoUrls.splice(index, 1);
+    }
+  }
+  if (item.photoList) {
+    const idx = item.photoList.findIndex(f => (f.url || f.response?.url) === url);
+    if (idx > -1) {
+      item.photoList.splice(idx, 1);
+    }
+  }
+};
+
+// 处理工作性质变化
+const handleWorkTypesChange = async (selectedIds) => {
+  await loadCheckItems(selectedIds);
+};
+
+// 今日自检（支持多条）
+const loadTodayInspection = async () => {
+  try {
+    const today = dayjs().format('YYYY-MM-DD');
+    const res = await request.get('/self-inspections/my', {
+      params: {
+        inspectionType: 'safety',
+        startDate: today,
+        endDate: today
+      }
+    });
+    todayInspections.value = res || [];
+  } catch (error) {
+
+  }
+};
+
+const loadRangeInspections = async () => {
+  if (!dateRange.value || dateRange.value.length !== 2) {
+    rangeInspections.value = [];
+    return;
+  }
+  try {
+    const res = await request.get('/self-inspections/my', {
+      params: {
+        inspectionType: 'safety',
+        startDate: dateRange.value[0],
+        endDate: dateRange.value[1]
+      }
+    });
+    rangeInspections.value = res || [];
+  } catch (error) {
+
+  }
+};
+
+// 历史记录
+const loadHistory = async () => {
+  loadingHistory.value = true;
+  try {
+    const res = await request.get('/self-inspections/my', {
+      params: { inspectionType: 'safety' }
+    });
+// 合并同一天的记录
+    historyList.value = mergeInspectionRecords(res || []);
+  } catch (error) {
+
+  } finally {
+    loadingHistory.value = false;
+  }
+};
+
+// 场站列表
+const loadStations = async () => {
+  try {
+    const user = userStore.userInfo;
+    if (user?.roleCode === 'station_manager' && Array.isArray(user?.stations)) {
+      stationList.value = [
+        { id: '', stationName: '全部场站' },
+        ...user.stations.map(s => ({
+          id: s.id,
+          stationName: s.station_name || s.stationName || s.name
+        }))
+      ];
+      return;
+    }
+
+    const res = await request.get('/stations', { params: { pageSize: 200 } });
+    const list = Array.isArray(res) ? res : (res?.list || []);
+    stationList.value = list.map(s => ({
+      id: s.id,
+      stationName: s.station_name
+    }));
+  } catch (error) {
+    
+  }
+};
+
+const normalizeWorkTypeIds = (row) => {
+  if (!row) return [];
+  const raw =
+    row.work_type_ids ??
+    row.workTypeIds ??
+    row.work_type_id ??
+    row.workTypeId ??
+    [];
+  if (Array.isArray(raw)) return raw;
+  if (typeof raw === 'string') {
+    return raw
+      .split(',')
+      .map(value => value.trim())
+      .filter(Boolean);
+  }
+  return [raw];
+};
+
+// 合并同一人同一天的自检
+const mergeInspectionRecords = (list) => {
+  const merged = new Map();
+
+  list.forEach(item => {
+    const key = `${item.filler_id}-${item.inspection_date}-${item.station_id}`;
+    if (merged.has(key)) {
+      const existing = merged.get(key);
+      // 合并工作性质ID
+      const existingIds = new Set(normalizeWorkTypeIds(existing));
+      normalizeWorkTypeIds(item).forEach(id => existingIds.add(id));
+      existing.work_type_ids = Array.from(existingIds);
+// 合并检查项
+      existing.inspection_items = [
+        ...(existing.inspection_items || []),
+        ...(item.inspection_items || [])
+      ];
+// 保留原始记录用于查看详情
+      existing._originalRecords = existing._originalRecords || [existing];
+      existing._originalRecords.push(item);
+      // 提交时间取最新
+      if (item.submit_time > existing.submit_time) {
+        existing.submit_time = item.submit_time;
+      }
+    } else {
+      const normalizedIds = normalizeWorkTypeIds(item);
+      merged.set(key, { ...item, work_type_ids: normalizedIds, _originalRecords: [item] });
+    }
+  });
+
+  return Array.from(merged.values());
+};
+
+// 人员自检列表
+const loadStaffInspections = async () => {
+  loadingStaff.value = true;
+  try {
+    const params = {
+      inspectionType: 'safety',
+      page: staffPagination.page,
+      // 每页取 3 倍，避免分页偏小
+      pageSize: staffPagination.pageSize * 3
+    };
+
+    if (staffFilters.dateRange && staffFilters.dateRange.length === 2) {
+      params.startDate = staffFilters.dateRange[0];
+      params.endDate = staffFilters.dateRange[1];
+    }
+    if (staffFilters.stationId) {
+      params.stationId = staffFilters.stationId;
+    }
+    if (staffFilters.fillerName) {
+      params.fillerName = staffFilters.fillerName;
+    }
+    const workTypeIds = Array.isArray(staffFilters.workTypeIds)
+      ? staffFilters.workTypeIds.filter(id => id !== '' && id !== null && id !== undefined)
+      : [];
+    if (workTypeIds.length === 1) {
+      params.workTypeId = workTypeIds[0];
+    }
+
+    const res = await request.get('/self-inspections', { params });
+    let list = res?.list || [];
+
+// 合并同一人同一天的记录
+    list = mergeInspectionRecords(list);
+
+    if (workTypeIds.length > 0) {
+      const targetIds = new Set(workTypeIds.map(id => String(id)));
+      list = list.filter(item => {
+        const idSet = new Set(normalizeWorkTypeIds(item));
+        (item.inspection_items || []).forEach(detail => {
+          const detailId = detail.workTypeId ?? detail.work_type_id;
+          if (detailId !== undefined && detailId !== null) {
+            idSet.add(detailId);
+          }
+        });
+        const itemIds = new Set(Array.from(idSet).map(id => String(id)));
+        for (const targetId of targetIds) {
+          if (!itemIds.has(targetId)) return false;
+        }
+        return true;
+      });
+    }
+
+// 前端过滤检查结果
+    if (staffFilters.result) {
+      list = list.filter(item => {
+        const result = getInspectionResult(item);
+        if (staffFilters.result === 'all_yes') {
+          return result.type === 'success';
+        } else if (staffFilters.result === 'has_no') {
+          return result.type === 'warning';
+        }
+        return true;
+      });
+    }
+
+    staffInspectionList.value = list;
+    staffPagination.total = list.length;
+  } catch (error) {
+
+  } finally {
+    loadingStaff.value = false;
+  }
+};
+
+const resolveTodaySchedule = async () => {
+  const today = dayjs().format('YYYY-MM-DD');
+  const year = dayjs(today).year();
+  const month = dayjs(today).month() + 1;
+  const scheduleRes = await request.get('/schedules', {
+    params: {
+      year,
+      month,
+      userId: userStore.userId
+    }
+  });
+  const schedules = scheduleRes.schedules || scheduleRes.list || scheduleRes || [];
+  return schedules.find(s => s.user_id === userStore.userId && s.schedules && s.schedules[today]) || null;
+};
+
+// 开始自检
+const startInspection = async () => {
+  inspectionForm.remark = '';
+
+  if (!hasCompletedBasicWork.value) {
+// 首次自检：设置默认工作性质
+    const defaultWorkTypes = workTypes.value.filter(wt => wt.is_default === 1).map(wt => wt.id);
+    inspectionForm.selectedWorkTypes = [...defaultWorkTypes];
+// 默认工作性质的检查项
+    await loadCheckItems(defaultWorkTypes);
+  } else {
+// 后续自检：清空选择，用户手动选择需要的工作性质
+    inspectionForm.selectedWorkTypes = [];
+    allCheckItems.value = [];
+  }
+
+  inspectionDialogVisible.value = true;
+};
+
+// 提交自检
+const submitInspection = async () => {
+  if (inspectionForm.selectedWorkTypes.length === 0) {
+    ElMessage.warning('请至少选择一个工作性质');
+    return;
+  }
+
+// 检查是否有未选择的项目
+  const unselectedItems = allCheckItems.value.filter(
+    item => item.checkStatus === null || item.checkStatus === undefined
+  );
+  if (unselectedItems.length > 0) {
+    ElMessage.warning('请完成所有检查项');
+    return;
+  }
+
+  submitting.value = true;
+  try {
+    const schedule = await resolveTodaySchedule();
+    if (!schedule || !schedule.station_id) {
+      ElMessage.warning('\u60a8\u4eca\u65e5\u6ca1\u6709\u6392\u73ed\uff0c\u65e0\u6cd5\u8fdb\u884c\u5b89\u5168\u81ea\u68c0');
+      return;
+    }
+
+// 构建检查项目数组
+    const inspectionItems = allCheckItems.value.map(item => ({
+      workTypeId: item.work_type_id,
+      workTypeName: workTypesMap.value[item.work_type_id]?.work_type_name || '',
+      itemId: item.id,
+      itemName: item.item_name,
+      itemStandard: item.item_standard,
+      status: item.checkStatus,
+      remark: item.unqualifiedRemark || '',
+      photoUrls: item.photoUrls || []
+    }));
+
+    await request.post('/self-inspections', {
+      inspectionType: 'safety',
+      workTypeIds: inspectionForm.selectedWorkTypes,
+      inspectionItems,
+      remark: inspectionForm.remark,
+      stationId: schedule.station_id,
+      inspectionDate: dayjs().format('YYYY-MM-DD')
+    });
+
+    ElMessage.success('提交成功');
+    inspectionDialogVisible.value = false;
+    loadTodayInspection();
+    loadRangeInspections();
+    loadHistory();
+// 如果有人员自检查看权限，同步刷新人员安全自检列表
+    if (canViewStaff.value) {
+      loadStaffInspections();
+    }
+  } catch (error) {
+    ElMessage.error(error.message || '提交失败');
+  } finally {
+    submitting.value = false;
+  }
+};
+
+// 查看详情
+const viewDetail = (row) => {
+  detailData.value = row;
+  detailDialogVisible.value = true;
+};
+
+// 获取工作性质
+const getWorkTypeNames = (workTypeIds) => {
+  const ids = normalizeWorkTypeIds({ work_type_ids: workTypeIds });
+  if (!ids.length) return '-';
+  return ids
+    .map(id => workTypesMap.value[id]?.work_type_name || `ID:${id}`)
+    .join('、');
+};
+
+const getItemStatusValue = (row) => {
+  if (row?.status === 0 || row?.status === 1) return row.status;
+  if (row?.checked === true) return 1;
+  if (row?.checked === false) return 0;
+  return null;
+};
+
+// 获取检查结果
+const getInspectionResult = (row) => {
+  if (!row.inspection_items || !Array.isArray(row.inspection_items)) {
+    return { type: 'info', text: '未检查' };
+  }
+  const statusList = row.inspection_items.map(item => getItemStatusValue(item));
+  const unselectedCount = statusList.filter(v => v === null).length;
+  const noCount = statusList.filter(v => v === 0).length;
+  if (unselectedCount > 0) {
+    return { type: 'info', text: '未完成' };
+  }
+  if (noCount === 0) {
+    return { type: 'success', text: '全部合格' };
+  }
+  return { type: 'warning', text: `有${noCount}项不合格` };
+};
+
+// 格式化日期时间
+const formatDateTime = (dateTime) => {
+  if (!dateTime) return '-';
+  return dayjs(dateTime).format('YYYY-MM-DD HH:mm');
+};
+
+onMounted(async () => {
+  await loadWorkTypes();
+  await loadTodayInspection();
+  await loadHistory();
+  await loadRangeInspections();
+
+  if (canViewStaff.value) {
+    await loadStations();
+
+// 如果是场站管理员，自动选中当前场站
+    const user = userStore.userInfo;
+    if (user?.roleCode === 'station_manager') {
+// 优先使用当前选中的场站，否则使用第一个场站
+      staffFilters.stationId = userStore.currentStationId || user?.stations?.[0]?.id || null;
+    }
+
+    // 人员自检
+    await loadStaffInspections();
+  }
+});
+
+watch(
+  () => [staffFilters.dateRange, staffFilters.stationId, staffFilters.fillerName, staffFilters.workTypeIds, staffFilters.result],
+  () => {
+    handleStaffFilterChange();
+  },
+  { deep: true }
+);
+</script>
+
+<style lang="scss" scoped>
+.safety-inspection-page {
+  .page-header {
+    margin-bottom: 20px;
+
+    h2 {
+      margin: 0;
+      font-size: 20px;
+    }
+  }
+
+  .header-controls {
+    margin-bottom: 20px;
+  }
+
+  .status-card {
+    background: #fff;
+    border-radius: 8px;
+    padding: 24px;
+    margin-bottom: 24px;
+    border: 1px solid #e4e7ed;
+
+    &.completed {
+      border-color: #67c23a;
+      background: linear-gradient(135deg, #f0f9eb 0%, #fff 100%);
+
+      .status-icon {
+        color: #67c23a;
+      }
+    }
+
+    .status-content {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .status-icon {
+      font-size: 48px;
+      color: #e6a23c;
+
+      &.warning {
+        color: #e6a23c;
+      }
+    }
+
+    .status-info {
+      flex: 1;
+
+      .status-title {
+        font-size: 18px;
+        font-weight: 500;
+        margin-bottom: 4px;
+      }
+
+      .status-time {
+        color: #909399;
+        font-size: 14px;
+      }
+
+      .status-lines {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        margin-bottom: 6px;
+      }
+
+      .status-line {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .status-label {
+        min-width: 56px;
+        color: #606266;
+        font-size: 14px;
+      }
+    }
+  }
+
+  .today-inspections {
+    background: #fff;
+    border-radius: 8px;
+    padding: 20px;
+    margin-bottom: 24px;
+    border: 1px solid #e4e7ed;
+
+    h3 {
+      margin: 0 0 16px 0;
+      font-size: 16px;
+    }
+
+    .inspection-list {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .inspection-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 12px 16px;
+      background: #f5f7fa;
+      border-radius: 6px;
+      border: 1px solid #e4e7ed;
+
+      .inspection-item-info {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+
+        .work-types {
+          font-weight: 500;
+          color: #303133;
+        }
+
+        .submit-time {
+          font-size: 12px;
+          color: #909399;
+        }
+      }
+    }
+  }
+
+  .history-section {
+    background: #fff;
+    border-radius: 8px;
+    padding: 20px;
+    border: 1px solid #e4e7ed;
+
+    h3 {
+      margin: 0 0 16px 0;
+      font-size: 16px;
+    }
+  }
+
+  .filter-bar {
+    display: flex;
+    gap: 12px;
+    margin-bottom: 16px;
+    flex-wrap: wrap;
+  }
+
+  .pagination-wrapper {
+    margin-top: 16px;
+    display: flex;
+    justify-content: flex-end;
+  }
+
+  .check-group {
+    margin-bottom: 16px;
+  }
+
+  .check-item-list {
+    padding-left: 20px;
+  }
+
+  .check-item {
+    margin-bottom: 12px;
+    padding: 10px;
+    background: #f5f7fa;
+    border-radius: 4px;
+
+    .check-item-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 4px;
+    }
+
+    .check-item-title {
+      font-weight: 500;
+      color: #303133;
+    }
+
+    .check-item-standard {
+      color: #909399;
+      font-size: 12px;
+      padding-left: 24px;
+    }
+
+    .check-item-photo {
+      margin-top: 10px;
+      padding-left: 24px;
+
+      .photo-label {
+        font-size: 12px;
+        color: #f56c6c;
+        margin-bottom: 8px;
+      }
+
+      :deep(.el-textarea) {
+        margin-top: 8px;
+      }
+
+      :deep(.el-upload--picture-card) {
+        width: 80px;
+        height: 80px;
+      }
+
+      :deep(.el-upload-list--picture-card .el-upload-list__item) {
+        width: 80px;
+        height: 80px;
+      }
+    }
+  }
+
+  .photo-preview {
+    display: flex;
+    flex-wrap: wrap;
+  }
+
+  .detail-content {
+    .detail-items {
+      margin-top: 20px;
+
+      h4 {
+        margin: 0 0 12px 0;
+        font-size: 14px;
+      }
+    }
+  }
+}
+</style>

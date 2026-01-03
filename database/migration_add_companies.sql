@@ -1,0 +1,13 @@
+-- 公司管理表
+-- 执行时间: 2025-12-27
+
+-- 创建公司表
+CREATE TABLE IF NOT EXISTS companies (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  company_name VARCHAR(100) NOT NULL UNIQUE COMMENT '公司名称',
+  company_code VARCHAR(50) UNIQUE COMMENT '公司编码',
+  description VARCHAR(200) COMMENT '描述',
+  status ENUM('active', 'inactive') DEFAULT 'active' COMMENT '状态',
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='公司表';
