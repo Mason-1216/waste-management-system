@@ -60,7 +60,7 @@
 <script setup>
 import { ref, reactive } from 'vue';
 import { useRouter } from 'vue-router';
-import { useUserStore } from '@/store/user';
+import { useUserStore } from '@/store/modules/user';
 import { ElMessage } from 'element-plus';
 import request from '@/api/request';
 

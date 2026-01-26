@@ -1,3 +1,9 @@
+// 响应式断点
+$breakpoint-xs: 480px;   // 手机竖屏
+$breakpoint-sm: 768px;   // 手机横屏/平板竖屏
+$breakpoint-md: 1024px;  // 平板横屏
+$breakpoint-lg: 1280px;  // 桌面
+
 // 全局样式变量
 :root {
   --primary-color: #409EFF;
@@ -11,11 +17,14 @@
   --bg-color: #F5F7FA;
   --sidebar-width: 220px;
   --header-height: 60px;
+  --mobile-min-touch-size: 44px;
 }
 
 // 重置样式
 * {
   box-sizing: border-box;
+  scrollbar-width: auto;
+  scrollbar-color: #C0C4CC #F5F7FA;
 }
 
 html, body {
@@ -25,10 +34,16 @@ html, body {
   background-color: var(--bg-color);
 }
 
+body {
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--text-color);
+}
+
 // 滚动条样式
 ::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 12px;
+  height: 12px;
 }
 
 ::-webkit-scrollbar-thumb {
@@ -40,6 +55,7 @@ html, body {
   background-color: #F5F7FA;
 }
 
+// 自定义表格横向滑动条
 // 通用类
 .flex {
   display: flex;
@@ -131,6 +147,49 @@ html, body {
   }
 }
 
+// 筛选/搜索区域自适应宽度
+.filter-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+  width: 100%;
+
+  .el-input,
+  .el-select,
+  .el-date-picker,
+  .el-date-editor {
+    min-width: 240px;
+    flex: 1 1 280px;
+  }
+}
+
+.search-form {
+  .el-input,
+  .el-select,
+  .el-date-picker,
+  .el-date-editor {
+    min-width: 240px;
+  }
+}
+
+// 筛选区输入控件统一最小宽度，避免筛选条过短
+.filter-bar,
+.filter-form,
+.search-form,
+.table-toolbar {
+  .el-input,
+  .el-select,
+  .el-date-picker,
+  .el-date-editor,
+  .el-input-number,
+  .el-cascader {
+    width: auto !important;
+    min-width: 220px;
+    flex: 1 1 240px;
+  }
+}
+
 // 卡片网格
 .card-grid {
   display: grid;
@@ -188,21 +247,346 @@ html, body {
     align-items: flex-start;
   }
 
-  .search-form {
+  .search-form,
+  .filter-bar {
     width: 100%;
 
     .el-form-item {
       width: 100%;
     }
 
-    .el-input, .el-select {
+    .el-input, .el-select, .el-date-picker, .el-date-editor {
       width: 100% !important;
+      min-width: 0;
+      flex: 1 1 100%;
     }
   }
 
   // 隐藏某些列
   .hide-on-mobile {
     display: none !important;
+  }
+}
+
+// 响应式表格容器
+.table-container {
+  width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
+  touch-action: pan-x pan-y;
+
+  .el-table {
+    min-width: 600px;
+  }
+}
+
+.table-wrapper,
+.table-scroll,
+.list-table-wrapper {
+  overscroll-behavior-x: contain;
+  touch-action: pan-x pan-y;
+}
+
+// 全局取消表格固定列（去掉冻结窗格）
+.el-table__fixed,
+.el-table__fixed-right {
+  display: none !important;
+  width: 0 !important;
+}
+
+.el-table__fixed-right-patch {
+  display: none !important;
+}
+
+// 确保表格主体可横向滚动
+.el-table .el-table__body-wrapper {
+  overflow-x: hidden !important;
+}
+
+.el-table .el-table__header-wrapper,
+.el-table .el-table__footer-wrapper {
+  overflow-x: hidden !important;
+  overflow-y: hidden !important;
+}
+
+.el-table .el-table__body-wrapper,
+.el-table .el-scrollbar__wrap {
+  overflow-y: visible !important;
+}
+
+.el-table {
+  width: 100%;
+}
+
+.el-table .el-scrollbar__wrap {
+  overflow-x: scroll !important;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
+  touch-action: pan-x pan-y;
+  scrollbar-width: auto !important;
+}
+
+.el-table .el-scrollbar__wrap::-webkit-scrollbar {
+  width: 12px;
+  height: 12px;
+}
+
+.el-table .el-scrollbar__bar {
+  display: none !important;
+}
+
+
+// 移动端触摸友好的按钮
+@media screen and (max-width: 768px) {
+  // 移动端取消表格固定列，避免遮挡（强制优先级）
+  .el-table__fixed,
+  .el-table__fixed-right {
+    display: none !important;
+    width: 0 !important;
+  }
+
+  .el-table__fixed-right-patch {
+    display: none !important;
+  }
+
+  // 确保表格内容正常显示
+  .el-table .el-table__body-wrapper {
+    overflow-x: hidden !important;
+  }
+
+  .el-table .el-scrollbar__wrap {
+    overflow-x: scroll !important;
+  }
+
+  // 移动端表格列不固定
+  .el-table__cell.is-right,
+  .el-table__cell.is-left {
+    position: static !important;
+  }
+
+  .el-button {
+    min-height: var(--mobile-min-touch-size);
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+
+  .el-button--small {
+    min-height: 36px;
+  }
+
+  // 表单元素触摸友好
+  .el-input__inner,
+  .el-select__wrapper {
+    min-height: var(--mobile-min-touch-size) !important;
+  }
+
+  // 移动端表单栈状布局
+  .el-form--inline {
+    .el-form-item {
+      display: block;
+      width: 100%;
+      margin-right: 0;
+    }
+  }
+
+  // 筛选栏移动端适配
+  .filter-bar {
+    flex-direction: column;
+    align-items: stretch !important;
+
+    .el-select,
+    .el-input,
+    .el-date-picker,
+    .el-date-editor {
+      width: 100% !important;
+    }
+  }
+
+  // 分页移动端适配
+  .el-pagination {
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 8px;
+
+    .el-pagination__sizes,
+    .el-pagination__jump {
+      display: none;
+    }
+  }
+
+  // 页面头部移动端适配
+  .page-header {
+    flex-direction: column;
+    align-items: flex-start !important;
+    gap: 12px;
+
+    h2 {
+      font-size: 18px;
+    }
+
+    .header-actions,
+    .actions {
+      width: 100%;
+      flex-wrap: wrap;
+      gap: 8px;
+
+      .el-button {
+        flex: 1;
+        min-width: 80px;
+      }
+    }
+  }
+
+  // 卡片移动端适配
+  .card-grid {
+    grid-template-columns: 1fr;
+  }
+
+  // 统计卡片移动端适配
+  .stat-card {
+    padding: 16px;
+
+    .stat-value {
+      font-size: 24px;
+    }
+  }
+
+  // 对话框移动端适配
+  .el-dialog {
+    width: 95% !important;
+    max-width: 95% !important;
+    margin: 16px auto !important;
+  }
+
+  .el-dialog__body {
+    max-height: calc(100vh - 180px);
+    overflow-y: auto;
+  }
+
+  // 抽屉移动端适配
+  .el-drawer {
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+}
+
+// 瀵硅瘽妗嗗叏灞€閫傞厤
+.el-dialog {
+  max-width: min(960px, 96vw);
+}
+
+.el-dialog__body {
+  max-height: calc(100vh - 220px);
+  overflow-y: auto;
+}
+
+// 小屏幕额外适配
+@media screen and (max-width: 768px) {
+  // Keep date range time inputs evenly sized.
+  .el-date-range-picker__time-header {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .el-date-range-picker__editors-wrap {
+    display: flex;
+    flex: 1 1 0;
+    min-width: 0;
+  }
+
+  .el-date-range-picker__time-picker-wrap {
+    display: block;
+    flex: 1 1 0;
+    min-width: 0;
+  }
+
+  // ??????????????????
+  .el-table .el-table__body-wrapper,
+  .el-table .el-table__header-wrapper,
+  .el-table .el-table__footer-wrapper,
+  .el-table .el-scrollbar__wrap {
+    overflow-y: hidden !important;
+  }
+
+  // ????????????????
+  .el-dialog {
+    .el-form-item {
+      width: 100%;
+    }
+
+    .el-form-item__content {
+      flex: 1;
+      width: 100%;
+    }
+
+    .el-input,
+    .el-select,
+    .el-date-picker,
+    .el-date-editor,
+    .el-input-number,
+    .el-cascader {
+      width: 100% !important;
+    }
+  }
+
+  // ?????????????????????????
+  .el-date-range-picker {
+    width: 96vw !important;
+    max-width: 96vw !important;
+    min-width: 0 !important;
+    flex-direction: column;
+    box-sizing: border-box;
+  }
+
+  .el-date-range-picker__content {
+    display: block;
+    width: 100% !important;
+    min-width: 0 !important;
+    box-sizing: border-box;
+  }
+
+  .el-date-range-picker .el-picker-panel__body {
+    width: 100% !important;
+    min-width: 0 !important;
+  }
+
+  .el-date-range-picker .el-date-table {
+    width: 100%;
+    table-layout: fixed;
+  }
+
+  .el-date-range-picker__content.is-left {
+    border-right: 0;
+    border-bottom: 1px solid var(--el-datepicker-inner-border-color);
+  }
+}
+
+@media screen and (max-width: 480px) {
+  .page-container {
+    padding: 8px;
+  }
+
+  .page-header {
+    h2 {
+      font-size: 16px;
+    }
+
+    .header-actions,
+    .actions {
+      .el-button {
+        padding: 8px 12px;
+        font-size: 12px;
+      }
+    }
+  }
+
+  // 表格操作按钮移动端优化
+  .el-table {
+    .el-button.is-link {
+      padding: 4px 8px;
+    }
   }
 }
 

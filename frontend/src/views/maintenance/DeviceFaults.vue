@@ -11,7 +11,7 @@
           </div>
         </div>
 
-        <div class="filter-bar">
+        <FilterBar>
           <el-select v-model="filters.stationId" placeholder="场站" clearable style="width: 160px;" @change="loadRecords">
             <el-option
               v-for="station in stationFilterOptions"
@@ -54,9 +54,9 @@
             <el-option label="已验收" value="accepted" />
             <el-option label="已归档" value="archived" />
           </el-select>
-        </div>
+        </FilterBar>
 
-    <div class="table-wrapper">
+    <TableWrapper>
       <el-table
         :data="records"
         border
@@ -115,7 +115,7 @@
             <span>{{ row.verifier_name || '-' }}</span>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="180" fixed="right">
+        <el-table-column label="操作" width="180">
           <template #default="{ row }">
             <el-button size="small" @click="openDialog(row)">查看</el-button>
             <el-tooltip
@@ -136,7 +136,7 @@
           </template>
         </el-table-column>
       </el-table>
-    </div>
+    </TableWrapper>
 
     <div class="pagination-wrapper">
       <el-pagination
@@ -149,535 +149,48 @@
         @size-change="loadRecords"
       />
     </div>
-    <el-dialog v-model="dialogVisible" width="920px" title="故障详情" destroy-on-close>
-      <div v-if="currentRow" class="status-steps">
-        <el-steps :active="getFlowActive(currentRow)" finish-status="success" align-center>
-          <el-step v-for="step in getFlowSteps(currentRow)" :key="step" :title="step" />
-        </el-steps>
-      </div>
-      <el-form
-        v-if="currentRow"
-        ref="formRef"
-        :model="currentRow"
-        :rules="formRules"
-        label-width="120px"
-        class="expand-form"
-      >
-        <el-divider content-position="left">上报信息</el-divider>
-        <div class="section-grid">
-          <el-form-item label="场站" prop="station_id" required>
-            <el-select
-              v-if="canEditReport(currentRow)"
-              v-model="currentRow.station_id"
-              placeholder="请选择场站"
-              style="width: 100%;"
-              @change="handleStationChange(currentRow)"
-            >
-              <el-option
-                v-for="station in formStationOptions"
-                :key="station.id"
-                :label="station.station_name"
-                :value="station.id"
-              />
-            </el-select>
-            <el-input
-              v-else
-              :model-value="currentRow.station_name || currentRow.station?.station_name || '-'"
-              disabled
-            />
-          </el-form-item>
-          <el-form-item label="设备编号" prop="equipment_code" required>
-            <el-select
-              v-model="currentRow.equipment_code"
-              :disabled="!canEditReport(currentRow)"
-              placeholder="选择设备"
-              filterable
-              clearable
-              style="width: 100%;"
-              @change="handleEquipmentChange(currentRow)"
-            >
-              <el-option
-                v-for="equipment in equipmentList"
-                :key="equipment.equipment_code"
-                :label="equipment.equipment_code"
-                :value="equipment.equipment_code"
-              >
-                <span>{{ equipment.equipment_code }}</span>
-                <span style="color: #8492a6; font-size: 12px; margin-left: 10px;">{{ equipment.equipment_name }}</span>
-              </el-option>
-            </el-select>
-          </el-form-item>
-          <el-form-item label="设备名称">
-            <el-input v-model="currentRow.equipment_name" :disabled="!canEditReport(currentRow)" />
-          </el-form-item>
-          <el-form-item label="安装地点">
-            <el-input v-model="currentRow.equipment_location" :disabled="!canEditReport(currentRow)" />
-          </el-form-item>
-          <el-form-item label="上报日期">
-            <el-date-picker
-              v-model="currentRow.report_date"
-              type="date"
-              value-format="YYYY-MM-DD"
-              :disabled="!canEditReport(currentRow)"
-            />
-          </el-form-item>
-          <el-form-item label="上报时间">
-            <el-time-picker
-              v-model="currentRow.report_time"
-              value-format="HH:mm"
-              format="HH:mm"
-              :disabled="!canEditReport(currentRow)"
-            />
-          </el-form-item>
-          <el-form-item label="上报人">
-            <el-input v-model="currentRow.reporter_name" disabled />
-          </el-form-item>
-          <el-form-item label="紧急程度">
-            <el-select v-model="currentRow.urgency_level" :disabled="!canEditReport(currentRow)">
-              <el-option
-                v-for="option in urgencyOptions"
-                :key="option.value"
-                :label="option.label"
-                :value="option.value"
-              />
-            </el-select>
-          </el-form-item>
-          <el-form-item label="故障现象描述">
-            <el-input v-model="currentRow.fault_description" :disabled="!canEditReport(currentRow)" />
-          </el-form-item>
-        </div>
-
-        <el-divider content-position="left">派单人信息</el-divider>
-        <div class="section-grid">
-          <el-form-item label="计划维修时间" class="full-width">
-            <div class="plan-repair-datetime">
-              <div class="datetime-group">
-                <el-date-picker
-                  v-model="currentRow.plan_repair_date"
-                  type="date"
-                  value-format="YYYY-MM-DD"
-                  placeholder="开始日期"
-                  :disabled="!canEditDispatch(currentRow)"
-                />
-                <el-time-picker
-                  v-model="currentRow.plan_repair_time"
-                  value-format="HH:mm"
-                  format="HH:mm"
-                  placeholder="开始时间"
-                  :disabled="!canEditDispatch(currentRow)"
-                />
-              </div>
-              <span class="range-separator">~</span>
-              <div class="datetime-group">
-                <el-date-picker
-                  v-model="currentRow.plan_repair_end_date"
-                  type="date"
-                  value-format="YYYY-MM-DD"
-                  placeholder="结束日期"
-                  :disabled="!canEditDispatch(currentRow)"
-                />
-                <el-time-picker
-                  v-model="currentRow.plan_repair_end_time"
-                  value-format="HH:mm"
-                  format="HH:mm"
-                  placeholder="结束时间"
-                  :disabled="!canEditDispatch(currentRow)"
-                />
-              </div>
-            </div>
-          </el-form-item>
-          <el-form-item label="维修负责人" prop="repair_person_id" required>
-            <el-select
-              v-if="canEditDispatch(currentRow)"
-              v-model="currentRow.repair_person_id"
-              @change="value => onRepairerChange(currentRow, value)"
-            >
-              <el-option
-                v-for="user in repairers"
-                :key="user.id"
-                :label="getUserDisplayName(user)"
-                :value="user.id"
-              />
-            </el-select>
-            <el-input
-              v-else
-              :model-value="currentRow.repair_person_name || '-'"
-              disabled
-            />
-          </el-form-item>
-          <el-form-item label="维修配合人">
-            <el-select
-              v-if="canEditDispatch(currentRow)"
-              v-model="currentRow.repair_assistant_name"
-              clearable
-              filterable
-              placeholder="可选"
-            >
-              <el-option
-                v-for="user in repairers"
-                :key="user.id"
-                :label="getUserDisplayName(user)"
-                :value="getUserDisplayName(user)"
-              />
-            </el-select>
-            <el-input
-              v-else
-              :model-value="currentRow.repair_assistant_name || '-'"
-              disabled
-            />
-          </el-form-item>
-          <el-form-item label="派单人日期">
-            <el-date-picker
-              v-model="currentRow.dispatch_date"
-              type="date"
-              value-format="YYYY-MM-DD"
-              :disabled="!canEditDispatch(currentRow)"
-            />
-          </el-form-item>
-          <el-form-item label="派单人时间">
-            <el-time-picker
-              v-model="currentRow.dispatch_time"
-              value-format="HH:mm"
-              format="HH:mm"
-              :disabled="!canEditDispatch(currentRow)"
-            />
-          </el-form-item>
-          <el-form-item label="派单人">
-            <el-input v-model="currentRow.dispatch_by_name" disabled />
-          </el-form-item>
-        </div>
-
-        <el-divider content-position="left">维修信息</el-divider>
-        <div class="section-grid">
-          <el-form-item label="开始日期">
-            <el-date-picker
-              v-model="currentRow.repair_start_date"
-              type="date"
-              value-format="YYYY-MM-DD"
-              :disabled="!canEditRepair(currentRow)"
-            />
-          </el-form-item>
-          <el-form-item label="开始时间">
-            <el-time-picker
-              v-model="currentRow.repair_start_time"
-              value-format="HH:mm"
-              format="HH:mm"
-              :disabled="!canEditRepair(currentRow)"
-            />
-          </el-form-item>
-          <el-form-item label="结束日期">
-            <el-date-picker
-              v-model="currentRow.repair_end_date"
-              type="date"
-              value-format="YYYY-MM-DD"
-              :disabled="!canEditRepair(currentRow)"
-            />
-          </el-form-item>
-          <el-form-item label="结束时间">
-            <el-time-picker
-              v-model="currentRow.repair_end_time"
-              value-format="HH:mm"
-              format="HH:mm"
-              :disabled="!canEditRepair(currentRow)"
-            />
-          </el-form-item>
-          <el-form-item label="故障初步判断">
-            <el-input v-model="currentRow.preliminary_judgment" :disabled="!canEditRepair(currentRow)" />
-          </el-form-item>
-          <el-form-item label="维修方法">
-            <el-input v-model="currentRow.repair_content" :disabled="!canEditRepair(currentRow)" />
-          </el-form-item>
-          <el-form-item label="维修工具">
-            <el-input v-model="currentRow.repair_tools" :disabled="!canEditRepair(currentRow)" />
-          </el-form-item>
-          <el-form-item label="维修时长">
-            <el-input-number v-model="currentRow.work_hours" :disabled="!canEditRepair(currentRow)" :min="0" />
-          </el-form-item>
-
-          <el-form-item label="耗材" class="full-width">
-            <div class="list-block">
-              <div class="list-actions">
-                <el-button
-                  size="small"
-                  type="primary"
-                  :disabled="!canEditRepair(currentRow)"
-                  @click="addConsumable(currentRow)"
-                >
-                  新增
-                </el-button>
-              </div>
-              <div class="table-scroll">
-                <el-table
-                  :data="currentRow.consumables_list || []"
-                  border
-                  size="small"
-                  class="inner-table"
-                  :row-class-name="consumableRowClass"
-                >
-                  <el-table-column label="名称">
-                    <template #default="{ row: item }">
-                      <el-input v-model="item.name" :disabled="!canEditRepair(currentRow) || item._locked" />
-                    </template>
-                  </el-table-column>
-                  <el-table-column label="型号">
-                    <template #default="{ row: item }">
-                      <el-input v-model="item.model" :disabled="!canEditRepair(currentRow) || item._locked" />
-                    </template>
-                  </el-table-column>
-                  <el-table-column label="规格">
-                    <template #default="{ row: item }">
-                      <el-input v-model="item.spec" :disabled="!canEditRepair(currentRow) || item._locked" />
-                    </template>
-                  </el-table-column>
-                  <el-table-column label="数量">
-                    <template #default="{ row: item }">
-                      <el-input-number v-model="item.quantity" :disabled="!canEditRepair(currentRow) || item._locked" :min="0" />
-                    </template>
-                  </el-table-column>
-                  <el-table-column label="操作">
-                    <template #default="{ $index }">
-                      <el-button
-                        v-if="!currentRow.consumables_list[$index]?._locked"
-                        link
-                        type="primary"
-                        :disabled="!canEditRepair(currentRow)"
-                        @click="lockConsumable(currentRow, $index)"
-                      >
-                        保存
-                      </el-button>
-                      <el-button
-                        v-else
-                        link
-                        type="warning"
-                        :disabled="!canEditRepair(currentRow)"
-                        @click="unlockConsumable(currentRow, $index)"
-                      >
-                        编辑
-                      </el-button>
-                      <el-button
-                        link
-                        type="danger"
-                        :disabled="!canEditRepair(currentRow) || currentRow.consumables_list[$index]?._locked"
-                        @click="removeConsumable(currentRow, $index)"
-                      >
-                        删除
-                      </el-button>
-                    </template>
-                  </el-table-column>
-                </el-table>
-              </div>
-            </div>
-          </el-form-item>
-
-          <el-form-item label="配件" class="full-width">
-            <div class="list-block">
-              <div class="list-actions">
-                <el-button
-                  size="small"
-                  type="primary"
-                  :disabled="!canEditRepair(currentRow)"
-                  @click="addPart(currentRow)"
-                >
-                  新增
-                </el-button>
-              </div>
-              <div class="table-scroll">
-                <el-table
-                  :data="currentRow.parts_list || []"
-                  border
-                  size="small"
-                  class="inner-table"
-                  :row-class-name="partRowClass"
-                >
-                  <el-table-column label="名称">
-                    <template #default="{ row: item }">
-                      <el-input v-model="item.name" :disabled="!canEditRepair(currentRow) || item._locked" />
-                    </template>
-                  </el-table-column>
-                  <el-table-column label="型号">
-                    <template #default="{ row: item }">
-                      <el-input v-model="item.model" :disabled="!canEditRepair(currentRow) || item._locked" />
-                    </template>
-                  </el-table-column>
-                  <el-table-column label="规格">
-                    <template #default="{ row: item }">
-                      <el-input v-model="item.spec" :disabled="!canEditRepair(currentRow) || item._locked" />
-                    </template>
-                  </el-table-column>
-                  <el-table-column label="数量">
-                    <template #default="{ row: item }">
-                      <el-input-number v-model="item.quantity" :disabled="!canEditRepair(currentRow) || item._locked" :min="0" />
-                    </template>
-                  </el-table-column>
-                  <el-table-column label="更换原因">
-                    <template #default="{ row: item }">
-                      <el-input v-model="item.reason" :disabled="!canEditRepair(currentRow) || item._locked" />
-                    </template>
-                  </el-table-column>
-                  <el-table-column label="操作">
-                    <template #default="{ $index }">
-                      <el-button
-                        v-if="!currentRow.parts_list[$index]?._locked"
-                        link
-                        type="primary"
-                        :disabled="!canEditRepair(currentRow)"
-                        @click="lockPart(currentRow, $index)"
-                      >
-                        保存
-                      </el-button>
-                      <el-button
-                        v-else
-                        link
-                        type="warning"
-                        :disabled="!canEditRepair(currentRow)"
-                        @click="unlockPart(currentRow, $index)"
-                      >
-                        编辑
-                      </el-button>
-                      <el-button
-                        link
-                        type="danger"
-                        :disabled="!canEditRepair(currentRow) || currentRow.parts_list[$index]?._locked"
-                        @click="removePart(currentRow, $index)"
-                      >
-                        删除
-                      </el-button>
-                    </template>
-                  </el-table-column>
-                </el-table>
-              </div>
-            </div>
-          </el-form-item>
-
-          <el-form-item label="维修结果">
-            <el-select v-model="currentRow.repair_result" :disabled="!canEditRepair(currentRow)">
-              <el-option label="正常运行" value="normal" />
-              <el-option label="待观察" value="observe" />
-              <el-option label="未完成" value="unsolved" />
-            </el-select>
-          </el-form-item>
-          <el-form-item label="跟踪天数">
-            <el-input-number
-              v-model="currentRow.observe_days"
-              :disabled="!canEditRepair(currentRow) || currentRow.repair_result !== 'observe'"
-              :min="0"
-            />
-          </el-form-item>
-          <el-form-item label="未解决原因">
-            <el-input
-              v-model="currentRow.unsolved_reason"
-              :disabled="!canEditRepair(currentRow) || currentRow.repair_result !== 'unsolved'"
-            />
-          </el-form-item>
-        </div>
-
-        <el-divider content-position="left">验收人信息</el-divider>
-        <div class="section-grid">
-          <el-form-item label="维修态度">
-            <el-rate
-              v-model="currentRow.verify_attitude"
-              :max="5"
-              :disabled="!canEditVerify(currentRow)"
-              :allow-half="false"
-              :show-text="true"
-              :texts="['很差', '较差', '一般', '较好', '很好']"
-            />
-          </el-form-item>
-          <el-form-item label="维修质量">
-            <el-rate
-              v-model="currentRow.verify_quality"
-              :max="5"
-              :disabled="!canEditVerify(currentRow)"
-              :allow-half="false"
-              :show-text="true"
-              :texts="['很差', '较差', '一般', '较好', '很好']"
-            />
-          </el-form-item>
-          <el-form-item label="验收人日期">
-            <el-date-picker
-              v-model="currentRow.verify_date"
-              type="date"
-              value-format="YYYY-MM-DD"
-              :disabled="!canEditVerify(currentRow)"
-            />
-          </el-form-item>
-          <el-form-item label="验收人时间">
-            <el-time-picker
-              v-model="currentRow.verify_time"
-              value-format="HH:mm"
-              format="HH:mm"
-              :disabled="!canEditVerify(currentRow)"
-            />
-          </el-form-item>
-        </div>
-
-        <div class="form-actions">
-          <el-button
-            v-if="canReport && isDraftRow(currentRow)"
-            type="primary"
-            :loading="saving[rowKey(currentRow)]"
-            @click="saveReport(currentRow, false)"
-          >
-            保存草稿
-          </el-button>
-          <el-button
-            v-if="canReport && isDraftRow(currentRow)"
-            type="success"
-            :loading="saving[rowKey(currentRow)]"
-            @click="saveReport(currentRow, true)"
-          >
-            提交上报
-          </el-button>
-          <el-button
-            v-if="canDispatch && currentRow.status === 'submitted_report'"
-            type="primary"
-            :loading="saving[rowKey(currentRow)]"
-            @click="dispatchRow(currentRow)"
-          >
-            提交派单
-          </el-button>
-          <el-button
-            v-if="canRepair && currentRow.status === 'dispatched'"
-            type="warning"
-            :loading="saving[rowKey(currentRow)]"
-            @click="startRowRepair(currentRow)"
-          >
-            开始维修
-          </el-button>
-          <el-button
-            v-if="canRepair && ['dispatched', 'repairing'].includes(currentRow.status)"
-            :loading="saving[rowKey(currentRow)]"
-            @click="saveRepairRow(currentRow)"
-          >
-            保存
-          </el-button>
-          <el-button
-            v-if="canRepair && ['dispatched', 'repairing'].includes(currentRow.status)"
-            type="success"
-            :loading="saving[rowKey(currentRow)]"
-            @click="submitRepairRow(currentRow)"
-          >
-            提交维修
-          </el-button>
-          <el-button
-            v-if="canVerify && currentRow.status === 'repaired_submitted'"
-            type="warning"
-            :loading="saving[rowKey(currentRow)]"
-            @click="verifyRow(currentRow, 'reject')"
-          >
-            退回重做
-          </el-button>
-          <el-button
-            v-if="canVerify && currentRow.status === 'repaired_submitted'"
-            type="primary"
-            :loading="saving[rowKey(currentRow)]"
-            @click="verifyRow(currentRow, 'pass')"
-          >
-            验收完成
-          </el-button>
-        </div>
-      </el-form>
-    </el-dialog>
+    <MaintenanceFaultDetailDialog
+      v-model:visible="dialogVisible"
+      :row="currentRow"
+      :form-rules="formRules"
+      :form-station-options="formStationOptions"
+      :equipment-list="equipmentList"
+      :urgency-options="urgencyOptions"
+      :repairers="repairers"
+      :get-flow-active="getFlowActive"
+      :get-flow-steps="getFlowSteps"
+      :can-edit-report="canEditReport"
+      :can-edit-dispatch="canEditDispatch"
+      :can-edit-repair="canEditRepair"
+      :can-edit-verify="canEditVerify"
+      :handle-station-change="handleStationChange"
+      :handle-equipment-change="handleEquipmentChange"
+      :on-repairer-change="onRepairerChange"
+      :get-user-display-name="getUserDisplayName"
+      :can-report="canReport"
+      :can-dispatch="canDispatch"
+      :can-repair="canRepair"
+      :can-verify="canVerify"
+      :is-draft-row="isDraftRow"
+      :saving="saving"
+      :row-key="rowKey"
+      :save-report="saveReport"
+      :dispatch-row="dispatchRow"
+      :start-row-repair="startRowRepair"
+      :save-repair-row="saveRepairRow"
+      :submit-repair-row="submitRepairRow"
+      :verify-row="verifyRow"
+      :consumable-row-class="consumableRowClass"
+      :part-row-class="partRowClass"
+      :add-consumable="addConsumable"
+      :remove-consumable="removeConsumable"
+      :lock-consumable="lockConsumable"
+      :unlock-consumable="unlockConsumable"
+      :add-part="addPart"
+      :remove-part="removePart"
+      :lock-part="lockPart"
+      :unlock-part="unlockPart"
+    />
       </el-tab-pane>
 
       <!-- Tab 2: 设备管理 -->
@@ -696,7 +209,8 @@
 import { ref, computed, onMounted } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import dayjs from 'dayjs';
-import { useUserStore } from '@/store/user';
+import { useUserStore } from '@/store/modules/user';
+import MaintenanceFaultDetailDialog from '@/components/maintenance/MaintenanceFaultDetailDialog.vue';
 import {
   getRepairRecords,
   createRepairRecord,
@@ -744,7 +258,6 @@ const pagination = ref({
 
 const dialogVisible = ref(false);
 const currentRow = ref(null);
-const formRef = ref(null);
 const filters = ref({
   status: '',
   stationId: null,
@@ -1544,10 +1057,18 @@ onMounted(() => {
   }
 
   .expand-form {
+    overflow-x: hidden;
+
     .section-grid {
       display: grid;
       grid-template-columns: repeat(2, minmax(0, 1fr));
       gap: 12px 24px;
+      min-width: 0;
+    }
+
+    :deep(.el-form-item),
+    :deep(.el-form-item__content) {
+      min-width: 0;
     }
 
     .full-width {
@@ -1563,7 +1084,9 @@ onMounted(() => {
 
     .table-scroll {
       width: 100%;
+      max-width: 100%;
       overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
     }
 
     .list-actions {
@@ -1586,7 +1109,7 @@ onMounted(() => {
 
     .plan-repair-datetime {
       display: grid;
-      grid-template-columns: 1fr auto 1fr;
+      grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
       column-gap: 8px;
       width: 100%;
 
@@ -1603,9 +1126,11 @@ onMounted(() => {
         line-height: 32px;
       }
 
-      :deep(.el-date-editor) {
+      :deep(.el-date-editor),
+      :deep(.el-time-picker) {
         width: 160px;
         max-width: 100%;
+        min-width: 0;
       }
     }
   }
@@ -1628,6 +1153,107 @@ onMounted(() => {
     background: #fff;
     padding: 12px 16px;
     border-radius: 8px;
+  }
+
+  @media (max-width: 1024px) {
+    :deep(.el-dialog) {
+      width: 95% !important;
+      margin: 20px auto !important;
+      max-width: 95vw;
+    }
+
+    :deep(.el-dialog__body) {
+      padding: 10px 15px;
+      overflow-x: hidden;
+      max-width: 100%;
+    }
+
+    .expand-form {
+      max-width: 100%;
+      overflow-x: hidden;
+
+      .section-grid {
+        grid-template-columns: 1fr;
+        gap: 12px;
+      }
+
+      :deep(.el-form-item) {
+        flex-direction: column;
+        align-items: stretch;
+        margin-bottom: 12px;
+      }
+
+      :deep(.el-form-item__label) {
+        width: 100% !important;
+        text-align: left;
+        padding: 0 0 6px;
+        margin: 0;
+      }
+
+      :deep(.el-form-item__content) {
+        width: 100%;
+        margin-left: 0 !important;
+        max-width: 100%;
+      }
+
+      :deep(.el-input),
+      :deep(.el-select),
+      :deep(.el-textarea),
+      :deep(.el-date-editor),
+      :deep(.el-time-picker),
+      :deep(.el-input-number),
+      :deep(.el-rate) {
+        width: 100% !important;
+        max-width: 100% !important;
+      }
+
+      .plan-repair-datetime {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        width: 100%;
+        max-width: 100%;
+
+        .range-separator {
+          display: none;
+        }
+
+        .datetime-group {
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+          width: 100%;
+
+          :deep(.el-date-editor),
+          :deep(.el-time-picker) {
+            width: 100% !important;
+            max-width: 100% !important;
+          }
+        }
+      }
+
+      .list-block {
+        width: 100%;
+        max-width: 100%;
+        overflow: hidden;
+      }
+
+      .table-scroll {
+        width: 100%;
+        max-width: 100%;
+        overflow-x: auto !important;
+        -webkit-overflow-scrolling: touch;
+      }
+
+      .inner-table {
+        min-width: 700px !important;
+      }
+    }
+  }
+
+  :deep(.fault-dialog .el-dialog__body) {
+    overflow-x: hidden;
+    max-width: 100%;
   }
 }
 </style>

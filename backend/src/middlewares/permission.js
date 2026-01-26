@@ -19,7 +19,7 @@ export const checkRole = (allowedRoles) => {
     const userRole = user.baseRoleCode || user.roleCode;
 
     // 管理员拥有所有权限
-    if (userRole === 'admin') {
+    if (userRole === 'admin' || userRole === 'dev_test') {
       await next();
       return;
     }
@@ -70,13 +70,13 @@ export const checkDataPermission = async (ctx, next) => {
 
     case 'deputy_manager':
     case 'department_manager':
-      // 部门经理/副经理：部门范围
-      dataFilter = departmentName ? { departmentName } : { userId };
+    case 'senior_management':
+      // 部门副经理/部门经理/高层：全部场站
+      dataFilter = { all: true };
       break;
 
     case 'safety_inspector':
-    case 'senior_management':
-      // 安全员/高层：全部数据
+      // 安全员：全部数据
       dataFilter = { all: true };
       break;
 
@@ -87,6 +87,10 @@ export const checkDataPermission = async (ctx, next) => {
 
     case 'admin':
       // 管理员：全部数据
+      dataFilter = { all: true };
+      break;
+    case 'dev_test':
+      // 开发测试：全部数据
       dataFilter = { all: true };
       break;
 
@@ -111,7 +115,7 @@ export const checkPriceAdmin = async (ctx, next) => {
   }
 
   // 系统管理员或单价专员可以管理单价
-  if ((user.baseRoleCode || user.roleCode) === 'admin' || user.isPriceAdmin) {
+  if ((user.baseRoleCode || user.roleCode) === 'admin' || (user.baseRoleCode || user.roleCode) === 'dev_test' || user.isPriceAdmin) {
     await next();
     return;
   }
@@ -145,7 +149,8 @@ const roleHierarchy = {
   department_manager: 4, // 部门经理
   safety_inspector: 4, // 安全员
   senior_management: 5, // 高层（常务副总、总工程师、总经理、董事长）
-  admin: 10 // 系统管理员
+  admin: 10, // 系统管理员
+  dev_test: 10 // 开发测试
 };
 
 /**

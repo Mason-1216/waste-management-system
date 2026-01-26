@@ -6,7 +6,7 @@
 
     <el-tabs v-model="activeTab" type="card">
       <!-- 场站管理 -->
-      <el-tab-pane label="场站管理" name="station">
+      <el-tab-pane v-if="canViewStation" label="场站管理" name="station">
         <div class="tab-header">
           <el-input
             v-model="stationFilters.keyword"
@@ -16,7 +16,7 @@
             @keyup.enter="loadStations"
           />
           <el-button type="primary" @click="loadStations">搜索</el-button>
-          <el-button type="primary" @click="showAddStationDialog">
+          <el-button v-if="canEditStation" type="primary" @click="showAddStationDialog">
             <el-icon><Plus /></el-icon>新增场站
           </el-button>
         </div>
@@ -40,7 +40,7 @@
               {{ row.description || '-' }}
             </template>
           </el-table-column>
-          <el-table-column label="操作" width="150" fixed="right">
+          <el-table-column v-if="canEditStation" label="操作" width="150">
             <template #default="{ row }">
               <el-button link type="primary" @click="editStation(row)">编辑</el-button>
               <el-button link type="danger" @click="deleteStation(row)">删除</el-button>
@@ -62,7 +62,7 @@
       </el-tab-pane>
 
       <!-- 部门管理 -->
-      <el-tab-pane label="部门管理" name="department">
+      <el-tab-pane v-if="canViewDepartment" label="部门管理" name="department">
         <div class="tab-header">
           <el-input
             v-model="deptFilters.keyword"
@@ -72,7 +72,7 @@
             @keyup.enter="loadDepartments"
           />
           <el-button type="primary" @click="loadDepartments">搜索</el-button>
-          <el-button type="primary" @click="showAddDeptDialog">
+          <el-button v-if="canEditDepartment" type="primary" @click="showAddDeptDialog">
             <el-icon><Plus /></el-icon>新增部门
           </el-button>
         </div>
@@ -101,7 +101,7 @@
               {{ row.description || '-' }}
             </template>
           </el-table-column>
-          <el-table-column label="操作" width="150" fixed="right">
+          <el-table-column v-if="canEditDepartment" label="操作" width="150">
             <template #default="{ row }">
               <el-button link type="primary" @click="editDept(row)">编辑</el-button>
               <el-button link type="danger" @click="deleteDept(row)">删除</el-button>
@@ -123,7 +123,7 @@
       </el-tab-pane>
 
       <!-- 公司管理 -->
-      <el-tab-pane label="公司管理" name="company">
+      <el-tab-pane v-if="canViewCompany" label="公司管理" name="company">
         <div class="tab-header">
           <el-input
             v-model="companyFilters.keyword"
@@ -133,7 +133,7 @@
             @keyup.enter="loadCompanies"
           />
           <el-button type="primary" @click="loadCompanies">搜索</el-button>
-          <el-button type="primary" @click="showAddCompanyDialog">
+          <el-button v-if="canEditCompany" type="primary" @click="showAddCompanyDialog">
             <el-icon><Plus /></el-icon>新增公司
           </el-button>
         </div>
@@ -162,7 +162,7 @@
               {{ row.description || '-' }}
             </template>
           </el-table-column>
-          <el-table-column label="操作" width="150" fixed="right">
+          <el-table-column v-if="canEditCompany" label="操作" width="150">
             <template #default="{ row }">
               <el-button link type="primary" @click="editCompany(row)">编辑</el-button>
               <el-button link type="danger" @click="deleteCompanyRow(row)">删除</el-button>
@@ -184,7 +184,7 @@
       </el-tab-pane>
 
       <!-- 角色管理 -->
-      <el-tab-pane label="角色管理" name="role">
+      <el-tab-pane v-if="canViewRole" label="角色管理" name="role">
         <div class="tab-header">
           <el-input
             v-model="roleFilters.keyword"
@@ -194,7 +194,7 @@
             @keyup.enter="loadRoles"
           />
           <el-button type="primary" @click="loadRoles">搜索</el-button>
-          <el-button type="primary" @click="showAddRoleDialog">
+          <el-button v-if="canEditRole" type="primary" @click="showAddRoleDialog">
             <el-icon><Plus /></el-icon>新增角色
           </el-button>
         </div>
@@ -209,7 +209,7 @@
             </template>
           </el-table-column>
           <el-table-column prop="description" label="描述" min-width="180" show-overflow-tooltip />
-          <el-table-column label="操作" width="150" fixed="right">
+          <el-table-column v-if="canEditRole" label="操作" width="150">
             <template #default="{ row }">
               <el-button link type="primary" @click="editRole(row)">编辑</el-button>
               <el-button
@@ -227,7 +227,15 @@
     </el-tabs>
 
     <!-- 场站编辑对话框 -->
-    <el-dialog v-model="stationDialogVisible" :title="isStationEdit ? '编辑场站' : '新增场站'" width="500px">
+    <FormDialog
+      v-model="stationDialogVisible"
+      :title="isStationEdit ? '编辑场站' : '新增场站'"
+      width="500px"
+      :confirm-text="'保存'"
+      :cancel-text="'取消'"
+      :confirm-loading="stationSaving"
+      @confirm="saveStation"
+    >
       <el-form :model="stationForm" :rules="stationRules" ref="stationFormRef" label-width="100px">
         <el-form-item label="场站名称" prop="stationName">
           <el-input v-model="stationForm.stationName" placeholder="请输入场站名称" />
@@ -245,14 +253,18 @@
           />
         </el-form-item>
       </el-form>
-      <template #footer>
-        <el-button @click="stationDialogVisible = false">取消</el-button>
-        <el-button type="primary" @click="saveStation" :loading="stationSaving">保存</el-button>
-      </template>
-    </el-dialog>
+    </FormDialog>
 
     <!-- 部门编辑对话框 -->
-    <el-dialog v-model="deptDialogVisible" :title="isDeptEdit ? '编辑部门' : '新增部门'" width="500px">
+    <FormDialog
+      v-model="deptDialogVisible"
+      :title="isDeptEdit ? '编辑部门' : '新增部门'"
+      width="500px"
+      :confirm-text="'保存'"
+      :cancel-text="'取消'"
+      :confirm-loading="deptSaving"
+      @confirm="saveDept"
+    >
       <el-form :model="deptForm" :rules="deptRules" ref="deptFormRef" label-width="100px">
         <el-form-item label="部门名称" prop="dept_name">
           <el-input v-model="deptForm.dept_name" placeholder="请输入部门名称" />
@@ -273,14 +285,18 @@
           />
         </el-form-item>
       </el-form>
-      <template #footer>
-        <el-button @click="deptDialogVisible = false">取消</el-button>
-        <el-button type="primary" @click="saveDept" :loading="deptSaving">保存</el-button>
-      </template>
-    </el-dialog>
+    </FormDialog>
 
     <!-- 公司编辑对话框 -->
-    <el-dialog v-model="companyDialogVisible" :title="isCompanyEdit ? '编辑公司' : '新增公司'" width="500px">
+    <FormDialog
+      v-model="companyDialogVisible"
+      :title="isCompanyEdit ? '编辑公司' : '新增公司'"
+      width="500px"
+      :confirm-text="'保存'"
+      :cancel-text="'取消'"
+      :confirm-loading="companySaving"
+      @confirm="saveCompany"
+    >
       <el-form :model="companyForm" :rules="companyRules" ref="companyFormRef" label-width="100px">
         <el-form-item label="公司名称" prop="company_name">
           <el-input v-model="companyForm.company_name" placeholder="请输入公司名称" />
@@ -301,14 +317,18 @@
           />
         </el-form-item>
       </el-form>
-      <template #footer>
-        <el-button @click="companyDialogVisible = false">取消</el-button>
-        <el-button type="primary" @click="saveCompany" :loading="companySaving">保存</el-button>
-      </template>
-    </el-dialog>
+    </FormDialog>
 
     <!-- 角色编辑对话框 -->
-    <el-dialog v-model="roleDialogVisible" :title="isRoleEdit ? '编辑角色' : '新增角色'" width="720px">
+    <FormDialog
+      v-model="roleDialogVisible"
+      :title="isRoleEdit ? '编辑角色' : '新增角色'"
+      width="720px"
+      :confirm-text="'保存'"
+      :cancel-text="'取消'"
+      :confirm-loading="roleSaving"
+      @confirm="saveRole"
+    >
       <el-form :model="roleForm" :rules="roleRules" ref="roleFormRef" label-width="110px">
         <el-form-item label="角色名称" prop="roleName">
           <el-input v-model="roleForm.roleName" placeholder="请输入角色名称" />
@@ -340,20 +360,13 @@
           />
         </el-form-item>
         <el-form-item label="模块权限">
-          <el-checkbox-group v-model="selectedModulePermissionIds">
-            <el-row :gutter="12">
-              <el-col :xs="12" :sm="8" v-for="module in modulePermissions" :key="module.id">
-                <el-checkbox :label="module.id">{{ module.name }}</el-checkbox>
-              </el-col>
-            </el-row>
-          </el-checkbox-group>
+          <ModulePermissionConfig
+            :permissions="allPermissions"
+            v-model:selectedIds="selectedModulePermissionIds"
+          />
         </el-form-item>
       </el-form>
-      <template #footer>
-        <el-button @click="roleDialogVisible = false">取消</el-button>
-        <el-button type="primary" @click="saveRole" :loading="roleSaving">保存</el-button>
-      </template>
-    </el-dialog>
+    </FormDialog>
   </div>
 </template>
 
@@ -365,8 +378,41 @@ import { getDepartments, createDepartment, updateDepartment, deleteDepartment as
 import { getCompanies, createCompany, updateCompany, deleteCompany as deleteCompanyApi } from '@/api/company'
 import roleApi from '@/api/role'
 import permissionApi from '@/api/permission'
+import ModulePermissionConfig from '@/components/ModulePermissionConfig.vue'
+import FormDialog from '@/components/system/FormDialog.vue'
+import { useUserStore } from '@/store/modules/user'
 
-const activeTab = ref('station')
+const userStore = useUserStore()
+
+// 权限检查
+const hasPermission = (code) => userStore.permissionCodes.includes(code)
+
+// 场站权限
+const canViewStation = computed(() => hasPermission('module:organization:station:view'))
+const canEditStation = computed(() => hasPermission('module:organization:station:edit'))
+
+// 部门权限
+const canViewDepartment = computed(() => hasPermission('module:organization:department:view'))
+const canEditDepartment = computed(() => hasPermission('module:organization:department:edit'))
+
+// 公司权限
+const canViewCompany = computed(() => hasPermission('module:organization:company:view'))
+const canEditCompany = computed(() => hasPermission('module:organization:company:edit'))
+
+// 角色权限
+const canViewRole = computed(() => hasPermission('module:organization:role:view'))
+const canEditRole = computed(() => hasPermission('module:organization:role:edit'))
+
+// 默认选中第一个有权限的选项卡
+const defaultTab = computed(() => {
+  if (canViewStation.value) return 'station'
+  if (canViewDepartment.value) return 'department'
+  if (canViewCompany.value) return 'company'
+  if (canViewRole.value) return 'role'
+  return 'station'
+})
+
+const activeTab = ref('')
 
 // ==================== 场站管理 ====================
 const stationFormRef = ref(null)
@@ -720,6 +766,7 @@ const permissionIdByCode = ref(new Map())
 const menuPermissionTree = ref([])
 const modulePermissions = ref([])
 const selectedModulePermissionIds = ref([])
+const allPermissions = ref([])
 
 const filteredRoleList = computed(() => {
   const keyword = roleFilters.value.keyword?.trim().toLowerCase() || ''
@@ -764,14 +811,16 @@ const loadPermissions = async () => {
     })
     permissionCodeById.value = codeById
     permissionIdByCode.value = idByCode
+    allPermissions.value = list
 
     const menuPermissions = list.filter(item => item.type === 'menu')
-    const moduleList = list.filter(item => item.type === 'api' && item.code.startsWith('module:'))
+    const moduleList = list.filter(item => item.type === 'module')
     menuPermissionTree.value = buildTree(menuPermissions)
     modulePermissions.value = moduleList
   } catch (e) {
     menuPermissionTree.value = []
     modulePermissions.value = []
+    allPermissions.value = []
   }
 }
 
@@ -908,6 +957,7 @@ const deleteRole = async (row) => {
 }
 
 onMounted(() => {
+  activeTab.value = defaultTab.value
   loadStations()
   loadDepartments()
   loadCompanies()
@@ -940,6 +990,39 @@ onMounted(() => {
   .el-table {
     border-radius: 8px;
     overflow: hidden;
+  }
+
+  :deep(.el-table__body-wrapper),
+  :deep(.el-table__header-wrapper) {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    touch-action: pan-x pan-y;
+  }
+
+  :deep(.el-table__body),
+  :deep(.el-table__header) {
+    min-width: max-content;
+  }
+
+  :deep(.el-table .el-scrollbar__wrap) {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    touch-action: pan-x pan-y;
+  }
+
+  :deep(.el-tabs__nav-wrap) {
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+    touch-action: pan-x;
+  }
+
+  :deep(.el-tabs__nav-scroll) {
+    width: max-content;
+  }
+
+  :deep(.el-tabs__nav) {
+    flex-wrap: nowrap;
   }
 
   .pagination-wrapper {

@@ -28,7 +28,7 @@ const Department = sequelize.define('Department', {
   tableName: 'departments',
   timestamps: true,
   createdAt: 'created_at',
-  updatedAt: false
+  updatedAt: 'updated_at'
 });
 
 export default Department;

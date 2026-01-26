@@ -1,28 +1,68 @@
 import request from './request';
 
 /**
- * 获取今日工作任务（根据排班）
+ * ?????????/?????
  */
-export const getTodayTasks = () => {
-  return request.get('/position-work-logs/today-tasks');
+export const getTodayTasks = (params) => {
+  return request.get('/position-work-logs/today-tasks', { params });
 };
 
 /**
- * 保存/更新工作登记
+ * ??/??????
  */
 export const saveWorkLog = (data) => {
   return request.post('/position-work-logs', data);
 };
 
 /**
- * 查询工作登记历史
+ * ??????
+ */
+export const applyWorkLog = (data) => {
+  return request.post('/position-work-logs/apply', data);
+};
+
+/**
+ * ????
+ */
+export const dispatchWorkLog = (data) => {
+  return request.post('/position-work-logs/dispatch', data);
+};
+
+/**
+ * ????????????
  */
 export const getWorkLogs = (params) => {
   return request.get('/position-work-logs', { params });
 };
 
+/**
+ * ????????
+ */
+export const getWorkRecords = (params) => {
+  return request.get('/position-work-logs/records', { params });
+};
+
+/**
+ * ??????
+ */
+export const reviewWorkLog = (id, data) => {
+  return request.put(`/position-work-logs/${id}/review`, data);
+};
+
+/**
+ * ??????
+ */
+export const submitAppeal = (id, data) => {
+  return request.post(`/position-work-logs/${id}/appeal`, data);
+};
+
 export default {
   getTodayTasks,
   saveWorkLog,
-  getWorkLogs
+  applyWorkLog,
+  dispatchWorkLog,
+  getWorkLogs,
+  getWorkRecords,
+  reviewWorkLog,
+  submitAppeal
 };

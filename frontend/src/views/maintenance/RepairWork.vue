@@ -30,7 +30,14 @@
       </el-table-column>
     </el-table>
 
-    <el-dialog v-model="completeDialogVisible" title="完成维修" width="500px">
+    <FormDialog
+      v-model="completeDialogVisible"
+      title="完成维修"
+      width="500px"
+      :confirm-text="'提交'"
+      :cancel-text="'取消'"
+      @confirm="submitComplete"
+    >
       <el-form :model="completeForm" label-width="100px">
         <el-form-item label="维修描述">
           <el-input v-model="completeForm.description" type="textarea" :rows="3" />
@@ -42,11 +49,7 @@
           <el-input-number v-model="completeForm.cost" :min="0" />
         </el-form-item>
       </el-form>
-      <template #footer>
-        <el-button @click="completeDialogVisible = false">取消</el-button>
-        <el-button type="primary" @click="submitComplete">提交</el-button>
-      </template>
-    </el-dialog>
+    </FormDialog>
   </div>
 </template>
 
@@ -54,6 +57,7 @@
 import { ref, onMounted } from 'vue';
 import { ElMessage } from 'element-plus';
 import request from '@/api/request';
+import FormDialog from '@/components/system/FormDialog.vue';
 
 const activeTab = ref('pending');
 const repairList = ref([]);

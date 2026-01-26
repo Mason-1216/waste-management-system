@@ -32,13 +32,16 @@
       </el-table-column>
     </el-table>
 
-    <el-dialog v-model="rejectDialogVisible" title="驳回原因" width="400px">
+    <FormDialog
+      v-model="rejectDialogVisible"
+      title="驳回原因"
+      width="400px"
+      :confirm-text="'确认'"
+      :cancel-text="'取消'"
+      @confirm="confirmReject"
+    >
       <el-input v-model="rejectReason" type="textarea" :rows="3" placeholder="请输入驳回原因" />
-      <template #footer>
-        <el-button @click="rejectDialogVisible = false">取消</el-button>
-        <el-button type="primary" @click="confirmReject">确认</el-button>
-      </template>
-    </el-dialog>
+    </FormDialog>
   </div>
 </template>
 
@@ -46,6 +49,7 @@
 import { ref, onMounted } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import request from '@/api/request';
+import FormDialog from '@/components/system/FormDialog.vue';
 
 const activeTab = ref('pending');
 const approvalList = ref([]);

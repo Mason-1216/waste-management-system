@@ -8,7 +8,7 @@
     </div>
 
     <!-- 筛选条件 -->
-    <div class="filter-bar">
+    <FilterBar>
       <el-input
         v-model="filters.stationName"
         placeholder="场站名称"
@@ -34,7 +34,7 @@
         style="width: 240px"
         @change="loadList"
       />
-    </div>
+    </FilterBar>
 
     <!-- 列表 -->
     <el-table :data="list" v-loading="loading" style="width: 100%">
@@ -54,7 +54,7 @@
           <el-tag :type="getStatusType(row.status)">{{ getStatusText(row.status) }}</el-tag>
         </template>
       </el-table-column>
-      <el-table-column label="操作" width="220" fixed="right">
+      <el-table-column label="操作" width="220">
         <template #default="{ row }">
           <el-button link type="primary" @click="viewDetail(row)">查看</el-button>
           <el-button v-if="canEdit(row)" link type="warning" @click="showEditDialog(row)">编辑</el-button>
@@ -78,7 +78,15 @@
     </div>
 
     <!-- 新增/编辑隐患对话框 -->
-    <el-dialog v-model="dialogVisible" :title="isEdit ? '编辑隐患' : '新增隐患'" width="650px">
+    <FormDialog
+      v-model="dialogVisible"
+      :title="isEdit ? '编辑隐患' : '新增隐患'"
+      width="650px"
+      :confirm-text="'提交'"
+      :cancel-text="'取消'"
+      :confirm-loading="submitting"
+      @confirm="submitForm"
+    >
       <el-form :model="form" label-width="100px" :rules="formRules" ref="formRef">
         <!-- 自动生成字段显示 -->
         <el-row :gutter="16">
@@ -134,27 +142,31 @@
           <el-input v-model="form.hazardDescription" type="textarea" :rows="3" placeholder="详细描述隐患情况" />
         </el-form-item>
         <el-form-item label="隐患处照片">
-          <el-upload
+          <BaseUpload
             :action="uploadUrl"
             :headers="uploadHeaders"
             list-type="picture-card"
             :file-list="form.photoList"
-            :on-success="handleUploadSuccess"
-            :on-remove="handleUploadRemove"
             accept="image/*"
+            @change="(file, fileList) => updateFormPhotoList(fileList)"
+            @success="(response, file, fileList) => updateFormPhotoList(fileList)"
+            @remove="(file, fileList) => updateFormPhotoList(fileList)"
+            @error="handleUploadError"
           >
             <el-icon><Plus /></el-icon>
-          </el-upload>
+          </BaseUpload>
         </el-form-item>
       </el-form>
-      <template #footer>
-        <el-button @click="dialogVisible = false">取消</el-button>
-        <el-button type="primary" @click="submitForm" :loading="submitting">提交</el-button>
-      </template>
-    </el-dialog>
+    </FormDialog>
 
     <!-- 类别库对话框 -->
-    <el-dialog v-model="categoryDialogVisible" title="类别库" width="520px">
+    <FormDialog
+      v-model="categoryDialogVisible"
+      title="类别库"
+      width="520px"
+      :show-confirm="false"
+      :show-cancel="false"
+    >
       <el-input
         v-model="categoryKeyword"
         placeholder="搜索类别"
@@ -182,10 +194,16 @@
       <template #footer>
         <el-button @click="categoryDialogVisible = false">关闭</el-button>
       </template>
-    </el-dialog>
+    </FormDialog>
 
     <!-- 根本原因库对话框 -->
-    <el-dialog v-model="rootCauseDialogVisible" title="原因库" width="520px">
+    <FormDialog
+      v-model="rootCauseDialogVisible"
+      title="原因库"
+      width="520px"
+      :show-confirm="false"
+      :show-cancel="false"
+    >
       <el-input
         v-model="rootCauseKeyword"
         placeholder="搜索原因"
@@ -214,10 +232,16 @@
       <template #footer>
         <el-button @click="rootCauseDialogVisible = false">关闭</el-button>
       </template>
-    </el-dialog>
+    </FormDialog>
 
     <!-- 隐患详情/整改表单 -->
-    <el-dialog v-model="rectDialogVisible" title="隐患表单" width="900px">
+    <FormDialog
+      v-model="rectDialogVisible"
+      title="隐患表单"
+      width="900px"
+      :show-confirm="false"
+      :show-cancel="false"
+    >
       <el-form :model="rectForm" label-width="140px" :rules="rectFormRules" ref="rectFormRef" class="rect-form">
         <el-divider content-position="left">发起信息</el-divider>
         <div class="section-grid" v-if="currentRecord">
@@ -294,18 +318,20 @@
           </el-radio-group>
         </el-form-item>
         <el-form-item label="隐患整改完成照片">
-          <el-upload
+          <BaseUpload
             :action="uploadUrl"
             :headers="uploadHeaders"
             list-type="picture-card"
             :file-list="rectForm.photoList"
-            :on-success="handleRectUploadSuccess"
-            :on-remove="handleRectUploadRemove"
             accept="image/*"
             :disabled="!canEditRect"
+            @change="(file, fileList) => updateRectPhotoList(fileList)"
+            @success="(response, file, fileList) => updateRectPhotoList(fileList)"
+            @remove="(file, fileList) => updateRectPhotoList(fileList)"
+            @error="handleUploadError"
           >
             <el-icon><Plus /></el-icon>
-          </el-upload>
+          </BaseUpload>
         </el-form-item>
         <el-form-item label="根因类别" prop="rootCauseCategory">
           <el-select v-model="rectForm.rootCauseCategory" placeholder="选择根因类别" style="width: 100%" :disabled="!canEditRect">
@@ -338,7 +364,7 @@
         <el-button v-if="canEditRect" type="primary" @click="submitRectification" :loading="submitting">提交</el-button>
         <el-button v-if="canReviewRect" type="primary" @click="submitReview" :loading="submitting">提交复核</el-button>
       </template>
-    </el-dialog>
+    </FormDialog>
   </div>
 </template>
 
@@ -346,12 +372,16 @@
 import { ref, computed, onMounted } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { Plus } from '@element-plus/icons-vue';
-import { useUserStore } from '@/store/user';
+import { useUserStore } from '@/store/modules/user';
+import { useUpload } from '@/composables/useUpload';
 import request from '@/api/request';
 import { getHazardCategories, createHazardCategory, deleteHazardCategory, getHazardRootCauses, createHazardRootCause, updateHazardRootCause, deleteHazardRootCause } from '@/api/hazardConfig';
 import dayjs from 'dayjs';
+import FormDialog from '@/components/system/FormDialog.vue';
 
 const userStore = useUserStore();
+
+const { uploadUrl, uploadHeaders } = useUpload();
 
 // 权限判断
 const canCreate = computed(() => userStore.roleCode === 'safety_inspector');
@@ -468,43 +498,14 @@ const rectFormRules = {
 // 详情对话框
 
 // 上传配置
-const uploadUrl = computed(() => `${import.meta.env.VITE_API_BASE_URL || ''}/api/upload`);
-const uploadHeaders = computed(() => ({ Authorization: `Bearer ${userStore.token}` }));
-
-const formatDate = (date) => date ? dayjs(date).format('YYYY-MM-DD') : '-';
-const formatTime = (time) => {
-  if (!time) return '-';
-  const text = String(time);
-  if (text.includes(':')) {
-    return text.length >= 5 ? text.slice(0, 5) : text;
+const decodeMojibake = (text) => {
+  if (!text) return text;
+  try {
+    const bytes = new Uint8Array(Array.from(text, char => char.charCodeAt(0)));
+    return new TextDecoder('utf-8').decode(bytes);
+  } catch {
+    return text;
   }
-  const parsed = dayjs(time);
-  return parsed.isValid() ? parsed.format('HH:mm') : '-';
-};
-
-const getStatusType = (status) => {
-  const map = { pending: 'danger', rectified: 'warning', reviewed: 'success' };
-  return map[status] || 'info';
-};
-
-const getStatusText = (status) => {
-  const map = { pending: '待整改', rectified: '已整改', reviewed: '已复核' };
-  return map[status] || status;
-};
-
-const decodeMojibake = (value) => {
-  if (!value) return value;
-  const text = String(value);
-  if (/[\u4E00-\u9FFF]/.test(text)) return text;
-  if (/[\u00C0-\u00FF]/.test(text)) {
-    try {
-      const bytes = Uint8Array.from(text, ch => ch.charCodeAt(0));
-      return new TextDecoder('utf-8').decode(bytes);
-    } catch {
-      return text;
-    }
-  }
-  return text;
 };
 
 const formatCategoryName = (name) => {
@@ -769,15 +770,22 @@ const showEditDialog = (row) => {
   dialogVisible.value = true;
 };
 
-const handleUploadSuccess = (res) => {
-  if (res.code === 200 && res.data?.url) {
-    form.value.photoList.push({ name: res.data.filename, url: res.data.url });
-  }
+const normalizeUploadFile = (file) => {
+  const responseUrl = file?.response?.data?.url ?? file?.response?.url ?? '';
+  const url = responseUrl ? responseUrl : (file?.url ?? '');
+  return url ? { ...file, url } : file;
 };
 
-const handleUploadRemove = (file) => {
-  const idx = form.value.photoList.findIndex(f => f.url === file.url);
-  if (idx > -1) form.value.photoList.splice(idx, 1);
+const updateFormPhotoList = (fileList) => {
+  form.value.photoList = (fileList ?? []).map(normalizeUploadFile);
+};
+
+const updateRectPhotoList = (fileList) => {
+  rectForm.value.photoList = (fileList ?? []).map(normalizeUploadFile);
+};
+
+const handleUploadError = () => {
+  ElMessage.error('图片上传失败，请检查图片大小或网络');
 };
 
 const submitForm = async () => {
@@ -848,17 +856,6 @@ const showRectificationDialog = (row) => {
 const onPunishedChange = (id) => {
   const user = userList.value.find(u => u.id === id);
   rectForm.value.punishedPersonName = user?.realName || user?.real_name || '';
-};
-
-const handleRectUploadSuccess = (res) => {
-  if (res.code === 200 && res.data?.url) {
-    rectForm.value.photoList.push({ name: res.data.filename, url: res.data.url });
-  }
-};
-
-const handleRectUploadRemove = (file) => {
-  const idx = rectForm.value.photoList.findIndex(f => f.url === file.url);
-  if (idx > -1) rectForm.value.photoList.splice(idx, 1);
 };
 
 const submitRectification = async () => {

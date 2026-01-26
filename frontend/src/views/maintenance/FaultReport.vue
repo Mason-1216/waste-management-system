@@ -20,8 +20,6 @@
 
                 @blur="handleEquipmentCodeBlur"
 
-                style="width: 300px;"
-
               />
 
             </el-form-item>
@@ -30,7 +28,7 @@
 
             <el-form-item label="设备名称" prop="equipmentName">
 
-              <el-input v-model="form.equipmentName" placeholder="自动获取" disabled style="width: 300px;" />
+              <el-input v-model="form.equipmentName" placeholder="自动获取" disabled />
 
             </el-form-item>
 
@@ -38,7 +36,7 @@
 
             <el-form-item label="安装地点" prop="installationLocation">
 
-              <el-input v-model="form.installationLocation" placeholder="自动获取" disabled style="width: 300px;" />
+              <el-input v-model="form.installationLocation" placeholder="自动获取" disabled />
 
             </el-form-item>
 
@@ -122,21 +120,25 @@
 
             <el-form-item label="现场照片">
 
-              <el-upload
+              <BaseUpload
 
                 :action="uploadUrl"
 
                 :headers="uploadHeaders"
-
-                :on-success="handleUploadSuccess"
-
-                :on-remove="handleRemove"
 
                 :file-list="photoList"
 
                 list-type="picture-card"
 
                 accept="image/*"
+
+                @change="(file, fileList) => updatePhotoList(fileList)"
+
+                @success="(response, file, fileList) => updatePhotoList(fileList)"
+
+                @remove="(file, fileList) => updatePhotoList(fileList)"
+
+                @error="handleUploadError"
 
               >
 
@@ -148,7 +150,7 @@
 
                 </template>
 
-              </el-upload>
+              </BaseUpload>
 
             </el-form-item>
 
@@ -254,7 +256,7 @@
 
               </el-button>
 
-              <el-upload
+              <BaseUpload
 
                 ref="uploadEquipmentRef"
 
@@ -274,7 +276,7 @@
 
                 </el-button>
 
-              </el-upload>
+              </BaseUpload>
 
               <el-button type="primary" @click="showAddEquipmentDialog">
 
@@ -306,7 +308,7 @@
 
             <el-table-column prop="installation_location" label="安装地点" show-overflow-tooltip />
 
-            <el-table-column label="操作" width="160" fixed="right">
+            <el-table-column label="操作" width="160">
 
               <template #default="{ row }">
 
@@ -328,7 +330,15 @@
 
 
 
-    <el-dialog v-model="equipmentDialogVisible" :title="equipmentForm.id ? '编辑璁惧' : '新增璁惧'" width="500px">
+    <FormDialog
+      v-model="equipmentDialogVisible"
+      :title="equipmentForm.id ? '编辑璁惧' : '新增璁惧'"
+      width="500px"
+      :confirm-text="'保存'"
+      :cancel-text="'取消'"
+      :confirm-loading="savingEquipment"
+      @confirm="saveEquipment"
+    >
 
       <el-form :model="equipmentForm" :rules="equipmentRules" ref="equipmentFormRef" label-width="100px">
 
@@ -344,23 +354,14 @@
 
         </el-form-item>
 
-        <el-form-item label="安装地点" prop="installationLocation">
+      <el-form-item label="安装地点" prop="installationLocation">
 
-          <el-input v-model="equipmentForm.installationLocation" placeholder="请输入安装地点" />
+        <el-input v-model="equipmentForm.installationLocation" placeholder="请输入安装地点" />
 
-        </el-form-item>
+      </el-form-item>
 
       </el-form>
-
-      <template #footer>
-
-        <el-button @click="equipmentDialogVisible = false">取消</el-button>
-
-        <el-button type="primary" @click="saveEquipment" :loading="savingEquipment">保存</el-button>
-
-      </template>
-
-    </el-dialog>
+    </FormDialog>
 
   </div>
 
@@ -370,7 +371,8 @@
 
 import { ref, computed, onMounted } from 'vue';
 
-import { useUserStore } from '@/store/user';
+import { useUserStore } from '@/store/modules/user';
+import { useUpload } from '@/composables/useUpload';
 
 import { ElMessage, ElMessageBox } from 'element-plus';
 
@@ -380,7 +382,10 @@ import dayjs from 'dayjs';
 
 import * as XLSX from 'xlsx';
 
+import { addTemplateInstructionSheet, applyTemplateHeaderStyle } from '@/utils/excelTemplate';
+
 import request from '@/api/request';
+import FormDialog from '@/components/system/FormDialog.vue';
 
 import {
 
@@ -401,6 +406,8 @@ import {
 
 
 const userStore = useUserStore();
+
+const { uploadUrl, uploadHeaders } = useUpload();
 
 const formRef = ref(null);
 
@@ -500,13 +507,7 @@ const equipmentRules = {
 
 
 
-const uploadUrl = computed(() => `${import.meta.env.VITE_API_BASE_URL}/upload`);
 
-const uploadHeaders = computed(() => ({
-
-  Authorization: `Bearer ${userStore.token}`
-
-}));
 
 
 
@@ -672,33 +673,29 @@ const normalizeFaultReport = (item) => ({
 
 
 
-const handleUploadSuccess = (response) => {
+const normalizeUploadFile = (file) => {
 
-  if (response.code === 0) {
+  const responseUrl = file?.response?.data?.url ?? file?.response?.url ?? '';
 
-    photoList.value.push({
+  const url = responseUrl ? responseUrl : (file?.url ?? '');
 
-      name: response.data.filename,
-
-      url: response.data.url
-
-    });
-
-  }
+  return url ? { ...file, url } : file;
 
 };
 
 
 
-const handleRemove = (file) => {
+const updatePhotoList = (fileList) => {
 
-  const index = photoList.value.findIndex(p => p.url === file.url);
+  photoList.value = (fileList ?? []).map(normalizeUploadFile);
 
-  if (index > -1) {
+};
 
-    photoList.value.splice(index, 1);
 
-  }
+
+const handleUploadError = () => {
+
+  ElMessage.error('图片上传失败，请检查图片大小或网络');
 
 };
 
@@ -1017,8 +1014,15 @@ const downloadEquipmentTemplate = () => {
   ];
 
   const ws = XLSX.utils.json_to_sheet(templateData);
+  applyTemplateHeaderStyle(XLSX, ws, 1);
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, '设备导入模板');
+  addTemplateInstructionSheet(XLSX, wb, [
+    ['场站', '必填，系统已有场站名称。'],
+    ['设备编号', '必填，设备唯一编号。'],
+    ['设备名称', '必填，设备名称。'],
+    ['安装地点', '选填，设备安装位置说明。']
+  ]);
   XLSX.writeFile(wb, '设备导入模板.xlsx');
 };
 
@@ -1288,8 +1292,46 @@ onMounted(() => {
 
   }
 
-}
+  @media (max-width: 1024px) {
+    .report-form-card {
+      padding: 16px;
+    }
 
+    .report-form-card :deep(.el-form-item) {
+      flex-direction: column;
+      align-items: stretch;
+    }
+
+    .report-form-card :deep(.el-form-item__label) {
+      width: 100% !important;
+      text-align: left;
+      padding: 0 0 6px;
+    }
+
+    .report-form-card :deep(.el-form-item__content) {
+      width: 100%;
+      margin-left: 0 !important;
+    }
+
+    .report-form-card :deep(.el-input),
+    .report-form-card :deep(.el-select),
+    .report-form-card :deep(.el-textarea),
+    .report-form-card :deep(.el-date-editor),
+    .report-form-card :deep(.el-input-number),
+    .report-form-card :deep(.el-radio-group) {
+      width: 100% !important;
+    }
+
+    .report-form-card :deep(.el-radio-group) {
+      flex-wrap: wrap;
+      row-gap: 6px;
+    }
+
+    .recent-reports {
+      display: none;
+    }
+  }
+}
 </style>
 
 

@@ -2,11 +2,11 @@
   <div class="user-management-page">
     <div class="page-header">
       <h2>用户管理</h2>
-      <div class="header-actions">
+      <div v-if="canEditUser" class="header-actions">
         <el-button @click="downloadTemplate">
           <el-icon><Download /></el-icon>下载导入模板
         </el-button>
-        <el-upload
+        <BaseUpload
           ref="uploadRef"
           :auto-upload="false"
           :show-file-list="false"
@@ -16,14 +16,14 @@
           <el-button type="success">
             <el-icon><Download /></el-icon>批量导入
           </el-button>
-        </el-upload>
+        </BaseUpload>
         <el-button type="primary" @click="showAddDialog">
           <el-icon><Plus /></el-icon>新增用户
         </el-button>
       </div>
     </div>
 
-    <div class="filter-bar">
+    <FilterBar>
       <el-input
         v-model="filters.keyword"
         placeholder="搜索用户名/姓名/手机号"
@@ -59,9 +59,9 @@
         <el-option label="禁用" :value="0" />
       </el-select>
       <el-button type="primary" @click="loadList">搜索</el-button>
-    </div>
+    </FilterBar>
 
-    <el-table :data="userList" stripe border v-loading="loading">
+    <el-table ref="tableRef" :data="userList" stripe border v-loading="loading">
       <el-table-column prop="username" label="用户名" width="120" />
       <el-table-column label="密码" width="120">
         <template #default>
@@ -103,11 +103,13 @@
           </el-tag>
         </template>
       </el-table-column>
-      <el-table-column label="操作" width="200" fixed="right">
+      <el-table-column v-if="canEditUser" label="操作" width="240">
         <template #default="{ row }">
+          <div class="action-buttons">
           <el-button link type="primary" @click="editUser(row)">编辑</el-button>
           <el-button link type="warning" @click="resetPassword(row)">重置密码</el-button>
           <el-button link type="danger" @click="deleteUser(row)">删除</el-button>
+                  </div>
         </template>
       </el-table-column>
     </el-table>
@@ -124,8 +126,16 @@
       />
     </div>
 
-    <el-dialog v-model="dialogVisible" :title="isEdit ? '编辑用户' : '新增用户'" width="600px">
-      <el-form :model="userForm" :rules="userRules" ref="formRef" label-width="100px">
+    <FormDialog
+      v-model="dialogVisible"
+      :title="isEdit ? '编辑用户' : '新增用户'"
+      width="720px"
+      :confirm-text="'保存'"
+      :cancel-text="'取消'"
+      :confirm-loading="saving"
+      @confirm="saveUser"
+    >
+      <el-form :model="userForm" :rules="userRules" ref="formRef" label-width="110px" v-loading="detailLoading">
         <el-form-item label="姓名" prop="realName">
           <el-input v-model="userForm.realName" placeholder="请输入真实姓名" />
         </el-form-item>
@@ -174,14 +184,33 @@
         <el-form-item label="状态">
           <el-switch v-model="userForm.status" :active-value="1" :inactive-value="0" />
         </el-form-item>
+        <el-form-item label="菜单权限">
+          <el-tree
+            ref="menuTreeRef"
+            :data="menuPermissionTree"
+            node-key="id"
+            show-checkbox
+            default-expand-all
+            :props="{ label: 'name', children: 'children' }"
+            v-model:checked-keys="selectedMenuPermissionIds"
+          />
+        </el-form-item>
+        <el-form-item label="模块权限">
+          <ModulePermissionConfig
+            :permissions="allPermissions"
+            v-model:selectedIds="selectedModulePermissionIds"
+          />
+        </el-form-item>
       </el-form>
-      <template #footer>
-        <el-button @click="dialogVisible = false">取消</el-button>
-        <el-button type="primary" @click="saveUser" :loading="saving">保存</el-button>
-      </template>
-    </el-dialog>
+    </FormDialog>
 
-    <el-dialog v-model="importDialogVisible" title="导入预览" width="900px">
+    <FormDialog
+      v-model="importDialogVisible"
+      title="导入预览"
+      width="900px"
+      :show-confirm="false"
+      :show-cancel="false"
+    >
       <el-alert
         v-if="importErrors.length > 0"
         type="error"
@@ -222,20 +251,33 @@
           确认导入 ({{ importPreviewData.filter(d => !d.error).length }} 条)
         </el-button>
       </template>
-    </el-dialog>
+    </FormDialog>
   </div>
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, onMounted, onActivated, nextTick } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import dayjs from 'dayjs';
-import request from '@/api/request';
 import * as XLSX from 'xlsx';
+
+import { addTemplateInstructionSheet, applyTemplateHeaderStyle } from '@/utils/excelTemplate';
+import request from '@/api/request';
 import roleApi from '@/api/role';
+import permissionApi from '@/api/permission';
+import ModulePermissionConfig from '@/components/ModulePermissionConfig.vue';
+import FormDialog from '@/components/system/FormDialog.vue';
+import { useUserStore } from '@/store/modules/user';
+
+const userStore = useUserStore();
+
+// 权限检查
+const hasPermission = (code) => userStore.permissionCodes.includes(code);
+const canEditUser = computed(() => hasPermission('module:user:edit'));
 
 const formRef = ref(null);
 const uploadRef = ref(null);
+const tableRef = ref(null);
 const userList = ref([]);
 const stationList = ref([]);
 const departmentList = ref([]);
@@ -244,11 +286,23 @@ const importDialogVisible = ref(false);
 const isEdit = ref(false);
 const saving = ref(false);
 const loading = ref(false);
+const detailLoading = ref(false);
 const importing = ref(false);
 const importPreviewData = ref([]);
 const importErrors = ref([]);
 
 const roleList = ref([]);
+const allPermissions = ref([]);
+const allowPermissionIds = ref([]);
+const denyPermissionIds = ref([]);
+const menuPermissionTree = ref([]);
+const selectedMenuPermissionIds = ref([]);
+const selectedModulePermissionIds = ref([]);
+const baseMenuPermissionIds = ref([]);
+const baseModulePermissionIds = ref([]);
+const permissionCodeById = ref(new Map());
+const permissionIdByCode = ref(new Map());
+const menuTreeRef = ref(null);
 
 const isActiveStatus = (status) => status === undefined || status === null || status === '' || status === 'active' || status === 1 || status === '1' || status === true;
 const getDepartmentName = (dept) => dept?.name || dept?.dept_name || dept?.departmentName || '';
@@ -316,6 +370,52 @@ const normalizeUser = (user) => {
   };
 };
 
+const buildTree = (items) => {
+  const map = new Map();
+  const roots = [];
+  items.forEach(item => {
+    map.set(item.id, { ...item, children: [] });
+  });
+  map.forEach(node => {
+    if (node.parentId && map.has(node.parentId)) {
+      map.get(node.parentId).children.push(node);
+    } else {
+      roots.push(node);
+    }
+  });
+  return roots;
+};
+
+const splitIdsByType = (ids = []) => {
+  const menus = [];
+  const modules = [];
+  ids.forEach(id => {
+    const code = permissionCodeById.value.get(id);
+    if (!code) return;
+    if (code.startsWith('menu:/')) {
+      menus.push(id);
+    } else if (code.startsWith('module:')) {
+      modules.push(id);
+    }
+  });
+  return { menus, modules };
+};
+
+const expandModulesWithChildren = (ids = []) => {
+  const idSet = new Set(ids || []);
+  const codeSet = new Set([...idSet].map(id => permissionCodeById.value.get(id)).filter(Boolean));
+  allPermissions.value.forEach(p => {
+    if (p.type !== 'module') return;
+    for (const code of codeSet) {
+      if (p.code.startsWith(`${code}:`)) {
+        idSet.add(p.id);
+        break;
+      }
+    }
+  });
+  return Array.from(idSet);
+};
+
 const filters = ref({
   keyword: '',
   roleCode: '',
@@ -352,6 +452,7 @@ const userRules = {
     { required: true, message: '请输入用户名', trigger: 'blur' },
     { min: 3, max: 20, message: '长度在3到20个字符', trigger: 'blur' }
   ],
+  roleCode: [{ required: true, message: '请选择角色', trigger: 'change' }],
   password: [
     { required: true, message: '请输入密码', trigger: 'blur' },
     { min: 6, message: '密码长度不能少于6位', trigger: 'blur' }
@@ -359,10 +460,6 @@ const userRules = {
   phone: [
     { pattern: /^1[3-9]\d{9}$/, message: '请输入正确的手机号', trigger: 'blur' }
   ]
-};
-
-const handlePositionChange = (value) => {
-  userForm.value.roleCode = mapPositionToRoleCode(value);
 };
 
 const loadList = async () => {
@@ -386,6 +483,11 @@ const loadList = async () => {
   } finally {
     loading.value = false;
   }
+};
+
+const refreshTableLayout = async () => {
+  await nextTick();
+  tableRef.value?.doLayout?.();
 };
 
 const normalizeStation = (station) => ({
@@ -444,6 +546,31 @@ const loadRoles = async () => {
   }
 };
 
+const loadPermissions = async () => {
+  try {
+    const res = await permissionApi.getPermissions();
+    const list = res.list || [];
+    allPermissions.value = list;
+
+    const codeById = new Map();
+    const idByCode = new Map();
+    list.forEach(item => {
+      codeById.set(item.id, item.code);
+      idByCode.set(item.code, item.id);
+    });
+    permissionCodeById.value = codeById;
+    permissionIdByCode.value = idByCode;
+
+    const menuList = list.filter(item => item.type === 'menu');
+    menuPermissionTree.value = buildTree(menuList);
+  } catch (e) {
+    allPermissions.value = [];
+    permissionCodeById.value = new Map();
+    permissionIdByCode.value = new Map();
+    menuPermissionTree.value = [];
+  }
+};
+
 const formatDateTime = (value) => (value ? dayjs(value).format('YYYY-MM-DD HH:mm') : '-');
 
 const showAddDialog = () => {
@@ -462,33 +589,145 @@ const showAddDialog = () => {
     isPriceAdmin: 0,
     status: 1
   };
+  allowPermissionIds.value = [];
+  denyPermissionIds.value = [];
+  selectedMenuPermissionIds.value = [];
+  selectedModulePermissionIds.value = [];
+  baseMenuPermissionIds.value = [];
+  baseModulePermissionIds.value = [];
+  nextTick(() => {
+    if (menuTreeRef.value) {
+      menuTreeRef.value.setCheckedKeys([]);
+    }
+  });
   dialogVisible.value = true;
 };
 
-const editUser = (row) => {
+const applyBasePermissions = async (roleCode, overrides = {}) => {
+  if (!roleCode) {
+    baseMenuPermissionIds.value = [];
+    baseModulePermissionIds.value = [];
+    selectedMenuPermissionIds.value = [];
+    selectedModulePermissionIds.value = [];
+    await nextTick();
+    if (menuTreeRef.value) {
+      menuTreeRef.value.setCheckedKeys([]);
+    }
+    return;
+  }
+
+  if (!allPermissions.value.length) {
+    await loadPermissions();
+  }
+
+  const role = roleList.value.find(r => r.roleCode === roleCode);
+  if (!role) return;
+
+  try {
+    const res = await roleApi.getRolePermissions(role.id);
+    const permissionIds = res.permissionIds || [];
+    const { menus: baseMenus, modules: baseModules } = splitIdsByType(permissionIds);
+    baseMenuPermissionIds.value = baseMenus;
+    baseModulePermissionIds.value = expandModulesWithChildren(baseModules);
+
+    const { allowIds = [], denyIds = [] } = overrides;
+    const { menus: allowMenus, modules: allowModules } = splitIdsByType(allowIds);
+    const { menus: denyMenus, modules: denyModules } = splitIdsByType(denyIds);
+
+    const menuSet = new Set(baseMenus);
+    allowMenus.forEach(id => menuSet.add(id));
+    denyMenus.forEach(id => menuSet.delete(id));
+    selectedMenuPermissionIds.value = Array.from(menuSet);
+    await nextTick();
+    if (menuTreeRef.value) {
+      menuTreeRef.value.setCheckedKeys(selectedMenuPermissionIds.value);
+    }
+
+    const expandedBaseModules = new Set(baseModulePermissionIds.value);
+    const allowExpanded = new Set(expandModulesWithChildren(allowModules));
+    const denyExpanded = new Set(expandModulesWithChildren(denyModules));
+
+    const moduleSet = new Set(expandedBaseModules);
+    allowExpanded.forEach(id => moduleSet.add(id));
+    denyExpanded.forEach(id => moduleSet.delete(id));
+    selectedModulePermissionIds.value = Array.from(moduleSet);
+  } catch (e) {
+    
+  }
+};
+
+const editUser = async (row) => {
   isEdit.value = true;
-  userForm.value = {
-    id: row.id,
-    username: row.username,
-    realName: row.realName,
-    roleCode: row.roleCode,
-    positionPath: row.roleCode,
-    departmentName: row.departmentName || row.department_name || '',
-    companyName: row.companyName || row.company_name || '',
-    phone: row.phone,
-    email: row.email,
-    stationIds: row.stations?.map(s => s.id) || [],
-    isPriceAdmin: row.isPriceAdmin || 0,
-    status: row.status
-  };
+  detailLoading.value = true;
   dialogVisible.value = true;
+  try {
+    if (!allPermissions.value.length) {
+      await loadPermissions();
+    }
+    const res = await request.get(`/users/${row.id}`);
+    const normalized = normalizeUser(res);
+    userForm.value = {
+      id: normalized.id,
+      username: normalized.username,
+      realName: normalized.realName,
+      roleCode: normalized.roleCode,
+      positionPath: normalized.roleCode,
+      departmentName: normalized.departmentName || '',
+      companyName: normalized.companyName || '',
+      phone: normalized.phone,
+      email: normalized.email,
+      stationIds: normalized.stations?.map(s => s.id) || [],
+      isPriceAdmin: normalized.isPriceAdmin || 0,
+      status: normalized.status
+    };
+    allowPermissionIds.value = res.allowPermissionIds || [];
+    denyPermissionIds.value = res.denyPermissionIds || [];
+    await applyBasePermissions(normalized.roleCode, {
+      allowIds: allowPermissionIds.value,
+      denyIds: denyPermissionIds.value
+    });
+  } catch (e) {
+    
+  } finally {
+    detailLoading.value = false;
+  }
+};
+
+const handlePositionChange = async (value) => {
+  userForm.value.roleCode = mapPositionToRoleCode(value);
+  allowPermissionIds.value = [];
+  denyPermissionIds.value = [];
+  await applyBasePermissions(userForm.value.roleCode);
+};
+
+const computePermissionDiff = () => {
+  const baseMenuSet = new Set(baseMenuPermissionIds.value || []);
+  const baseModuleSet = new Set(baseModulePermissionIds.value || []);
+  const selectedMenuSet = new Set(selectedMenuPermissionIds.value || []);
+  const selectedModuleSet = new Set(selectedModulePermissionIds.value || []);
+
+  const allowMenuIds = Array.from(selectedMenuSet).filter(id => !baseMenuSet.has(id));
+  const allowModuleIds = Array.from(selectedModuleSet).filter(id => !baseModuleSet.has(id));
+  const denyMenuIds = Array.from(baseMenuSet).filter(id => !selectedMenuSet.has(id));
+  const denyModuleIds = Array.from(baseModuleSet).filter(id => !selectedModuleSet.has(id));
+
+  return {
+    allowPermissionIds: [...allowMenuIds, ...allowModuleIds],
+    denyPermissionIds: [...denyMenuIds, ...denyModuleIds]
+  };
 };
 
 const saveUser = async () => {
-  await formRef.value.validate();
+  if (!formRef.value) return;
+  const isValid = await formRef.value.validate().catch(() => false);
+  if (!isValid) return;
   saving.value = true;
   try {
-    const data = { ...userForm.value };
+    const diff = computePermissionDiff();
+    const data = {
+      ...userForm.value,
+      ...diff
+    };
     delete data.positionPath;
 
     if (isEdit.value) {
@@ -500,7 +739,7 @@ const saveUser = async () => {
     dialogVisible.value = false;
     loadList();
   } catch (e) {
-    
+    ElMessage.error(e?.message || '保存失败');
   } finally {
     saving.value = false;
   }
@@ -535,37 +774,26 @@ const downloadTemplate = () => {
   ];
 
   const ws = XLSX.utils.aoa_to_sheet(templateData);
-  ws['!cols'] = [
-    { wch: 15 }, { wch: 10 }, { wch: 12 }, { wch: 12 },
-    { wch: 16 }, { wch: 15 }, { wch: 25 }, { wch: 15 }
-  ];
+  applyTemplateHeaderStyle(XLSX, ws, 1);
 
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, '用户导入模板');
 
   const roleNames = Object.keys(buildPositionNameToCode());
+  const roleText = roleNames.length > 0 ? roleNames.join('、') : '';
   const instructionData = [
-    ['字段说明'],
-    [''],
-    ['姓名：必填，用户真实姓名'],
-    ['用户名：必填，登录账号，3-20个字符'],
-    ['公司：选填，公司名称'],
-    ['角色：必填，可选值如下：'],
-    ...roleNames.map(name => [`  - ${name}`]),
-    ['部门：选填，所属部门名称'],
-    ['所属场站：选填，场站名称'],
-    ['手机号：选填，11位手机号'],
-    ['邮箱：选填'],
-    [''],
-    ['注意事项：'],
-    ['1. 导入后默认密码为 123456'],
-    ['2. 用户名不能重复'],
-    ['3. 一次最多导入100条数据']
+    ['用户名', '必填，登录账号，3-20个字符。'],
+    ['姓名', '必填，用户真实姓名。'],
+    ['公司', '选填，公司名称。'],
+    ['部门', '选填，所属部门名称。'],
+    ['角色', `必填，可选值：${roleText}`],
+    ['手机号', '选填，11位手机号。'],
+    ['邮箱', '选填。'],
+    ['所属场站', '选填，场站名称。'],
+    ['默认密码', '导入后默认密码为 123456。'],
+    ['导入数量', '一次最多导入 100 条数据。']
   ];
-
-  const wsInst = XLSX.utils.aoa_to_sheet(instructionData);
-  wsInst['!cols'] = [{ wch: 50 }];
-  XLSX.utils.book_append_sheet(wb, wsInst, '填写说明');
+  addTemplateInstructionSheet(XLSX, wb, instructionData);
 
   XLSX.writeFile(wb, '用户管理导入模板.xlsx');
   ElMessage.success('模板已下载');
@@ -669,11 +897,20 @@ const confirmImport = async () => {
   }
 };
 
-onMounted(() => {
+onMounted(async () => {
   loadList();
   loadStations();
   loadDepartments();
   loadRoles();
+  loadPermissions();
+  await refreshTableLayout();
+});
+
+onActivated(async () => {
+  if (!loading.value && userList.value.length === 0) {
+    loadList();
+  }
+  await refreshTableLayout();
 });
 </script>
 
@@ -712,6 +949,21 @@ onMounted(() => {
     overflow: hidden;
   }
 
+  .action-buttons {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    align-items: center;
+  }
+
+  :deep(.action-buttons .el-button + .el-button) {
+    margin-left: 0;
+  }
+
+  :deep(.action-buttons .el-button) {
+    white-space: nowrap;
+  }
+
   .pagination-wrapper {
     display: flex;
     justify-content: flex-end;
@@ -719,6 +971,28 @@ onMounted(() => {
     background: #fff;
     padding: 16px;
     border-radius: 8px;
+  }
+}
+
+// 移动端强制隐藏固定列
+@media screen and (max-width: 768px) {
+  .user-management-page :deep(.el-table__fixed),
+  .user-management-page :deep(.el-table__fixed-right) {
+    display: none !important;
+    width: 0 !important;
+  }
+
+  .user-management-page :deep(.el-table__fixed-right-patch) {
+    display: none !important;
+  }
+
+  .user-management-page :deep(.el-table .el-table__body-wrapper) {
+    overflow-x: auto !important;
+  }
+
+  .user-management-page :deep(.el-table__cell.is-right),
+  .user-management-page :deep(.el-table__cell.is-left) {
+    position: static !important;
   }
 }
 </style>

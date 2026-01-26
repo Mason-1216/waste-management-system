@@ -22,6 +22,11 @@ const SafetyWorkType = sequelize.define('SafetyWorkType', {
     defaultValue: 0,
     comment: '排序'
   },
+  points: {
+    type: DataTypes.INTEGER,
+    defaultValue: 0,
+    comment: '积分'
+  },
   status: {
     type: DataTypes.ENUM('active', 'inactive'),
     defaultValue: 'active',

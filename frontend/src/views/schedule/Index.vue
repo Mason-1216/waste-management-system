@@ -44,16 +44,21 @@
             :class="{
               'other-month': !day.currentMonth,
               'today': day.isToday,
-              'has-schedule': day.schedule,
-              'clickable': day.schedule && day.currentMonth
+              'has-schedule': day.hasSchedule,
+              'clickable': day.hasSchedule && day.currentMonth
             }"
             :style="getDayColorStyle(day)"
-            @click="day.schedule && day.currentMonth ? showMyDayWork(day) : null"
+            @click="day.hasSchedule && day.currentMonth ? showMyDayWork(day) : null"
           >
             <div class="day-number">{{ day.date }}</div>
-            <div v-if="day.schedule" class="schedule-info">
-              <div class="station-name">{{ day.schedule.stationName }}</div>
-              <div class="position-name">{{ day.schedule.positionName }}</div>
+            <div v-if="day.hasSchedule" class="schedule-info">
+              <div
+                v-for="(item, itemIndex) in day.schedules"
+                :key="`my-schedule-${day.date}-${itemIndex}`"
+                class="schedule-line"
+              >
+                {{ formatScheduleLabel(item) }}
+              </div>
             </div>
           </div>
         </div>
@@ -65,7 +70,7 @@
       <h3 v-if="showMyCalendar">{{ viewTitle }}</h3>
 
       <!-- 筛选栏 -->
-      <div class="filter-bar">
+      <FilterBar>
         <el-select
           v-model="filters.stationId"
           placeholder="选择场站"
@@ -108,7 +113,7 @@
           搜索
         </el-button>
         <el-button @click="resetFilters">重置</el-button>
-      </div>
+      </FilterBar>
 
       <!-- 批量操作按钮 -->
       <div v-if="canAddSchedule && selectedSchedules.length > 0" class="batch-actions" style="margin-bottom: 10px;">
@@ -118,9 +123,9 @@
       </div>
       <el-table :data="scheduleData" border stripe style="width: 100%" max-height="500" @selection-change="handleSelectionChange">
         <el-table-column type="selection" width="55" v-if="canAddSchedule" />
-        <el-table-column prop="stationName" label="场站名称" width="120" fixed />
-        <el-table-column prop="positionName" label="岗位" width="100" fixed />
-        <el-table-column prop="userName" label="姓名" width="80" fixed>
+        <el-table-column prop="stationName" label="场站名称" width="120" />
+        <el-table-column prop="positionName" label="岗位" width="100" />
+        <el-table-column prop="userName" label="姓名" width="80" >
           <template #default="{ row }">
             <el-button link type="primary" @click="showUserCalendar(row)">
               {{ row.userName }}
@@ -143,17 +148,13 @@
           <template #default="{ row }">
             <div
               class="schedule-cell"
-              :class="{
-                'has-work': getCellDisplay(row, day).type === 'work',
-                'rest': getCellDisplay(row, day).type === 'rest',
-                'other': getCellDisplay(row, day).type === 'other'
-              }"
+              :class="getCellClass(row, day)"
             >
               {{ getCellDisplay(row, day).text }}
             </div>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="140" fixed="right" v-if="canAddSchedule">
+        <el-table-column label="操作" width="140" v-if="canAddSchedule">
           <template #default="{ row }">
             <el-button link type="primary" size="small" @click="editUserSchedule(row)">
               编辑
@@ -167,7 +168,7 @@
     </div>
 
     <!-- 新增/编辑排班对话框 -->
-    <el-dialog
+    <FormDialog
       v-model="dialogVisible"
       :title="isEdit ? '编辑排班' : '新增排班'"
       width="700px"
@@ -277,11 +278,19 @@
           保存
         </el-button>
       </template>
-    </el-dialog>
+    </FormDialog>
 
     <!-- 导入对话框 -->
-    <el-dialog v-model="importDialogVisible" title="导入排班" width="500px">
-      <el-upload
+    <FormDialog
+      v-model="importDialogVisible"
+      title="导入排班"
+      width="500px"
+      :confirm-text="'确认导入'"
+      :cancel-text="'取消'"
+      :confirm-loading="importing"
+      @confirm="confirmImport"
+    >
+      <BaseUpload
         ref="uploadRef"
         :auto-upload="false"
         :limit="1"
@@ -296,21 +305,17 @@
             请上传 .xlsx 或 .xls 格式的排班表文件
           </div>
         </template>
-      </el-upload>
-      <template #footer>
-        <el-button @click="importDialogVisible = false">取消</el-button>
-        <el-button type="primary" @click="confirmImport" :loading="importing">
-          确认导入
-        </el-button>
-      </template>
-    </el-dialog>
+      </BaseUpload>
+    </FormDialog>
 
     <!-- 员工月历对话框 -->
-    <el-dialog
+    <FormDialog
       v-model="calendarDialogVisible"
       :title="`${selectedUser?.userName || ''} - ${calendarYear}年${calendarMonthNum}月排班`"
       width="900px"
       destroy-on-close
+      :show-confirm="false"
+      :show-cancel="false"
     >
       <div v-loading="loadingUserSchedule" class="user-calendar">
         <div class="calendar-header">
@@ -339,13 +344,18 @@
           >
             <div class="day-number">{{ day.date }}</div>
             <div v-if="day.hasSchedule" class="schedule-badge">
-              <div class="station-name">{{ day.stationName }}</div>
-              <div class="position-name">{{ day.positionName }}</div>
+              <div
+                v-for="(item, itemIndex) in day.schedules"
+                :key="`user-schedule-${day.date}-${itemIndex}`"
+                class="schedule-line"
+              >
+                {{ formatScheduleLabel(item) }}
+              </div>
             </div>
           </div>
         </div>
       </div>
-    </el-dialog>
+    </FormDialog>
 
     <!-- 工作项目侧边栏 -->
     <el-drawer
@@ -546,7 +556,14 @@
       </div>
       </el-drawer>
 
-      <el-dialog v-model="safetyDetailVisible" :title="safetyDialogTitle" width="520px" class="inspection-detail-dialog">
+      <FormDialog
+        v-model="safetyDetailVisible"
+        :title="safetyDialogTitle"
+        width="520px"
+        class="inspection-detail-dialog"
+        :show-confirm="false"
+        :show-cancel="false"
+      >
         <div v-if="selectedSafetyGroup">
           <div class="inspection-dialog-title">{{ selectedSafetyGroup.name }}</div>
           <el-card
@@ -571,9 +588,16 @@
             </div>
           </el-card>
         </div>
-      </el-dialog>
+      </FormDialog>
 
-      <el-dialog v-model="hygieneDetailVisible" :title="hygieneDialogTitle" width="520px" class="inspection-detail-dialog">
+      <FormDialog
+        v-model="hygieneDetailVisible"
+        :title="hygieneDialogTitle"
+        width="520px"
+        class="inspection-detail-dialog"
+        :show-confirm="false"
+        :show-cancel="false"
+      >
         <div v-if="selectedHygieneGroup">
           <div class="inspection-dialog-title">{{ selectedHygieneGroup.name }}</div>
           <el-card
@@ -598,18 +622,21 @@
             </div>
           </el-card>
         </div>
-      </el-dialog>
+      </FormDialog>
   </div>
 </template>
 
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue';
-import { useUserStore } from '@/store/user';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { ArrowLeft, ArrowRight, Briefcase, Warning, Brush, Operation, Tools } from '@element-plus/icons-vue';
 import dayjs from 'dayjs';
+
+import { addTemplateInstructionSheet, applyTemplateHeaderStyle } from '@/utils/excelTemplate';
 import request from '@/api/request';
 import { getPositionNames } from '@/api/positionJob';
+import { useUserStore } from '@/store/modules/user';
+import FormDialog from '@/components/system/FormDialog.vue';
 
 const userStore = useUserStore();
 
@@ -770,9 +797,6 @@ const showMyCalendar = computed(() => {
 
 // 视图标题
 const viewTitle = computed(() => {
-  if (effectiveRole.value === 'station_manager') {
-    return '场站人员排班';
-  }
   return '所有人员排班';
 });
 
@@ -841,7 +865,27 @@ const hygieneInspectionSummary = computed(() => {
 // 获取排班的唯一标识（场站+岗位组合）
 const getScheduleKey = (schedule) => {
   if (!schedule) return null;
-  return `${schedule.stationName || ''}_${schedule.positionName || ''}`;
+  return `${schedule.stationName ?? ''}_${schedule.positionName ?? ''}`;
+};
+
+const normalizeScheduleList = (scheduleInfo) => {
+  if (!scheduleInfo) return [];
+  const list = Array.isArray(scheduleInfo) ? scheduleInfo : [scheduleInfo];
+  return list.map(item => ({
+    stationId: item?.stationId ?? item?.station_id ?? item?.station?.id ?? null,
+    stationName: item?.stationName ?? item?.station_name ?? item?.station?.station_name ?? '',
+    positionName: item?.positionName ?? item?.position_name ?? ''
+  }));
+};
+
+const formatScheduleLabel = (schedule) => {
+  if (!schedule) return '';
+  const stationName = schedule.stationName ?? '';
+  const positionName = schedule.positionName ?? '';
+  if (!stationName && !positionName) return '';
+  if (!stationName) return positionName;
+  if (!positionName) return stationName;
+  return `${stationName}·${positionName}`;
 };
 
 const openSafetyGroup = (group) => {
@@ -869,7 +913,8 @@ const calendarDays = computed(() => {
       date: date.date(),
       currentMonth: false,
       isToday: false,
-      schedule: null,
+      schedules: [],
+      hasSchedule: false,
       colorIndex: -1
     });
   }
@@ -878,13 +923,9 @@ const calendarDays = computed(() => {
   const monthSchedules = [];
   for (let i = 1; i <= lastDay.date(); i++) {
     const dateStr = dayjs(currentMonth.value).date(i).format('YYYY-MM-DD');
-    const scheduleInfo = mySchedule.value?.schedules?.[dateStr] || null;
-    const schedule = scheduleInfo ? {
-      stationId: scheduleInfo.stationId,
-      stationName: scheduleInfo.stationName || '',
-      positionName: scheduleInfo.positionName || ''
-    } : null;
-    monthSchedules.push(schedule);
+    const scheduleInfo = mySchedule.value?.schedules?.[dateStr] ?? null;
+    const scheduleList = normalizeScheduleList(scheduleInfo);
+    monthSchedules.push(scheduleList);
   }
 
   // 为每天分配颜色索引
@@ -894,12 +935,13 @@ const calendarDays = computed(() => {
   for (let i = 1; i <= lastDay.date(); i++) {
     const dateStr = dayjs(currentMonth.value).date(i).format('YYYY-MM-DD');
     const isToday = dayjs().format('YYYY-MM-DD') === dateStr;
-    const schedule = monthSchedules[i - 1];
-    const currentKey = getScheduleKey(schedule);
+    const schedules = monthSchedules[i - 1];
+    const primarySchedule = schedules[0] ?? null;
+    const currentKey = primarySchedule ? getScheduleKey(primarySchedule) : null;
 
     // 如果当天有排班
     let colorIndex = -1;
-    if (schedule) {
+    if (schedules.length > 0) {
       // 如果与前一天的场站+岗位不同，切换颜色
       if (prevKey !== null && currentKey !== prevKey) {
         currentColorIndex = (currentColorIndex + 1) % scheduleColors.length;
@@ -915,7 +957,8 @@ const calendarDays = computed(() => {
       date: i,
       currentMonth: true,
       isToday,
-      schedule,
+      schedules,
+      hasSchedule: schedules.length > 0,
       colorIndex
     });
   }
@@ -938,6 +981,7 @@ const userCalendarDays = computed(() => {
       date: date.date(),
       currentMonth: false,
       isToday: false,
+      schedules: [],
       hasSchedule: false,
       colorIndex: -1
     });
@@ -947,21 +991,20 @@ const userCalendarDays = computed(() => {
   const monthSchedules = [];
   for (let i = 1; i <= lastDay.date(); i++) {
     const dateStr = dayjs(calendarMonth.value).date(i).format('YYYY-MM-DD');
-    let scheduleInfo = null;
+    const scheduleList = [];
 
     if (userScheduleData.value.length > 0) {
       for (const schedule of userScheduleData.value) {
         if (schedule.schedules && schedule.schedules[dateStr]) {
-          scheduleInfo = {
-            stationName: schedule.stationName || '',
-            positionName: schedule.positionName || ''
-          };
-          break;
+          scheduleList.push({
+            stationName: schedule.stationName ?? '',
+            positionName: schedule.positionName ?? ''
+          });
         }
       }
     }
 
-    monthSchedules.push(scheduleInfo);
+    monthSchedules.push(scheduleList);
   }
 
   // 为每天分配颜色索引
@@ -971,12 +1014,13 @@ const userCalendarDays = computed(() => {
   for (let i = 1; i <= lastDay.date(); i++) {
     const dateStr = dayjs(calendarMonth.value).date(i).format('YYYY-MM-DD');
     const isToday = dayjs().format('YYYY-MM-DD') === dateStr;
-    const schedule = monthSchedules[i - 1];
-    const currentKey = schedule ? getScheduleKey(schedule) : null;
+    const schedules = monthSchedules[i - 1];
+    const primarySchedule = schedules[0] ?? null;
+    const currentKey = primarySchedule ? getScheduleKey(primarySchedule) : null;
 
     // 如果当天有排班
     let colorIndex = -1;
-    if (schedule) {
+    if (schedules.length > 0) {
       // 如果与前一天的场站+岗位不同，切换颜色
       if (prevKey !== null && currentKey !== prevKey) {
         currentColorIndex = (currentColorIndex + 1) % scheduleColors.length;
@@ -993,9 +1037,8 @@ const userCalendarDays = computed(() => {
       dateStr,
       currentMonth: true,
       isToday,
-      hasSchedule: !!schedule,
-      stationName: schedule?.stationName || '',
-      positionName: schedule?.positionName || '',
+      schedules,
+      hasSchedule: schedules.length > 0,
       colorIndex
     });
   }
@@ -1005,7 +1048,7 @@ const userCalendarDays = computed(() => {
 
 // 获取日期的颜色样式
 const getDayColorStyle = (day) => {
-  if (day.colorIndex < 0 || !day.schedule) return {};
+  if (day.colorIndex < 0 || !day.hasSchedule) return {};
   const color = scheduleColors[day.colorIndex];
   return {
     backgroundColor: color.bg,
@@ -1026,8 +1069,8 @@ const getUserDayColorStyle = (day) => {
 };
 
 // 构建用户每天排班情况的映射（用于判断某用户当天是否在任何场站/岗位有排班）
-const userDayScheduleMap = computed(() => {
-  const map = new Map(); // Map<userId, Map<dateKey, boolean>>
+const userDayScheduleCountMap = computed(() => {
+  const map = new Map(); // Map<userId, Map<dateKey, number>>
 
   for (const item of allScheduleData.value) {
     if (!item.userId || !item.schedules) continue;
@@ -1039,7 +1082,8 @@ const userDayScheduleMap = computed(() => {
     const userMap = map.get(item.userId);
     for (const dateKey in item.schedules) {
       if (item.schedules[dateKey]) {
-        userMap.set(dateKey, true);
+        const currentCount = userMap.get(dateKey) ?? 0;
+        userMap.set(dateKey, currentCount + 1);
       }
     }
   }
@@ -1047,10 +1091,14 @@ const userDayScheduleMap = computed(() => {
   return map;
 });
 
+const getUserScheduleCount = (userId, dateKey) => {
+  const userMap = userDayScheduleCountMap.value.get(userId);
+  return userMap?.get(dateKey) ?? 0;
+};
+
 // 检查用户当天是否在任何场站/岗位有排班
 const hasAnySchedule = (userId, dateKey) => {
-  const userMap = userDayScheduleMap.value.get(userId);
-  return userMap?.get(dateKey) || false;
+  return getUserScheduleCount(userId, dateKey) > 0;
 };
 
 // 获取单元格显示内容和样式
@@ -1059,6 +1107,10 @@ const getCellDisplay = (row, day) => {
   const hasCurrentSchedule = row.schedules && row.schedules[dateKey];
 
   if (hasCurrentSchedule) {
+    const scheduleCount = getUserScheduleCount(row.userId, dateKey);
+    if (scheduleCount > 1) {
+      return { text: '班', type: 'multi-work' };
+    }
     return { text: '班', type: 'work' };
   }
 
@@ -1072,6 +1124,16 @@ const getCellDisplay = (row, day) => {
 
   // 当天完全没有排班
   return { text: '休', type: 'rest' };
+};
+
+const getCellClass = (row, day) => {
+  const display = getCellDisplay(row, day);
+  return {
+    'has-work': display.type === 'work',
+    'multi-work': display.type === 'multi-work',
+    'rest': display.type === 'rest',
+    'other': display.type === 'other'
+  };
 };
 
 // 格式化日期标签
@@ -1166,10 +1228,6 @@ const loadUsers = async () => {
       roleCode: 'station_manager,operator' // 只显示站长和操作岗
     };
 
-    // 如果是站长，只加载自己场站的用户
-    if (effectiveRole.value === 'station_manager' && userStore.currentStationId) {
-      params.stationId = userStore.currentStationId;
-    }
 
     const res = await request.get('/users', { params });
     userList.value = res.list || [];
@@ -1461,32 +1519,26 @@ const downloadTemplate = async () => {
 
   const XLSX = await loadXlsx();
   const ws = XLSX.utils.aoa_to_sheet(templateData);
-  ws['!cols'] = [
-    { wch: 14 }, { wch: 18 }, { wch: 12 }, { wch: 18 },
-    ...Array.from({ length: 31 }, () => ({ wch: 4 }))
-  ];
-  if (ws['!cols']?.[0]) {
-    ws['!cols'][0].z = '@';
-  }
   if (ws['A2']) {
     ws['A2'].t = 's';
     ws['A2'].z = '@';
+  }
+  applyTemplateHeaderStyle(XLSX, ws, 1);
+  if (ws['!cols']?.[0]) {
+    ws['!cols'][0].z = '@';
   }
 
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, '排班模板');
 
   const instructionData = [
-    ['填写说明'],
-    ['1. 月份格式：YYYY-MM（例如 2025-01），可以只填 1-12 表示当年月份'],
-    ['2. 场站：填写场站名称，需要与系统场站一致'],
-    ['3. 员工：填写姓名或登录账号'],
-    ['4. 每日排班：填写“班/上班/是/1/√”表示上班，留空或“休”表示休息'],
-    ['5. 支持同一文件中包含多个月份与多个场站']
+    ['月份(YYYY-MM)', '必填，格式 YYYY-MM；也可填 1-12 表示当年月份。'],
+    ['场站', '必填，场站名称，与系统一致。'],
+    ['岗位', '必填，岗位名称。'],
+    ['员工(姓名或账号)', '必填，姓名或登录账号。'],
+    ['日期列(1-31)', '填“班/上班/是/1/√”表示上班，空或“休”表示休息。']
   ];
-  const wsInst = XLSX.utils.aoa_to_sheet(instructionData);
-  wsInst['!cols'] = [{ wch: 60 }];
-  XLSX.utils.book_append_sheet(wb, wsInst, '填写说明');
+  addTemplateInstructionSheet(XLSX, wb, instructionData);
 
   XLSX.writeFile(wb, '排班表导入模板.xlsx');
   ElMessage.success('模板已下载');
@@ -1525,12 +1577,19 @@ const confirmImport = async () => {
       userMap.set(normalizeText(u.username), u);
     });
 
+    const importedMonths = [];
+    const importedMonthSet = new Set();
     const grouped = new Map();
     const errors = [];
 
     dataRows.forEach((row, index) => {
       const rowIndex = index + 2;
       const monthValue = parseMonthValue(row[0]);
+
+      if (!importedMonthSet.has(monthValue)) {
+        importedMonthSet.add(monthValue);
+        importedMonths.push(monthValue);
+      }
       const stationName = normalizeText(row[1]);
       const positionName = normalizeText(row[2]);
       const userText = normalizeText(row[3]);
@@ -1588,10 +1647,22 @@ const confirmImport = async () => {
       await request.post('/schedules/batch', batch);
     }
 
-    ElMessage.success(`导入成功：${dataRows.length} 条`);
+    let message = `导入成功：${dataRows.length} 条`;
+    if (importedMonths.length > 1) {
+      message = `${message}（月份：${importedMonths.join('、')}）`;
+    }
+
+    const hasCurrentMonth = importedMonthSet.has(currentMonth.value);
+    if (!hasCurrentMonth && importedMonths.length > 0) {
+      currentMonth.value = importedMonths[0];
+      message = `${message}，已切换到 ${importedMonths[0]}`;
+    } else {
+      loadSchedule();
+    }
+
+    ElMessage.success(message);
     importDialogVisible.value = false;
     importFile.value = null;
-    loadSchedule();
   } catch (e) {
     
     ElMessage.error('导入失败');
@@ -1740,16 +1811,18 @@ const showDayWork = async (day) => {
 const showMyDayWork = async (day) => {
   const dateStr = dayjs(currentMonth.value).date(day.date).format('YYYY-MM-DD');
   selectedDate.value = dateStr;
+  const scheduleList = normalizeScheduleList(day.schedules);
+  const primarySchedule = scheduleList[0] ?? null;
 
   // 设置选中用户为当前用户
   selectedUser.value = {
     userId: userStore.userId,
     userName: userStore.realName || userStore.username,
-    stationId: day.schedule?.stationId || userStore.currentStationId
+    stationId: primarySchedule?.stationId ?? userStore.currentStationId
   };
 
   workDrawerVisible.value = true;
-  await loadMyDayWorkItems(dateStr, day.schedule);
+  await loadMyDayWorkItems(dateStr, scheduleList);
 };
 
 // 加载某天的工作项目
@@ -1854,7 +1927,6 @@ const loadDayWorkItems = async (dateStr) => {
       await loadAllDayWorkData(dateStr, selectedUser.value.userId, primaryStationId);
     }
   } catch (error) {
-    console.error('加载工作项目失败:', error);
     ElMessage.error('加载工作项目失败');
     dayWorkItems.value = [];
   } finally {
@@ -1863,7 +1935,7 @@ const loadDayWorkItems = async (dateStr) => {
 };
 
 // 加载我的某天的工作项目
-const loadMyDayWorkItems = async (dateStr, schedule) => {
+const loadMyDayWorkItems = async (dateStr, schedules) => {
   // 清空所有数据
   dayWorkItems.value = [];
   safetyInspectionItems.value = [];
@@ -1873,63 +1945,77 @@ const loadMyDayWorkItems = async (dateStr, schedule) => {
   temporaryTaskItems.value = [];
   maintenanceTaskItems.value = [];
 
-  if (!schedule) {
+  const scheduleList = normalizeScheduleList(schedules);
+  if (scheduleList.length === 0) {
     return;
   }
 
   loadingDayWork.value = true;
   try {
-    const stationId = schedule.stationId || userStore.currentStationId;
-    const positionName = schedule.positionName;
-
-    // 获取岗位工作项目
-    const positionJobsRes = await request.get('/position-jobs', {
-      params: {
-        stationId,
-        positionName
+    const workGroups = await Promise.all(scheduleList.map(async (schedule) => {
+      const stationId = schedule.stationId ?? userStore.currentStationId;
+      const positionName = schedule.positionName;
+      if (!stationId || !positionName) {
+        return [];
       }
-    });
 
-    const positionJobs = positionJobsRes.list || positionJobsRes || [];
+      const [positionJobsRes, workLogRes] = await Promise.all([
+        request.get('/position-jobs', {
+          params: {
+            stationId,
+            positionName
+          }
+        }),
+        request.get('/position-work-logs', {
+          params: {
+            startDate: dateStr,
+            endDate: dateStr,
+            stationId,
+            positionName
+          }
+        })
+      ]);
 
-    // 获取我的工作登记（使用自己的接口）
-    const workLogRes = await request.get('/position-work-logs', {
-      params: {
-        startDate: dateStr,
-        endDate: dateStr
-      }
-    });
+      const positionJobs = positionJobsRes.list ?? positionJobsRes ?? [];
+      const workLogs = workLogRes.list ?? workLogRes ?? [];
 
-    const workLogs = workLogRes.list || workLogRes || [];
+      return positionJobs.map(job => {
+        const workLog = workLogs.find(
+          log => log.position_job_id === job.id && log.work_date === dateStr
+        );
 
-    // 为每个岗位工作项目匹配工作登记
-    const workItems = [];
-    for (const job of positionJobs) {
-      const workLog = workLogs.find(
-        log => log.position_job_id === job.id && log.work_date === dateStr
-      );
-
-      workItems.push({
-        jobId: job.id,
-        workName: job.job_name,
-        stationName: schedule.stationName || '',
-        positionName: schedule.positionName,
-        standardHours: job.standard_hours || 0,
-        actualHours: workLog?.actual_hours || 0,
-        isCompleted: workLog?.is_completed || 0,
-        progress: workLog?.progress || 0,
-        remark: workLog?.remark || '',
-        isOvertime: workLog?.is_overtime || 0,
-        appealStatus: workLog?.appeal_status || null
+        return {
+          jobId: job.id,
+          workName: job.job_name,
+          stationName: schedule.stationName ?? '',
+          positionName: schedule.positionName ?? '',
+          standardHours: job.standard_hours ?? 0,
+          actualHours: workLog?.actual_hours ?? 0,
+          isCompleted: workLog?.is_completed ?? 0,
+          progress: workLog?.progress ?? 0,
+          remark: workLog?.remark ?? '',
+          isOvertime: workLog?.is_overtime ?? 0,
+          appealStatus: workLog?.appeal_status ?? null
+        };
       });
-    }
+    }));
+
+    const workItems = [];
+    workGroups.forEach(group => {
+      if (group && group.length > 0) {
+        workItems.push(...group);
+      }
+    });
 
     dayWorkItems.value = workItems;
 
-    // 加载其他数据（安全自检、卫生自检、临时任务、保养任务）
-    await loadAllDayWorkData(dateStr, userStore.userId, stationId);
+    const primaryStationId = scheduleList.find(item => item.stationId)?.stationId
+      ?? userStore.currentStationId
+      ?? null;
+    if (primaryStationId) {
+      await loadAllDayWorkData(dateStr, userStore.userId, primaryStationId);
+    }
   } catch (error) {
-    console.error('加载工作项目失败:', error);
     ElMessage.error('加载工作项目失败');
     dayWorkItems.value = [];
   } finally {
@@ -2051,7 +2137,6 @@ const loadSafetyInspectionItems = async (dateStr, userId, stationId) => {
       safetyInspectionGroups.value = [];
     }
   } catch (error) {
-    console.error('加载安全自检数据失败:', error);
     safetyInspectionItems.value = [];
     safetyInspectionGroups.value = [];
   }
@@ -2138,7 +2223,6 @@ const loadHygieneInspectionItems = async (dateStr, userId, stationId) => {
       hygieneInspectionGroups.value = [];
     }
   } catch (error) {
-    console.error('加载卫生自检数据失败:', error);
     hygieneInspectionItems.value = [];
     hygieneInspectionGroups.value = [];
   }
@@ -2170,7 +2254,6 @@ const loadTemporaryTaskItems = async (dateStr, userId, stationId) => {
       completedTime: task.completed_time || task.completed_at || ''
     }));
   } catch (error) {
-    console.error('加载临时任务数据失败:', error);
     temporaryTaskItems.value = [];
   }
 };
@@ -2204,7 +2287,6 @@ const loadMaintenanceTaskItems = async (dateStr, userId, stationId) => {
       maintenanceTaskItems.value = [];
     }
   } catch (error) {
-    console.error('加载保养任务数据失败:', error);
     maintenanceTaskItems.value = [];
   }
 };
@@ -2292,9 +2374,13 @@ onMounted(() => {
 
     .calendar-weekdays {
       display: grid;
-      grid-template-columns: repeat(7, 1fr);
+      grid-template-columns: repeat(7, minmax(0, 1fr));
       gap: 4px;
       margin-bottom: 8px;
+      width: 100%;
+      box-sizing: border-box;
+      width: 100%;
+      box-sizing: border-box;
 
       .weekday {
         text-align: center;
@@ -2306,8 +2392,12 @@ onMounted(() => {
 
     .calendar-days {
       display: grid;
-      grid-template-columns: repeat(7, 1fr);
+      grid-template-columns: repeat(7, minmax(0, 1fr));
       gap: 4px;
+      width: 100%;
+      box-sizing: border-box;
+      width: 100%;
+      box-sizing: border-box;
 
       .calendar-day {
         min-height: 80px;
@@ -2348,10 +2438,13 @@ onMounted(() => {
         .schedule-info {
           font-size: 12px;
 
-          .station-name,
-          .position-name {
+          .schedule-line {
             color: var(--schedule-text-color, #606266);
             font-weight: 500;
+            line-height: 1.4;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
           }
         }
       }
@@ -2380,6 +2473,11 @@ onMounted(() => {
         font-weight: bold;
       }
 
+      &.multi-work {
+        color: #E6A23C;
+        font-weight: bold;
+      }
+
       &.rest {
         color: #409EFF;
         background-color: #e6f7ff;
@@ -2393,10 +2491,11 @@ onMounted(() => {
 
   .schedule-days-grid {
     display: grid;
-    grid-template-columns: repeat(7, 1fr);
+    grid-template-columns: repeat(7, minmax(0, 1fr));
     gap: 8px;
     margin-bottom: 16px;
     width: 100%;
+    box-sizing: border-box;
 
     .day-checkbox {
       padding: 8px;
@@ -2481,9 +2580,11 @@ onMounted(() => {
 
   .weekday-row {
     display: grid;
-    grid-template-columns: repeat(7, 1fr);
+    grid-template-columns: repeat(7, minmax(0, 1fr));
     gap: 8px;
     margin-bottom: 8px;
+    width: 100%;
+    box-sizing: border-box;
     text-align: center;
     font-size: 12px;
     color: #909399;
@@ -2551,7 +2652,7 @@ onMounted(() => {
 
     .calendar-weekdays {
       display: grid;
-      grid-template-columns: repeat(7, 1fr);
+      grid-template-columns: repeat(7, minmax(0, 1fr));
       gap: 4px;
       margin-bottom: 8px;
 
@@ -2565,7 +2666,7 @@ onMounted(() => {
 
     .calendar-days {
       display: grid;
-      grid-template-columns: repeat(7, 1fr);
+      grid-template-columns: repeat(7, minmax(0, 1fr));
       gap: 4px;
 
       .calendar-day {
@@ -2609,11 +2710,13 @@ onMounted(() => {
         .schedule-badge {
           font-size: 12px;
 
-          .station-name,
-          .position-name {
+          .schedule-line {
             color: var(--schedule-text-color, #2e7d32);
             font-weight: 500;
             line-height: 1.4;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
           }
         }
       }
@@ -2754,18 +2857,125 @@ onMounted(() => {
 
 @media screen and (max-width: 768px) {
   .schedule-page {
+    padding: 12px;
+
     .page-header {
       flex-direction: column;
       align-items: flex-start;
       gap: 12px;
 
+      h2 {
+        font-size: 18px;
+      }
+
       .header-actions {
         flex-wrap: wrap;
+        width: 100%;
+        gap: 8px;
+
+        .el-button {
+          flex: 1;
+          min-width: 80px;
+        }
+
+        .el-date-picker {
+          width: 100% !important;
+        }
+      }
+    }
+
+    .filter-bar {
+      flex-direction: column;
+      align-items: stretch;
+      padding: 12px;
+
+      .el-select,
+      .el-input {
+        width: 100% !important;
+      }
+    }
+
+    // 表格容器支持水平滚动
+    .schedule-table-section {
+      padding: 12px;
+      overflow-x: hidden;
+
+      .el-table {
+        min-width: 0;
+      }
+    }
+
+    // 日历在小屏幕上的优化
+    .calendar-view {
+      .calendar-days {
+        .calendar-day {
+          min-height: 60px;
+          padding: 4px;
+
+          .day-number {
+            font-size: 12px;
+          }
+
+          .schedule-info {
+            font-size: 10px;
+
+            .schedule-line {
+              overflow: hidden;
+              text-overflow: ellipsis;
+              white-space: nowrap;
+            }
+          }
+        }
+      }
+    }
+
+    // 员工月历移动端优化
+    .user-calendar {
+      .calendar-days {
+        .calendar-day {
+          min-height: 70px;
+          padding: 4px;
+
+          .day-number {
+            font-size: 12px;
+          }
+
+          .schedule-badge {
+            font-size: 10px;
+          }
+        }
       }
     }
 
     .schedule-days-grid {
       grid-template-columns: repeat(5, 1fr);
+    }
+
+    .month-select {
+      grid-template-columns: repeat(6, 1fr);
+    }
+  }
+}
+
+@media screen and (max-width: 480px) {
+  .schedule-page {
+    padding: 8px;
+
+    .calendar-view {
+      .calendar-days {
+        .calendar-day {
+          min-height: 50px;
+
+        }
+      }
+    }
+
+    .schedule-days-grid {
+      grid-template-columns: repeat(4, 1fr);
+    }
+
+    .month-select {
+      grid-template-columns: repeat(4, 1fr);
     }
   }
 }

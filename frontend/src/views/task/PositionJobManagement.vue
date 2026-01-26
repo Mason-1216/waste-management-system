@@ -1,14 +1,14 @@
 <template>
   <div class="position-job-management">
     <div class="page-header">
-      <h2>人员岗位管理</h2>
+      <h2>岗位工作任务库</h2>
       <div class="header-actions">
         <el-button type="primary" @click="addPositionJob">
           <el-icon><Plus /></el-icon>
           新增工作项目
         </el-button>
         <!-- 导入和下载模板按钮 -->
-        <el-upload
+        <BaseUpload
           :action="`${apiBaseUrl}/position-jobs/import`"
           :headers="uploadHeaders"
           :on-success="handleImportSuccess"
@@ -21,7 +21,7 @@
             <el-icon><Download /></el-icon>
             批量导入
           </el-button>
-        </el-upload>
+        </BaseUpload>
         <el-button @click="downloadTemplate" type="primary" plain>
           <el-icon><Download /></el-icon>
           下载模板
@@ -69,7 +69,7 @@
     </el-card>
 
     <!-- 数据表格 -->
-    <el-card class="table-card">
+    <TableCard>
       <el-table
         :data="flattenedTableData"
         v-loading="loading"
@@ -96,7 +96,7 @@
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="200" fixed="right">
+        <el-table-column label="操作" width="200">
           <template #default="{ row }">
             <el-button
               type="primary"
@@ -127,13 +127,16 @@
         @current-change="handleCurrentChange"
         style="margin-top: 20px; text-align: right;"
       />
-    </el-card>
+    </TableCard>
 
     <!-- 编辑对话框 -->
-    <el-dialog
+    <FormDialog
       v-model="dialogVisible"
       :title="dialogTitle"
       :width="dialogTitle.includes('新增') ? '800px' : '500px'"
+      :confirm-text="'确定'"
+      :cancel-text="'取消'"
+      @confirm="savePositionJob"
     >
       <!-- 单个编辑表单 -->
       <el-form
@@ -271,11 +274,7 @@
         </el-button>
       </div>
 
-      <template #footer>
-        <el-button @click="dialogVisible = false">取消</el-button>
-        <el-button type="primary" @click="savePositionJob">确定</el-button>
-      </template>
-    </el-dialog>
+    </FormDialog>
   </div>
 </template>
 
@@ -283,8 +282,11 @@
 import { ref, reactive, computed, onMounted } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { Upload, Download, Plus } from '@element-plus/icons-vue';
+
+import { addTemplateInstructionSheet, applyTemplateHeaderStyle } from '@/utils/excelTemplate';
 import { positionJobApi } from '@/api/positionJob';
-import { useUserStore } from '@/store/user';
+import { useUserStore } from '@/store/modules/user';
+import FormDialog from '@/components/system/FormDialog.vue';
 
 const userStore = useUserStore();
 
@@ -390,6 +392,7 @@ const batchFormRef = ref();
 const positionJobForm = reactive({
   id: null,
   positionName: '',
+  originalPositionName: '',
   jobName: '',
   standardHours: null,
   stationId: null,
@@ -499,6 +502,7 @@ const addPositionJob = () => {
     positionName: '',
     jobs: [{ jobName: '', standardHours: null }]
   });
+  positionJobForm.originalPositionName = '';
   dialogTitle.value = '新增岗位工作项目';
   dialogVisible.value = true;
 };
@@ -523,6 +527,7 @@ const editPositionJob = (row) => {
   Object.assign(positionJobForm, {
     id: row.id,
     positionName: row.position_name,
+    originalPositionName: row.position_name ?? '',
     jobName: row.job_name,
     standardHours: row.standard_hours ? parseFloat(row.standard_hours) : null,
     stationId: row.station_id,
@@ -571,12 +576,27 @@ const savePositionJob = async () => {
       // 单个编辑逻辑
       await formRef.value.validate();
 
+      const renamePosition = positionJobForm.originalPositionName
+        && positionJobForm.positionName !== positionJobForm.originalPositionName;
+      if (renamePosition) {
+        try {
+          await ElMessageBox.confirm('修改岗位名称将同步该岗位下所有工作项目，并更新排班中的岗位名称，是否继续？', '确认修改', {
+            type: 'warning',
+            confirmButtonText: '确认修改',
+            cancelButtonText: '取消'
+          });
+        } catch (error) {
+          return;
+        }
+      }
+
       const data = {
         positionName: positionJobForm.positionName,
         jobName: positionJobForm.jobName,
         standardHours: positionJobForm.standardHours,
         stationId: positionJobForm.stationId,
-        isActive: positionJobForm.isActive
+        isActive: positionJobForm.isActive,
+        renamePosition
       };
 
       if (positionJobForm.id) {
@@ -638,16 +658,16 @@ const downloadTemplate = async () => {
 
     const ws = XLSX.utils.json_to_sheet(templateData);
 
-    // 设置列宽
-    ws['!cols'] = [
-      { wch: 15 }, // 场站
-      { wch: 15 }, // 岗位名称
-      { wch: 25 }, // 工作项目
-      { wch: 12 }  // 标准工时
-    ];
+    applyTemplateHeaderStyle(XLSX, ws, 1);
 
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, '岗位工作项目');
+    addTemplateInstructionSheet(XLSX, wb, [
+      ['场站', '选填，场站名称，留空表示通用。'],
+      ['岗位名称', '必填，岗位名称。'],
+      ['工作项目', '必填，岗位工作项目名称。'],
+      ['标准工时', '选填，数字，单位 h/d。']
+    ]);
     XLSX.writeFile(wb, '岗位工作项目导入模板.xlsx');
     ElMessage.success('模板下载成功');
   } catch (error) {

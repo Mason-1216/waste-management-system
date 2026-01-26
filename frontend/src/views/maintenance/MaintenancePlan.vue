@@ -31,7 +31,14 @@
       </el-table-column>
     </el-table>
 
-    <el-dialog v-model="dialogVisible" :title="isEdit ? '编辑计划' : '新增计划'" width="500px">
+    <FormDialog
+      v-model="dialogVisible"
+      :title="isEdit ? '编辑计划' : '新增计划'"
+      width="500px"
+      :confirm-text="'保存'"
+      :cancel-text="'取消'"
+      @confirm="savePlan"
+    >
       <el-form :model="form" label-width="100px">
         <el-form-item label="设备名称">
           <el-input v-model="form.equipmentName" />
@@ -49,11 +56,7 @@
           <el-date-picker v-model="form.nextDate" type="date" value-format="YYYY-MM-DD" />
         </el-form-item>
       </el-form>
-      <template #footer>
-        <el-button @click="dialogVisible = false">取消</el-button>
-        <el-button type="primary" @click="savePlan">保存</el-button>
-      </template>
-    </el-dialog>
+    </FormDialog>
   </div>
 </template>
 
@@ -61,6 +64,7 @@
 import { ref, onMounted } from 'vue';
 import { ElMessage } from 'element-plus';
 import request from '@/api/request';
+import FormDialog from '@/components/system/FormDialog.vue';
 
 const planList = ref([]);
 const dialogVisible = ref(false);

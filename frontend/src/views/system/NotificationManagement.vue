@@ -54,18 +54,18 @@ const router = useRouter();
 const notifications = ref([]);
 const loading = ref(false);
 
-const pageTitle = '\u6d88\u606f\u901a\u77e5';
-const refreshText = '\u5237\u65b0';
-const unreadText = '\u672a\u8bfb';
-const emptyText = '\u6682\u65e0\u6d88\u606f';
+const pageTitle = '消息通知';
+const refreshText = '刷新';
+const unreadText = '未读';
+const emptyText = '暂无消息';
 const MAX_ITEMS = 10;
 
 const categories = [
-  { key: 'hazard', title: '\u5b89\u5168\u9690\u60a3', types: ['hazard_inspection', 'safety_rectification'] },
-  { key: 'safetyOther', title: '\u5b89\u5168\u4ed6\u68c0', types: ['safety_other_inspection'] },
-  { key: 'hygieneOther', title: '\u536b\u751f\u4ed6\u68c0', types: ['hygiene_other_inspection'] },
-  { key: 'tempTask', title: '\u4e34\u65f6\u4efb\u52a1', types: ['temporary_task'] },
-  { key: 'deviceFault', title: '\u8bbe\u5907\u6545\u969c', types: ['repair_record', 'fault_report'] }
+  { key: 'hazard', title: '安全隐患', types: ['hazard_inspection', 'safety_rectification'] },
+  { key: 'safetyOther', title: '安全他检', types: ['safety_other_inspection'] },
+  { key: 'hygieneOther', title: '卫生他检', types: ['hygiene_other_inspection'] },
+  { key: 'tempTask', title: '临时任务', types: ['temporary_task'] },
+  { key: 'deviceFault', title: '设备故障', types: ['repair_record', 'fault_report'] }
 ];
 
 const groupedNotifications = computed(() => {

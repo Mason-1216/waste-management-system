@@ -23,7 +23,7 @@
     </div>
 
     <el-card class="filter-card">
-      <div class="filter-bar">
+      <FilterBar>
         <el-input
           v-model="filters.keyword"
           placeholder="搜索任务名称"
@@ -57,11 +57,11 @@
         >
           批量删除
         </el-button>
-      </div>
+      </FilterBar>
     </el-card>
 
     <!-- 任务表格 -->
-    <div class="table-wrapper" v-loading="loading">
+    <TableWrapper v-loading="loading">
       <el-table
         ref="tableRef"
         :data="flattenedTableData"
@@ -85,7 +85,7 @@
           </template>
         </el-table-column>
         <el-table-column prop="points" label="积分" width="80" />
-        <el-table-column label="操作" width="150" fixed="right" v-if="canManage">
+        <el-table-column label="操作" width="150" v-if="canManage">
           <template #default="{ row }">
             <el-button link type="primary" size="small" @click="showDialog(row)">
               编辑
@@ -104,7 +104,7 @@
           </el-button>
         </el-empty>
       </div>
-    </div>
+    </TableWrapper>
 
     <!-- 分页 -->
     <div class="pagination-wrapper" v-if="pagination.total > 0">
@@ -120,11 +120,15 @@
     </div>
 
     <!-- 新建/编辑对话框 -->
-    <el-dialog
+    <FormDialog
       v-model="dialogVisible"
       :title="isEdit ? '编辑任务' : '新建任务'"
       width="520px"
       destroy-on-close
+      :confirm-text="'保存'"
+      :cancel-text="'取消'"
+      :confirm-loading="saving"
+      @confirm="saveTask"
     >
       <el-form
         :model="form"
@@ -165,22 +169,19 @@
           <span class="form-hint">完成任务获得的积分</span>
         </el-form-item>
       </el-form>
-      <template #footer>
-        <el-button @click="dialogVisible = false">取消</el-button>
-        <el-button type="primary" :loading="saving" @click="saveTask">
-          保存
-        </el-button>
-      </template>
-    </el-dialog>
+    </FormDialog>
   </div>
 </template>
 
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue';
-import { useUserStore } from '@/store/user';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { Plus, Search, Download, Edit, Delete, Clock, Star } from '@element-plus/icons-vue';
+
+import { addTemplateInstructionSheet, applyTemplateHeaderStyle } from '@/utils/excelTemplate';
 import request from '@/api/request';
+import { useUserStore } from '@/store/modules/user';
+import FormDialog from '@/components/system/FormDialog.vue';
 
 const userStore = useUserStore();
 
@@ -473,17 +474,17 @@ const downloadTemplate = async () => {
 
     const ws = XLSX.utils.json_to_sheet(templateData);
 
-    // 设置列宽
-    ws['!cols'] = [
-      { wch: 15 }, // 场站
-      { wch: 18 }, // 工作名称
-      { wch: 35 }, // 具体工作内容
-      { wch: 12 }, // 标准工时
-      { wch: 8 }   // 积分
-    ];
+    applyTemplateHeaderStyle(XLSX, ws, 1);
 
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, '临时工作任务库');
+    addTemplateInstructionSheet(XLSX, wb, [
+      ['场站', '选填，场站名称；导入时以当前场站为准。'],
+      ['工作名称', '必填，任务名称。'],
+      ['具体工作内容', '必填，任务内容描述。'],
+      ['标准工时', '必填，数字，单位 h/d。'],
+      ['积分', '必填，数字。']
+    ]);
     XLSX.writeFile(wb, '临时工作任务库导入模板.xlsx');
     ElMessage.success('模板下载成功');
   } catch (error) {
@@ -544,14 +545,12 @@ const handleImport = async (event) => {
         await request.post('/temporary-task-library', task);
         successCount++;
       } catch (e) {
-        console.error('创建任务失败', e);
       }
     }
 
     ElMessage.success(`导入完成: 成功${successCount}条`);
     loadTaskLibrary();
   } catch (err) {
-    console.error('导入失败', err);
     ElMessage.error(err.message || '导入失败，请检查文件格式');
   } finally {
     if (fileInputRef.value) {

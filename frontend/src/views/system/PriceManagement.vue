@@ -8,7 +8,7 @@
     </div>
 
     <!-- 筛选 -->
-    <div class="filter-bar">
+    <FilterBar>
       <el-select v-model="filters.type" placeholder="类型" clearable @change="loadList">
         <el-option label="工时单价" value="work_hour" />
         <el-option label="进料单价" value="inbound" />
@@ -25,7 +25,7 @@
         />
       </el-select>
       <el-button type="primary" @click="loadList">搜索</el-button>
-    </div>
+    </FilterBar>
 
     <!-- 列表 -->
     <el-table :data="priceList" stripe border>
@@ -58,7 +58,7 @@
           </el-tag>
         </template>
       </el-table-column>
-      <el-table-column label="操作" width="150" fixed="right">
+      <el-table-column label="操作" width="150">
         <template #default="{ row }">
           <el-button link type="primary" @click="editPrice(row)">编辑</el-button>
           <el-button link type="danger" @click="deletePrice(row)">删除</el-button>
@@ -80,10 +80,14 @@
     </div>
 
     <!-- 新增/编辑对话框 -->
-    <el-dialog
+    <FormDialog
       v-model="dialogVisible"
       :title="isEdit ? '编辑单价' : '新增单价'"
       width="500px"
+      :confirm-text="'保存'"
+      :cancel-text="'取消'"
+      :confirm-loading="saving"
+      @confirm="savePrice"
     >
       <el-form :model="priceForm" :rules="priceRules" ref="formRef" label-width="100px">
         <el-form-item label="名称" prop="name">
@@ -129,11 +133,7 @@
           <el-input v-model="priceForm.remark" type="textarea" :rows="2" />
         </el-form-item>
       </el-form>
-      <template #footer>
-        <el-button @click="dialogVisible = false">取消</el-button>
-        <el-button type="primary" @click="savePrice" :loading="saving">保存</el-button>
-      </template>
-    </el-dialog>
+    </FormDialog>
   </div>
 </template>
 
@@ -142,6 +142,7 @@ import { ref, onMounted, computed } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import dayjs from 'dayjs';
 import request from '@/api/request';
+import FormDialog from '@/components/system/FormDialog.vue';
 
 const formRef = ref(null);
 const priceList = ref([]);

@@ -8,7 +8,7 @@
     </div>
 
     <!-- 筛选 -->
-    <div class="filter-bar">
+    <FilterBar>
       <el-select v-model="filters.status" placeholder="审核状态" clearable @change="loadList">
         <el-option label="待审核" value="pending" />
         <el-option label="已通过" value="approved" />
@@ -22,7 +22,7 @@
         value-format="YYYY-MM-DD"
         @change="loadList"
       />
-    </div>
+    </FilterBar>
 
     <!-- 列表 -->
     <el-table :data="recordList" stripe border>
@@ -51,7 +51,7 @@
       </el-table-column>
       <el-table-column prop="operator.realName" label="操作人" width="100" />
       <el-table-column prop="description" label="保养内容" show-overflow-tooltip />
-      <el-table-column label="操作" width="150" fixed="right">
+      <el-table-column label="操作" width="150">
         <template #default="{ row }">
           <el-button link type="primary" @click="viewDetail(row)">详情</el-button>
           <el-button
@@ -80,7 +80,15 @@
     </div>
 
     <!-- 新增对话框 -->
-    <el-dialog v-model="addDialogVisible" title="新增保养记录" width="600px">
+    <FormDialog
+      v-model="addDialogVisible"
+      title="新增保养记录"
+      width="600px"
+      :confirm-text="'保存'"
+      :cancel-text="'取消'"
+      :confirm-loading="saving"
+      @confirm="saveRecord"
+    >
       <el-form :model="form" :rules="rules" ref="formRef" label-width="100px">
         <el-form-item label="设备名称" prop="equipmentName">
           <el-input v-model="form.equipmentName" placeholder="请输入设备名称" />
@@ -123,28 +131,31 @@
           />
         </el-form-item>
         <el-form-item label="现场照片">
-          <el-upload
+          <BaseUpload
             :action="uploadUrl"
             :headers="uploadHeaders"
-            :on-success="handleUploadSuccess"
             :file-list="photoList"
             list-type="picture-card"
             accept="image/*"
+            @change="(file, fileList) => updatePhotoList(fileList)"
+            @success="(response, file, fileList) => updatePhotoList(fileList)"
+            @remove="(file, fileList) => updatePhotoList(fileList)"
+            @error="handleUploadError"
           >
             <el-icon><Plus /></el-icon>
-          </el-upload>
+          </BaseUpload>
         </el-form-item>
       </el-form>
-      <template #footer>
-        <el-button @click="addDialogVisible = false">取消</el-button>
-        <el-button type="primary" @click="saveRecord" :loading="saving">
-          保存
-        </el-button>
-      </template>
-    </el-dialog>
+    </FormDialog>
 
     <!-- 详情对话框 -->
-    <el-dialog v-model="detailVisible" title="保养记录详情" width="600px">
+    <FormDialog
+      v-model="detailVisible"
+      title="保养记录详情"
+      width="600px"
+      :show-confirm="false"
+      :show-cancel="false"
+    >
       <el-descriptions :column="2" border>
         <el-descriptions-item label="设备名称">{{ currentRecord?.equipmentName }}</el-descriptions-item>
         <el-descriptions-item label="保养类型">{{ getTypeLabel(currentRecord?.maintenanceType) }}</el-descriptions-item>
@@ -162,18 +173,22 @@
           {{ currentRecord?.rejectReason }}
         </el-descriptions-item>
       </el-descriptions>
-    </el-dialog>
+    </FormDialog>
   </div>
 </template>
 
 <script setup>
 import { ref, computed, onMounted } from 'vue';
-import { useUserStore } from '@/store/user';
+import { useUserStore } from '@/store/modules/user';
+import { useUpload } from '@/composables/useUpload';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import dayjs from 'dayjs';
 import request from '@/api/request';
+import FormDialog from '@/components/system/FormDialog.vue';
 
 const userStore = useUserStore();
+
+const { uploadUrl, uploadHeaders } = useUpload();
 const formRef = ref(null);
 
 const recordList = ref([]);
@@ -210,10 +225,6 @@ const rules = {
   description: [{ required: true, message: '请描述保养内容', trigger: 'blur' }]
 };
 
-const uploadUrl = computed(() => `${import.meta.env.VITE_API_BASE_URL}/upload`);
-const uploadHeaders = computed(() => ({
-  Authorization: `Bearer ${userStore.token}`
-}));
 
 const getTypeLabel = (type) => {
   const labels = {
@@ -238,13 +249,18 @@ const getStatusLabel = (status) => {
 
 const formatDate = (date) => date ? dayjs(date).format('YYYY-MM-DD') : '-';
 
-const handleUploadSuccess = (response) => {
-  if (response.code === 0) {
-    photoList.value.push({
-      name: response.data.filename,
-      url: response.data.url
-    });
-  }
+const normalizeUploadFile = (file) => {
+  const responseUrl = file?.response?.data?.url ?? file?.response?.url ?? '';
+  const url = responseUrl ? responseUrl : (file?.url ?? '');
+  return url ? { ...file, url } : file;
+};
+
+const updatePhotoList = (fileList) => {
+  photoList.value = (fileList ?? []).map(normalizeUploadFile);
+};
+
+const handleUploadError = () => {
+  ElMessage.error('图片上传失败，请检查图片大小或网络');
 };
 
 const loadList = async () => {

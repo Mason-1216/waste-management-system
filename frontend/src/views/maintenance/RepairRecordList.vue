@@ -62,7 +62,7 @@
           {{ formatDateTime(row.created_at) }}
         </template>
       </el-table-column>
-      <el-table-column label="操作" width="160" fixed="right">
+      <el-table-column label="操作" width="160">
         <template #default="{ row }">
           <el-button link type="primary" @click="viewDetail(row)">查看</el-button>
           <el-button v-if="canEdit(row)" link type="primary" @click="editRecord(row)">编辑</el-button>
@@ -90,7 +90,7 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
-import { useUserStore } from '@/store/user';
+import { useUserStore } from '@/store/modules/user';
 import { getRepairRecords } from '@/api/repair';
 import dayjs from 'dayjs';
 

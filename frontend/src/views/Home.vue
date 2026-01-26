@@ -59,7 +59,13 @@
       </div>
     </div>
   </div>
-    <el-dialog v-model="quickActionDialogVisible" title="快捷操作管理" width="640px">
+    <FormDialog
+      v-model="quickActionDialogVisible"
+      title="快捷操作管理"
+      width="640px"
+      :show-confirm="false"
+      :show-cancel="false"
+    >
       <div class="quick-action-dialog">
         <el-checkbox-group v-model="selectedQuickActionPaths">
           <el-row :gutter="12">
@@ -77,19 +83,20 @@
         <el-button @click="quickActionDialogVisible = false">取消</el-button>
         <el-button type="primary" @click="saveQuickActions">保存</el-button>
       </template>
-    </el-dialog>
+    </FormDialog>
 
 </template>
 
 <script setup>
 import { ref, computed, onMounted, onActivated, watch } from 'vue';
 import { useRouter } from 'vue-router';
-import { useUserStore } from '@/store/user';
+import { useUserStore } from '@/store/modules/user';
 import { getNotifications, markAsRead as markRead } from '@/api/notification';
 import { getPendingApprovals } from '@/api/approval';
 import request from '@/api/request';
 import { menuConfig } from '@/config/menuConfig';
 import dayjs from 'dayjs';
+import FormDialog from '@/components/system/FormDialog.vue';
 
 const router = useRouter();
 const userStore = useUserStore();
@@ -158,7 +165,7 @@ const allStats = {
   task: { key: 'taskCount', title: '固定任务', icon: 'Briefcase', color: '#409EFF', path: '/position-work' },
   deviceFaults: { key: 'repairCount', title: '设备故障', icon: 'Warning', color: '#E6A23C', path: '/device-faults' },
   safetyRectification: { key: 'hazardCount', title: '安全隐患', icon: 'Warning', color: '#F56C6C', path: '/safety-rectification' },
-  equipmentMaintenance: { key: 'maintenanceCount', title: '设备保养', icon: 'Tools', color: '#409EFF', path: '/equipment-maintenance' },
+  equipmentMaintenance: { key: 'maintenanceCount', title: '设备保养', icon: 'Tools', color: '#409EFF', path: '/maintenance-task/work' },
   reports: { key: 'reportCount', title: '数据报表', icon: 'DataAnalysis', color: '#67C23A', path: '/reports' },
   userManagement: { key: 'userCount', title: '用户管理', icon: 'User', color: '#409EFF', path: '/user-management' },
   organization: { key: 'orgCount', title: '组织架构', icon: 'OfficeBuilding', color: '#67C23A', path: '/organization-management' }
@@ -423,8 +430,11 @@ const loadStats = async () => {
     stats.value.safetyCheckCount = safetyCompleted ? 0 : 1;
     stats.value.hygieneCheckCount = hygieneCompleted ? 0 : 1;
 
-    const scheduleMap = scheduleRes?.schedules || {};
-    const hasTodaySchedule = scheduleMap && scheduleMap[today];
+    const scheduleMap = scheduleRes?.schedules ?? {};
+    const todaySchedule = scheduleMap?.[today];
+    const hasTodaySchedule = Array.isArray(todaySchedule)
+      ? todaySchedule.length > 0
+      : !!todaySchedule;
     stats.value.scheduleCount = hasTodaySchedule ? 1 : 0;
 
     stats.value.hazardCount = hazardRes?.total || 0;

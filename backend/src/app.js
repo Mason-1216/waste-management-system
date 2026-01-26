@@ -83,7 +83,21 @@ app.use(bodyParser({
 }));
 
 // 静态文件服务（上传的文件）
-app.use(koaStatic(path.join(__dirname, '..', 'uploads')));
+const uploadStatic = koaStatic(uploadDir);
+app.use(async (ctx, next) => {
+  if (!ctx.path.startsWith('/uploads/')) {
+    await next();
+    return;
+  }
+  const originalPath = ctx.path;
+  const originalUrl = ctx.url;
+  ctx.path = ctx.path.replace(/^\/uploads/, '');
+  ctx.url = ctx.url.replace(/^\/uploads/, '');
+  await uploadStatic(ctx, next);
+  ctx.path = originalPath;
+  ctx.url = originalUrl;
+});
+app.use(uploadStatic);
 
 // API 路由
 app.use(router.routes());

@@ -13,7 +13,7 @@
     </div>
 
     <!-- 筛选 -->
-    <div class="filter-bar">
+    <FilterBar>
       <el-date-picker
         v-model="filters.dateRange"
         type="daterange"
@@ -36,7 +36,7 @@
         @keyup.enter="loadList"
       />
       <el-button type="primary" @click="loadList">搜索</el-button>
-    </div>
+    </FilterBar>
 
     <!-- 统计卡片 -->
     <el-row :gutter="16" class="stat-row">
@@ -88,7 +88,7 @@
       <el-table-column prop="icCard.cardNo" label="IC卡号" width="120" />
       <el-table-column prop="operator.realName" label="操作员" width="100" />
       <el-table-column prop="remark" label="备注" show-overflow-tooltip />
-      <el-table-column label="操作" width="120" fixed="right">
+      <el-table-column label="操作" width="120">
         <template #default="{ row }">
           <el-button link type="primary" @click="viewDetail(row)">详情</el-button>
           <el-button link type="primary" @click="printRecord(row)">打印</el-button>
@@ -110,7 +110,15 @@
     </div>
 
     <!-- 新增对话框 -->
-    <el-dialog v-model="addDialogVisible" title="新增进料记录" width="600px">
+    <FormDialog
+      v-model="addDialogVisible"
+      title="新增进料记录"
+      width="600px"
+      :confirm-text="'保存'"
+      :cancel-text="'取消'"
+      :confirm-loading="saving"
+      @confirm="saveRecord"
+    >
       <el-form :model="form" :rules="rules" ref="formRef" label-width="100px">
         <el-form-item label="IC卡" prop="icCardId">
           <el-select
@@ -163,14 +171,16 @@
           <el-input v-model="form.remark" type="textarea" :rows="2" />
         </el-form-item>
       </el-form>
-      <template #footer>
-        <el-button @click="addDialogVisible = false">取消</el-button>
-        <el-button type="primary" @click="saveRecord" :loading="saving">保存</el-button>
-      </template>
-    </el-dialog>
+    </FormDialog>
 
     <!-- 详情对话框 -->
-    <el-dialog v-model="detailVisible" title="进料记录详情" width="600px">
+    <FormDialog
+      v-model="detailVisible"
+      title="进料记录详情"
+      width="600px"
+      :show-confirm="false"
+      :show-cancel="false"
+    >
       <el-descriptions :column="2" border>
         <el-descriptions-item label="单号">{{ currentRecord?.recordNo }}</el-descriptions-item>
         <el-descriptions-item label="进料时间">{{ formatDateTime(currentRecord?.inboundTime) }}</el-descriptions-item>
@@ -184,16 +194,17 @@
         <el-descriptions-item label="操作员">{{ currentRecord?.operator?.realName }}</el-descriptions-item>
         <el-descriptions-item label="备注" :span="2">{{ currentRecord?.remark || '无' }}</el-descriptions-item>
       </el-descriptions>
-    </el-dialog>
+    </FormDialog>
   </div>
 </template>
 
 <script setup>
 import { ref, computed, onMounted } from 'vue';
-import { useUserStore } from '@/store/user';
+import { useUserStore } from '@/store/modules/user';
 import { ElMessage } from 'element-plus';
 import dayjs from 'dayjs';
 import request from '@/api/request';
+import FormDialog from '@/components/system/FormDialog.vue';
 
 const userStore = useUserStore();
 const formRef = ref(null);

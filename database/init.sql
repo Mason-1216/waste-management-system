@@ -188,6 +188,37 @@ CREATE TABLE IF NOT EXISTS temporary_task_library (
     INDEX idx_temp_task_name (task_name)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='临时工作任务库';
 
+
+-- Safety work types (matches SafetyWorkType.js)
+CREATE TABLE IF NOT EXISTS safety_work_types (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    work_type_name VARCHAR(100) NOT NULL COMMENT '??????',
+    is_default TINYINT DEFAULT 0 COMMENT '??????(????)',
+    sort_order INT DEFAULT 0 COMMENT '??',
+    points INT DEFAULT 0 COMMENT '??',
+    status ENUM('active', 'inactive') DEFAULT 'active',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='??????';
+
+-- Safety check items (matches SafetyCheckItem.js)
+CREATE TABLE IF NOT EXISTS safety_check_items (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    work_type_id INT NOT NULL,
+    item_name VARCHAR(200) NOT NULL COMMENT '?????',
+    item_standard VARCHAR(500) COMMENT '????',
+    parent_id INT NULL COMMENT 'Parent check item id',
+    enable_children TINYINT NOT NULL DEFAULT 0 COMMENT 'Enable child items',
+    trigger_value TINYINT NULL COMMENT 'Trigger value for child items',
+    sort_order INT DEFAULT 0 COMMENT '??',
+    status ENUM('active', 'inactive') DEFAULT 'active',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX idx_safety_check_items_work_type (work_type_id),
+    INDEX idx_safety_check_items_parent_id (parent_id),
+    FOREIGN KEY (work_type_id) REFERENCES safety_work_types(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='?????';
+
 -- Safety self inspections (matches SafetySelfInspection.js)
 CREATE TABLE IF NOT EXISTS safety_self_inspections (
     id INT PRIMARY KEY AUTO_INCREMENT,
@@ -425,6 +456,63 @@ CREATE TABLE IF NOT EXISTS safety_rectifications (
     INDEX idx_rectification_status (status)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='安全隐患整改表';
 
+-- PLC数据分类表 (匹配 PlcCategory.js)
+CREATE TABLE IF NOT EXISTS plc_categories (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    category_key VARCHAR(50) NOT NULL UNIQUE COMMENT '分类标识',
+    category_name VARCHAR(100) NOT NULL COMMENT '分类名称',
+    data_type ENUM('REAL', 'DINT', 'INT', 'BOOL') DEFAULT 'REAL' COMMENT '数据类型',
+    value_type ENUM('cumulative', 'fluctuating', 'event') DEFAULT 'cumulative' COMMENT '取值类型(计量/变化/事件)',
+    schedule_type ENUM('interval', 'fixed', 'on_change') DEFAULT 'interval' COMMENT '调度类型',
+    interval_hours INT DEFAULT 1 COMMENT '间隔小时数',
+    fixed_time TIME COMMENT '固定采集时间',
+    is_enabled TINYINT DEFAULT 1 COMMENT '是否启用',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='PLC数据分类表';
+
+-- PLC监控点配置表 (匹配 PlcMonitorConfig.js)
+CREATE TABLE IF NOT EXISTS plc_monitor_configs (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    name VARCHAR(100) NOT NULL COMMENT '监控点名称',
+    station_id INT COMMENT '关联场站',
+    plc_ip VARCHAR(50) NOT NULL COMMENT 'PLC IP地址',
+    db_number INT NOT NULL COMMENT 'DB块号',
+    offset_address DECIMAL(10,1) NOT NULL COMMENT '偏移地址',
+    data_type ENUM('REAL', 'DINT', 'INT', 'BOOL') DEFAULT 'REAL' COMMENT '数据类型',
+    category_id INT COMMENT '分类ID',
+    unit VARCHAR(20) COMMENT '单位',
+    description TEXT COMMENT '描述',
+    sort_order INT DEFAULT 0 COMMENT '排序',
+    is_active TINYINT DEFAULT 1 COMMENT '是否启用',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX idx_config_station (station_id),
+    INDEX idx_config_category (category_id),
+    FOREIGN KEY (station_id) REFERENCES stations(id),
+    FOREIGN KEY (category_id) REFERENCES plc_categories(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='PLC监控点配置表';
+
+-- PLC数据读取记录表 (匹配 PlcReading.js)
+CREATE TABLE IF NOT EXISTS plc_readings (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    timestamp DATETIME NOT NULL COMMENT '采集时间',
+    config_id INT NOT NULL COMMENT '配置ID',
+    address VARCHAR(50) NOT NULL COMMENT 'PLC地址',
+    value DECIMAL(20,6) COMMENT '数值',
+    quality TINYINT DEFAULT 1 COMMENT '数据质量 1正常 0异常',
+    category_id INT COMMENT '分类ID',
+    station_id INT COMMENT '场站ID',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_reading_timestamp (timestamp),
+    INDEX idx_reading_config (config_id),
+    INDEX idx_reading_category (category_id),
+    INDEX idx_reading_station (station_id),
+    FOREIGN KEY (config_id) REFERENCES plc_monitor_configs(id),
+    FOREIGN KEY (category_id) REFERENCES plc_categories(id),
+    FOREIGN KEY (station_id) REFERENCES stations(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='PLC数据读取记录表';
+
 CREATE TABLE IF NOT EXISTS notifications (
     id INT PRIMARY KEY AUTO_INCREMENT,
     notify_type ENUM('inspection_overdue', 'task_pending', 'approval_request', 'system') NOT NULL DEFAULT 'system' COMMENT '类型',
@@ -448,11 +536,18 @@ INSERT INTO roles (role_code, role_name, base_role_code, description) VALUES
 ('department_manager', '部门经理', 'department_manager', '部门经理'),
 ('safety_inspector', '安全员', 'safety_inspector', '公司级安全检查人员'),
 ('senior_management', '高层', 'senior_management', '公司高层管理人员'),
-('client', '甲方人员', 'client', '甲方人员');
+('client', '甲方人员', 'client', '甲方人员'),
+('dev_test', '开发测试', 'admin', '开发测试（全权限）');
 
 -- 插入默认管理员账号 (密码: admin123)
 INSERT INTO users (username, password, real_name, role_id, status) VALUES
 ('admin', '$2a$10$Lzl7FDiC1lSVC7Jgwg1j5u850Jecx0dErqvupHg4.2QBg6qfIDKgK', '系统管理员', 1, 1);
+
+-- 插入开发测试账号 (密码: 605315220)
+INSERT INTO users (username, password, real_name, role_id, status)
+SELECT 'sum', '$2a$10$FJMFQHV5WIwk3xmX39ZdZ.jMepVgj1qR3YpES64Z4ehCmf4cDBFIC', '开发测试', id, 1
+FROM roles
+WHERE role_code = 'dev_test';
 
 -- 插入默认项目
 
@@ -492,5 +587,14 @@ INSERT INTO project_stations (project_id, station_id) VALUES (1, 1);
 -- 关联管理员到项目和场站
 INSERT INTO user_projects (user_id, project_id) VALUES (1, 1);
 INSERT INTO user_stations (user_id, station_id) VALUES (1, 1);
+
+-- 插入默认PLC数据分类
+INSERT INTO plc_categories (category_key, category_name, data_type, value_type, schedule_type, interval_hours, is_enabled) VALUES
+('temperature', '温度数据', 'REAL', 'fluctuating', 'interval', 1, 1),
+('weight', '重量数据', 'REAL', 'cumulative', 'interval', 1, 1),
+('pressure', '压力数据', 'REAL', 'fluctuating', 'interval', 1, 1),
+('flow', '流量数据', 'REAL', 'cumulative', 'interval', 1, 1),
+('status', '状态数据', 'BOOL', 'event', 'interval', 1, 1),
+('counter', '计数数据', 'DINT', 'cumulative', 'interval', 1, 1);
 
 

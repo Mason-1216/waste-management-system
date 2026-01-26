@@ -1,11 +1,19 @@
 # Frontend Dockerfile - multi-stage build
 FROM node:18-alpine as builder
 
+# Build arguments for mirror configuration
+ARG ALPINE_MIRROR=mirrors.aliyun.com
+ARG NPM_REGISTRY=https://registry.npmmirror.com
+
 WORKDIR /app
+
+# Set Alpine mirror
+RUN sed -i "s/dl-cdn.alpinelinux.org/${ALPINE_MIRROR}/g" /etc/apk/repositories
 
 # Install dependencies
 COPY package*.json ./
-RUN npm install
+RUN npm config set registry ${NPM_REGISTRY} && \
+    npm install
 
 # Copy source and build
 COPY . .

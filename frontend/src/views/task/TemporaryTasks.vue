@@ -13,7 +13,7 @@
           </div>
         </div>
 
-        <div class="filter-bar">
+        <FilterBar>
           <el-input
             v-model="filters.taskName"
             placeholder="任务名称"
@@ -45,9 +45,9 @@
             @change="loadTasks"
           />
           <el-button type="primary" @click="loadTasks">查询</el-button>
-        </div>
+        </FilterBar>
 
-        <div class="table-wrapper">
+        <TableWrapper>
           <el-table :data="taskList" stripe border v-loading="loading">
             <el-table-column prop="taskName" label="工作名称" min-width="150" />
             <el-table-column prop="description" label="具体工作内容" min-width="200" show-overflow-tooltip />
@@ -75,7 +75,7 @@
                 {{ formatDate(row.deadline) }}
               </template>
             </el-table-column>
-            <el-table-column label="操作" width="180" fixed="right">
+            <el-table-column label="操作" width="180">
               <template #default="{ row }">
                 <el-button link type="primary" size="small" @click="viewDetail(row)">查看</el-button>
                 <el-button
@@ -93,7 +93,7 @@
               </template>
             </el-table-column>
           </el-table>
-        </div>
+        </TableWrapper>
 
         <div class="pagination-wrapper">
           <el-pagination
@@ -118,8 +118,8 @@
               placeholder="搜索任务名称"
               clearable
               style="width: 200px; margin-right: 12px;"
-              @clear="loadTaskLibrary"
-              @keyup.enter="loadTaskLibrary"
+              @clear="handleLibraryKeywordClear"
+              @input="handleLibraryKeywordInput"
             >
               <template #prefix>
                 <el-icon><Search /></el-icon>
@@ -154,7 +154,7 @@
         </div>
 
         <div v-loading="libraryLoading" class="library-content">
-          <div class="table-wrapper">
+          <TableWrapper>
             <el-table
               ref="libraryTableRef"
               :data="taskLibraryList"
@@ -169,7 +169,7 @@
               <el-table-column prop="standardHours" label="标准工时(h/d)" width="120" align="center" />
               <el-table-column prop="points" label="积分" width="80" align="center" />
               <el-table-column prop="createdByName" label="创建人" width="100" />
-              <el-table-column label="操作" width="200" fixed="right">
+              <el-table-column label="操作" width="200">
                 <template #default="{ row }">
                   <el-button link type="primary" size="small" @click="quickAssign(row)">
                     快速分配
@@ -183,7 +183,7 @@
                 </template>
               </el-table-column>
             </el-table>
-          </div>
+          </TableWrapper>
 
           <div v-if="!libraryLoading && taskLibraryList.length === 0" class="empty-wrapper">
             <el-empty description="暂无任务模板">
@@ -207,7 +207,16 @@
     </el-tabs>
 
     <!-- 分配任务对话框 -->
-    <el-dialog v-model="assignDialogVisible" title="分配任务" width="600px" destroy-on-close>
+    <FormDialog
+      v-model="assignDialogVisible"
+      title="分配任务"
+      width="600px"
+      destroy-on-close
+      :confirm-text="'确定分配'"
+      :cancel-text="'取消'"
+      :confirm-loading="assigning"
+      @confirm="submitAssign"
+    >
       <el-form :model="assignForm" :rules="assignRules" ref="assignFormRef" label-width="120px">
         <el-form-item label="工作名称" prop="taskLibraryId">
           <el-select
@@ -315,14 +324,19 @@
           <span class="form-hint">任务库关联自动填入</span>
         </el-form-item>
       </el-form>
-      <template #footer>
-        <el-button @click="assignDialogVisible = false">取消</el-button>
-        <el-button type="primary" @click="submitAssign" :loading="assigning">确定分配</el-button>
-      </template>
-    </el-dialog>
+    </FormDialog>
 
     <!-- 任务库编辑对话框 -->
-    <el-dialog v-model="libraryDialogVisible" :title="libraryIsEdit ? '编辑任务' : '新建任务'" width="520px" destroy-on-close>
+    <FormDialog
+      v-model="libraryDialogVisible"
+      :title="libraryIsEdit ? '编辑任务' : '新建任务'"
+      width="520px"
+      destroy-on-close
+      :confirm-text="'保存'"
+      :cancel-text="'取消'"
+      :confirm-loading="librarySaving"
+      @confirm="saveLibraryItem"
+    >
       <el-form :model="libraryForm" :rules="libraryRules" ref="libraryFormRef" label-width="110px">
         <el-form-item label="工作名称" prop="taskName">
           <el-input v-model="libraryForm.taskName" placeholder="请输入工作名称" maxlength="100" />
@@ -344,14 +358,16 @@
           <el-input-number v-model="libraryForm.points" :min="0" :max="9999" :step="1" />
         </el-form-item>
       </el-form>
-      <template #footer>
-        <el-button @click="libraryDialogVisible = false">取消</el-button>
-        <el-button type="primary" :loading="librarySaving" @click="saveLibraryItem">保存</el-button>
-      </template>
-    </el-dialog>
+    </FormDialog>
 
     <!-- 查看详情对话框 -->
-    <el-dialog v-model="detailDialogVisible" title="任务详情" width="500px">
+    <FormDialog
+      v-model="detailDialogVisible"
+      title="任务详情"
+      width="500px"
+      :show-confirm="false"
+      :show-cancel="false"
+    >
       <el-descriptions :column="1" border>
         <el-descriptions-item label="任务名称">{{ currentTask?.taskName }}</el-descriptions-item>
         <el-descriptions-item label="任务描述">{{ currentTask?.description }}</el-descriptions-item>
@@ -369,10 +385,18 @@
         <el-descriptions-item label="完成时间">{{ formatDateTime(currentTask?.completedAt) }}</el-descriptions-item>
         <el-descriptions-item label="完成备注">{{ currentTask?.completionNote || '-' }}</el-descriptions-item>
       </el-descriptions>
-    </el-dialog>
+    </FormDialog>
 
     <!-- 提交任务对话框 -->
-    <el-dialog v-model="submitDialogVisible" title="完成任务" width="500px">
+    <FormDialog
+      v-model="submitDialogVisible"
+      title="完成任务"
+      width="500px"
+      :confirm-text="'完成'"
+      :cancel-text="'取消'"
+      :confirm-loading="submitting"
+      @confirm="confirmSubmit"
+    >
       <el-form :model="submitForm" label-width="100px">
         <el-form-item label="实际工时">
           <el-input-number v-model="submitForm.actualHours" :min="0.5" :max="24" :step="0.5" />
@@ -387,20 +411,19 @@
           />
         </el-form-item>
       </el-form>
-      <template #footer>
-        <el-button @click="submitDialogVisible = false">取消</el-button>
-        <el-button type="primary" @click="confirmSubmit" :loading="submitting">完成</el-button>
-      </template>
-    </el-dialog>
+    </FormDialog>
   </div>
 </template>
 
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue';
-import { useUserStore } from '@/store/user';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import dayjs from 'dayjs';
+
+import { addTemplateInstructionSheet, applyTemplateHeaderStyle } from '@/utils/excelTemplate';
 import request from '@/api/request';
+import { useUserStore } from '@/store/modules/user';
+import FormDialog from '@/components/system/FormDialog.vue';
 
 const userStore = useUserStore();
 
@@ -508,6 +531,8 @@ const libraryRules = {
   points: [{ required: true, message: '请输入积分', trigger: 'change' }]
 };
 
+let libraryKeywordTimer = null;
+
 // ========== 权限 ==========
 const canAssign = computed(() => {
   return ['admin', 'station_manager', 'department_manager', 'deputy_manager'].includes(userStore.roleCode);
@@ -603,7 +628,6 @@ const loadTodayScheduledUsers = async () => {
     });
     todayScheduledUsers.value = res || [];
   } catch (e) {
-    console.error('加载今日排班人员失败', e);
   }
 };
 
@@ -749,6 +773,27 @@ const deleteTask = async (row) => {
 };
 
 // ========== 任务库操作 ==========
+const handleLibraryKeywordInput = () => {
+  if (libraryKeywordTimer) {
+    clearTimeout(libraryKeywordTimer);
+  }
+  libraryKeywordTimer = setTimeout(() => {
+    if (activeTab.value !== 'library') {
+      return;
+    }
+    libraryPagination.value.page = 1;
+    loadTaskLibrary();
+  }, 300);
+};
+
+const handleLibraryKeywordClear = () => {
+  if (libraryKeywordTimer) {
+    clearTimeout(libraryKeywordTimer);
+  }
+  libraryPagination.value.page = 1;
+  loadTaskLibrary();
+};
+
 const loadTaskLibrary = async () => {
   libraryLoading.value = true;
   try {
@@ -897,16 +942,16 @@ const downloadTemplate = () => {
 
     const ws = XLSX.utils.aoa_to_sheet(templateData);
 
-    // 设置列宽
-    ws['!cols'] = [
-      { wch: 20 },  // 工作名称
-      { wch: 40 },  // 具体工作内容
-      { wch: 15 },  // 标准工时
-      { wch: 10 }   // 积分
-    ];
+    applyTemplateHeaderStyle(XLSX, ws, 1);
 
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, '临时工作任务库模板');
+    addTemplateInstructionSheet(XLSX, wb, [
+      ['工作名称', '必填，任务名称。'],
+      ['具体工作内容', '必填，任务内容描述。'],
+      ['标准工时(h/d)', '必填，数字，单位 h/d。'],
+      ['积分', '必填，数字。']
+    ]);
     XLSX.writeFile(wb, '临时工作任务库导入模板.xlsx');
     ElMessage.success('模板下载成功');
   });
@@ -964,7 +1009,6 @@ const handleImport = async (event) => {
     ElMessage.success(`导入完成: 成功${successCount}条`);
     loadTaskLibrary();
   } catch (err) {
-    console.error('导入失败', err);
     ElMessage.error(err.message || '导入失败，请检查文件格式');
   } finally {
     importing.value = false;

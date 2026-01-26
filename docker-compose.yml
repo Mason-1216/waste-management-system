@@ -22,11 +22,36 @@ services:
       timeout: 5s
       retries: 5
 
+  # PLC Python microservice
+  plc-service:
+    build:
+      context: ./plc-service
+      dockerfile: Dockerfile
+    container_name: wms-plc-service
+    restart: always
+    environment:
+      FLASK_HOST: 0.0.0.0
+      FLASK_PORT: 5001
+      FLASK_DEBUG: "false"
+      DB_HOST: mysql
+      DB_PORT: 3306
+      DB_NAME: waste_management
+      DB_USER: wms_user
+      DB_PASSWORD: wms123456
+    ports:
+      - "5001:5001"
+    depends_on:
+      mysql:
+        condition: service_healthy
+
   # Backend API service
   backend:
     build:
       context: ./backend
       dockerfile: Dockerfile
+      args:
+        - NPM_REGISTRY=https://registry.npmmirror.com
+        - ALPINE_MIRROR=mirrors.aliyun.com
     container_name: wms-backend
     restart: always
     environment:
@@ -38,6 +63,7 @@ services:
       DB_PASSWORD: wms123456
       JWT_SECRET: your-super-secret-jwt-key-change-in-production
       PORT: 3000
+      PLC_SERVICE_URL: http://plc-service:5001
     ports:
       - "3000:3000"
     volumes:
@@ -46,12 +72,17 @@ services:
     depends_on:
       mysql:
         condition: service_healthy
+      plc-service:
+        condition: service_started
 
   # Frontend Nginx service
   frontend:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+      args:
+        - NPM_REGISTRY=https://registry.npmmirror.com
+        - ALPINE_MIRROR=mirrors.aliyun.com
     container_name: wms-frontend
     restart: always
     ports:

@@ -42,32 +42,33 @@
         </div>
 
         <!-- 自检表单 -->
-        <el-dialog
+        <FormDialog
           v-model="inspectionDialogVisible"
           :title="`卫生自检 - ${inspectionForm.stationName || ''} - ${inspectionForm.positionName || ''}`"
           width="700px"
           :close-on-click-modal="false"
+          :show-confirm="false"
+          :show-cancel="false"
         >
           <el-form :model="inspectionForm" ref="formRef" label-width="140px">
-            <div v-if="inspectionForm.areas.length === 0" class="empty-hint">
-              <el-empty description="暂无分配的卫生责任区" />
-            </div>
-
-            <div v-for="area in inspectionForm.areas" :key="area.id" class="area-section">
-              <el-divider content-position="left">{{ area.area_name }}</el-divider>
-              <div class="point-list">
-                <div v-for="point in area.points" :key="point.id" class="point-item">
-                  <div class="point-header">
-                    <span class="point-name">{{ point.point_name }}</span>
-                    <el-radio-group v-model="point.checkStatus">
-                      <el-radio :label="1">合格</el-radio>
-                      <el-radio :label="0">不合格</el-radio>
-                    </el-radio-group>
-                  </div>
-                  <div class="point-requirement">要求：{{ point.work_requirements || '无' }}</div>
-                </div>
-              </div>
-            </div>
+            <HygieneAreaChecklist
+              :areas="inspectionForm.areas"
+              :upload-url="uploadUrl"
+              :upload-headers="uploadHeaders"
+              header-type="divider"
+              :show-area-photos="true"
+              :empty-description="'暂无分配的卫生责任区'"
+              :requirement-prefix="'要求：'"
+              :requirement-fallback="'无'"
+              :pass-label="'合格'"
+              :fail-label="'不合格'"
+              :point-photo-label="'不合格照片（有不合格项至少 1 张，可任选点位上传）：'"
+              :area-photo-label="'责任区照片（必填，至少 1 张）：'"
+              @point-status-change="handlePointStatusChange"
+              @point-photo-change="updatePointPhotoList"
+              @area-photo-change="updateAreaPhotoList"
+              @upload-error="handleUploadError"
+            />
 
             <el-divider content-position="left">其他</el-divider>
             <el-form-item label="不合格说明">
@@ -85,7 +86,7 @@
               提交自检
             </el-button>
           </template>
-        </el-dialog>
+        </FormDialog>
 
         <!-- 历史记录 -->
         <div class="history-section">
@@ -130,7 +131,7 @@
 
       <!-- 人员卫生自检 -->
       <el-tab-pane label="人员卫生自检" name="staff" v-if="canViewStaff">
-        <div class="filter-bar">
+        <FilterBar>
           <el-date-picker
             v-model="staffFilters.dateRange"
             type="daterange"
@@ -196,7 +197,7 @@
             <el-option label="未填写" :value="2" />
           </el-select>
           <el-button @click="resetStaffFilters">重置</el-button>
-        </div>
+        </FilterBar>
 
         <el-table :data="staffInspectionList" stripe border>
           <el-table-column prop="inspectionDate" label="日期" width="120">
@@ -220,7 +221,7 @@
               {{ formatDateTime(row.submitTime) }}
             </template>
           </el-table-column>
-          <el-table-column label="操作" width="100" fixed="right">
+          <el-table-column label="操作" width="100">
             <template #default="{ row }">
               <el-button link type="primary" @click="viewDetail(row)">详情</el-button>
             </template>
@@ -242,7 +243,13 @@
     </el-tabs>
 
     <!-- 详情对话框 -->
-    <el-dialog v-model="detailVisible" title="卫生自检详情" width="600px">
+    <FormDialog
+      v-model="detailVisible"
+      title="卫生自检详情"
+      width="600px"
+      :show-confirm="false"
+      :show-cancel="false"
+    >
       <el-descriptions :column="1" border>
         <el-descriptions-item label="检查日期">{{ formatDate(currentRecord?.inspectionDate) }}</el-descriptions-item>
         <el-descriptions-item label="提交时间">{{ formatDateTime(currentRecord?.submitTime) }}</el-descriptions-item>
@@ -271,6 +278,21 @@
               {{ row.workRequirements || '-' }}
             </template>
           </el-table-column>
+          <el-table-column label="照片" width="120">
+            <template #default="{ row }">
+              <div v-if="row.photoUrls?.length" class="photo-preview">
+                <el-image
+                  v-for="(url, idx) in row.photoUrls"
+                  :key="idx"
+                  :src="url"
+                  :preview-src-list="row.photoUrls ?? []"
+                  fit="cover"
+                  style="width: 40px; height: 40px; margin-right: 4px;"
+                />
+              </div>
+              <span v-else>-</span>
+            </template>
+          </el-table-column>
         </el-table>
       </div>
 
@@ -279,21 +301,26 @@
           {{ currentRecord?.unqualifiedDescription || '无' }}
         </el-descriptions-item>
       </el-descriptions>
-    </el-dialog>
+    </FormDialog>
   </div>
 </template>
 
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue';
-import { useUserStore } from '@/store/user';
+import { useUserStore } from '@/store/modules/user';
+import { useUpload } from '@/composables/useUpload';
 import { ElMessage } from 'element-plus';
 import { Plus, CircleCheck, Warning } from '@element-plus/icons-vue';
 import dayjs from 'dayjs';
 import request from '@/api/request';
 import { getHygieneAreasByPosition } from '@/api/hygieneManagement';
 import { getPositionNames } from '@/api/positionJob';
+import HygieneAreaChecklist from '@/components/inspection/HygieneAreaChecklist.vue';
+import FormDialog from '@/components/system/FormDialog.vue';
 
 const userStore = useUserStore();
+
+const { uploadUrl, uploadHeaders } = useUpload();
 const formRef = ref(null);
 
 const activeTab = ref('my');
@@ -359,10 +386,6 @@ const showStationFilter = computed(() => {
   return (userStore.stations?.length || 0) > 1;
 });
 
-const uploadUrl = computed(() => `${import.meta.env.VITE_API_BASE_URL}/upload`);
-const uploadHeaders = computed(() => ({
-  Authorization: `Bearer ${userStore.token}`
-}));
 
 const formatDate = (date) => date ? dayjs(date).format('YYYY-MM-DD') : '-';
 const formatDateTime = (date) => date ? dayjs(date).format('YYYY-MM-DD HH:mm') : '-';
@@ -537,17 +560,30 @@ const startInspection = async () => {
     }
 
     // 为每个卫生点添加检查状态
+    const normalizedAreas = (areas || []).map(area => {
+      const areaName = area.areaName ?? area.area_name ?? '';
+      const points = (area.points || []).map(point => ({
+        ...point,
+        pointName: point.pointName ?? point.point_name ?? '',
+        workRequirements: point.workRequirements ?? point.work_requirements ?? '',
+        checkStatus: null,
+        photoList: [],
+        photoUrls: []
+      }));
+      return {
+        ...area,
+        areaName,
+        photoList: [],
+        photoUrls: [],
+        points
+      };
+    });
+
     inspectionForm.value = {
       stationId: stationId,
       stationName: stationName,
       positionName: positionName,
-      areas: areas.map(area => ({
-        ...area,
-        points: (area.points || []).map(point => ({
-          ...point,
-          checkStatus: null
-        }))
-      })),
+      areas: normalizedAreas,
       unqualifiedDescription: ''
     };
 
@@ -556,6 +592,39 @@ const startInspection = async () => {
     
     
     ElMessage.error('加载排班或责任区失败: ' + (e.message || '未知错误'));
+  }
+};
+
+const normalizeUploadFile = (file) => {
+  const responseUrl = file?.response?.data?.url ?? file?.response?.url ?? '';
+  const url = responseUrl || file?.url || '';
+  return url ? { ...file, url } : file;
+};
+
+const updatePointPhotoList = (point, fileList) => {
+  const normalized = (fileList ?? []).map(normalizeUploadFile);
+  point.photoList = normalized;
+  point.photoUrls = normalized
+    .map(item => item.response?.data?.url ?? item.response?.url)
+    .filter(Boolean);
+};
+
+const updateAreaPhotoList = (area, fileList) => {
+  const normalized = (fileList ?? []).map(normalizeUploadFile);
+  area.photoList = normalized;
+  area.photoUrls = normalized
+    .map(item => item.response?.data?.url ?? item.response?.url)
+    .filter(Boolean);
+};
+
+const handleUploadError = () => {
+  ElMessage.error('图片上传失败，请检查图片大小或网络');
+};
+
+const handlePointStatusChange = (point) => {
+  if (point.checkStatus !== 0) {
+    point.photoUrls = [];
+    point.photoList = [];
   }
 };
 
@@ -570,23 +639,56 @@ const submitInspection = async () => {
     return;
   }
 
+  const hasUnqualified = allPoints.some(point => point.checkStatus === 0);
+  const missingAreaPhotos = inspectionForm.value.areas.some(area => (area.photoUrls || []).length === 0);
+  if (missingAreaPhotos) {
+    ElMessage.warning('每个责任区至少上传 1 张照片');
+    return;
+  }
+  if (hasUnqualified) {
+    const unqualifiedPhotos = allPoints
+      .filter(point => point.checkStatus === 0)
+      .flatMap(point => point.photoUrls || []);
+    if (unqualifiedPhotos.length === 0) {
+      ElMessage.warning('存在不合格项，请至少上传 1 张不合格照片');
+      return;
+    }
+  }
+
   submitting.value = true;
   try {
-    const hasUnqualified = allPoints.some(point => point.checkStatus === 0);
 
     // 构建检查项目数据
     let itemIndex = 1;
     const payloadItems = inspectionForm.value.areas.flatMap(area =>
       (area.points || []).map(point => ({
         itemId: itemIndex++,
-        areaName: area.area_name,
-        pointName: point.point_name,
-        workRequirements: point.work_requirements || '',
+        areaName: area.areaName ?? area.area_name ?? '',
+        pointName: point.pointName ?? point.point_name ?? '',
+        workRequirements: point.workRequirements ?? point.work_requirements ?? '',
         status: point.checkStatus,
-        itemName: point.point_name,
-        remark: ''
+        itemName: point.pointName ?? point.point_name ?? '',
+        remark: '',
+        photoUrls: point.photoUrls ?? []
       }))
     );
+
+    const areaPhotoItems = inspectionForm.value.areas.flatMap(area => {
+      const areaPhotoUrls = area.photoUrls ?? [];
+      if (!areaPhotoUrls.length) return [];
+      return [{
+        itemId: itemIndex++,
+        areaName: area.areaName ?? area.area_name ?? '',
+        pointName: '责任区照片',
+        workRequirements: '',
+        status: 1,
+        itemName: '责任区照片',
+        remark: '',
+        photoUrls: areaPhotoUrls
+      }];
+    });
+
+    payloadItems.push(...areaPhotoItems);
 
     // 添加不合格说明
     if (inspectionForm.value.unqualifiedDescription) {
@@ -598,12 +700,14 @@ const submitInspection = async () => {
       });
     }
 
+    const photoUrls = payloadItems.flatMap(item => item.photoUrls ?? []);
+
     await request.post('/self-inspections', {
       inspectionType: 'hygiene',
       inspectionDate: currentDate.value,
       stationId: inspectionForm.value.stationId,
       inspectionItems: payloadItems,
-      photoUrls: [],
+      photoUrls,
       hasUnqualified
     });
     ElMessage.success('提交成功');
@@ -843,6 +947,26 @@ watch(
     gap: 16px;
   }
 
+  .area-photo {
+    margin-top: 12px;
+
+    .photo-label {
+      font-size: 12px;
+      color: #f56c6c;
+      margin-bottom: 8px;
+    }
+
+    :deep(.el-upload--picture-card) {
+      width: 80px;
+      height: 80px;
+    }
+
+    :deep(.el-upload-list--picture-card .el-upload-list__item) {
+      width: 80px;
+      height: 80px;
+    }
+  }
+
   .point-item {
     padding: 12px;
     background: #f5f7fa;
@@ -865,6 +989,31 @@ watch(
       color: #606266;
       margin-bottom: 8px;
     }
+
+    .point-photo {
+      margin-top: 8px;
+
+      .photo-label {
+        font-size: 12px;
+        color: #f56c6c;
+        margin-bottom: 8px;
+      }
+
+      :deep(.el-upload--picture-card) {
+        width: 80px;
+        height: 80px;
+      }
+
+      :deep(.el-upload-list--picture-card .el-upload-list__item) {
+        width: 80px;
+        height: 80px;
+      }
+    }
+  }
+
+  .photo-preview {
+    display: flex;
+    flex-wrap: wrap;
   }
 
   .detail-items {

@@ -22,6 +22,22 @@ const SafetyCheckItem = sequelize.define('SafetyCheckItem', {
     allowNull: true,
     comment: '检查标准'
   },
+  parent_id: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+    comment: 'Parent check item id'
+  },
+  enable_children: {
+    type: DataTypes.TINYINT,
+    allowNull: false,
+    defaultValue: 0,
+    comment: 'Enable child items'
+  },
+  trigger_value: {
+    type: DataTypes.TINYINT,
+    allowNull: true,
+    comment: 'Trigger value for child items'
+  },
   sort_order: {
     type: DataTypes.INTEGER,
     defaultValue: 0,
@@ -43,4 +59,6 @@ export default SafetyCheckItem;
 
 SafetyCheckItem.associate = (models) => {
   SafetyCheckItem.belongsTo(models.SafetyWorkType, { foreignKey: 'work_type_id', as: 'workType' });
+  SafetyCheckItem.belongsTo(models.SafetyCheckItem, { foreignKey: 'parent_id', as: 'parentItem' });
+  SafetyCheckItem.hasMany(models.SafetyCheckItem, { foreignKey: 'parent_id', as: 'childItems' });
 };

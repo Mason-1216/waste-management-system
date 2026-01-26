@@ -1,0 +1,16 @@
+﻿# dependencies
+**/node_modules/
+
+# build output
+frontend/dist/
+backend/dist/
+
+# logs
+backend/logs/
+*.log
+
+# uploads
+uploads/
+
+# local settings
+.claude/settings.local.json

@@ -1,7 +1,6 @@
 import axios from 'axios';
 import { ElMessage } from 'element-plus';
-import { useUserStore } from '@/store/user';
-import router from '@/router';
+import { useUserStore } from '@/store/modules/user';
 
 const request = axios.create({
   baseURL: '/api',
@@ -60,7 +59,6 @@ request.interceptors.response.use(
           ElMessage.error('登录已过期，请重新登录');
           const userStore = useUserStore();
           userStore.logout();
-          router.push('/login');
         }
       } else if (status === 403) {
         ElMessage.error('无权限访问');

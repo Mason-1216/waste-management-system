@@ -19,7 +19,7 @@ const Permission = sequelize.define('Permission', {
     comment: '权限名称'
   },
   resource_type: {
-    type: DataTypes.ENUM('menu', 'button', 'api'),
+    type: DataTypes.ENUM('menu', 'button', 'api', 'module'),
     defaultValue: 'api',
     comment: '资源类型'
   },

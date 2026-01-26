@@ -7,7 +7,7 @@
           <el-icon><Download /></el-icon>
           下载模板
         </el-button>
-        <el-upload
+        <BaseUpload
           ref="uploadRef"
           :action="importUrl"
           :headers="uploadHeaders"
@@ -21,7 +21,7 @@
             <el-icon><Download /></el-icon>
             导入
           </el-button>
-        </el-upload>
+        </BaseUpload>
         <el-button type="primary" @click="addWorkType">
           <el-icon><Plus /></el-icon>
           新增工作性质
@@ -77,7 +77,22 @@
               class="table-row"
             >
               <div class="col-order">{{ index + 1 }}</div>
-              <div class="col-name">{{ item.item_name }}</div>
+              <div class="col-name">
+                <div class="item-name">
+                  <el-tag v-if="item.parent_id" size="small" type="info">子项</el-tag>
+                  <el-tag v-else-if="Number(item.enable_children) === 1" size="small" type="success">联动</el-tag>
+                  <span>{{ item.item_name }}</span>
+                </div>
+                <div v-if="item.parent_id" class="item-meta">
+                  父项：{{ getParentItemName(item, workType) }}
+                </div>
+                <div v-if="item.parent_id" class="item-meta">
+                  触发：{{ formatTriggerValue(item.trigger_value) }}
+                </div>
+                <div v-else-if="Number(item.enable_children) === 1" class="item-meta">
+                  子项联动：开启
+                </div>
+              </div>
               <div class="col-standard">{{ item.item_standard || '-' }}</div>
               <div class="col-status">
                 <el-tag :type="item.status === 'active' ? 'success' : 'info'" size="small">
@@ -99,10 +114,14 @@
     </div>
 
     <!-- 工作性质对话框 -->
-    <el-dialog
+    <FormDialog
       v-model="workTypeDialogVisible"
       :title="workTypeForm.id ? '编辑工作性质' : '新增工作性质'"
       width="450px"
+      :confirm-text="'确定'"
+      :cancel-text="'取消'"
+      :confirm-loading="saving"
+      @confirm="saveWorkType"
     >
       <el-form
         :model="workTypeForm"
@@ -129,6 +148,13 @@
             :max="999"
           />
         </el-form-item>
+        <el-form-item label="积分">
+          <el-input-number
+            v-model="workTypeForm.points"
+            :min="0"
+            :max="999"
+          />
+        </el-form-item>
         <el-form-item label="状态">
           <el-radio-group v-model="workTypeForm.status">
             <el-radio value="active">启用</el-radio>
@@ -136,17 +162,17 @@
           </el-radio-group>
         </el-form-item>
       </el-form>
-      <template #footer>
-        <el-button @click="workTypeDialogVisible = false">取消</el-button>
-        <el-button type="primary" @click="saveWorkType" :loading="saving">确定</el-button>
-      </template>
-    </el-dialog>
+    </FormDialog>
 
     <!-- 检查项目对话框 -->
-    <el-dialog
+    <FormDialog
       v-model="checkItemDialogVisible"
       :title="checkItemForm.id ? '编辑检查项目' : '新增检查项目'"
       width="550px"
+      :confirm-text="'确定'"
+      :cancel-text="'取消'"
+      :confirm-loading="saving"
+      @confirm="saveCheckItem"
     >
       <el-form
         :model="checkItemForm"
@@ -171,6 +197,29 @@
             placeholder="请输入检查标准"
           />
         </el-form-item>
+        <el-form-item label="父级检查项">
+          <el-select
+            v-model="checkItemForm.parentId"
+            clearable
+            placeholder="无"
+          >
+            <el-option
+              v-for="item in availableParentItems"
+              :key="item.id"
+              :label="item.item_name"
+              :value="item.id"
+            />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="子项触发值" v-if="checkItemForm.parentId">
+          <el-radio-group v-model="checkItemForm.triggerValue">
+            <el-radio :value="1">是</el-radio>
+            <el-radio :value="0">否</el-radio>
+          </el-radio-group>
+        </el-form-item>
+        <el-form-item label="启用子项联动" v-else>
+          <el-switch v-model="checkItemForm.enableChildren" />
+        </el-form-item>
         <el-form-item label="排序">
           <el-input-number
             v-model="checkItemForm.sortOrder"
@@ -185,11 +234,7 @@
           </el-radio-group>
         </el-form-item>
       </el-form>
-      <template #footer>
-        <el-button @click="checkItemDialogVisible = false">取消</el-button>
-        <el-button type="primary" @click="saveCheckItem" :loading="saving">确定</el-button>
-      </template>
-    </el-dialog>
+    </FormDialog>
   </div>
 </template>
 
@@ -197,17 +242,17 @@
 import { ref, reactive, computed, onMounted } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { Plus, Download } from '@element-plus/icons-vue';
-import { useUserStore } from '@/store/user';
+import { useUserStore } from '@/store/modules/user';
+import { useUpload } from '@/composables/useUpload';
 import request from '@/api/request';
+import FormDialog from '@/components/system/FormDialog.vue';
 
 const userStore = useUserStore();
 
+const { apiBaseUrl, uploadHeaders } = useUpload();
+
 // 导入配置
-const apiBaseUrl = import.meta.env.VITE_API_BASE_URL;
 const importUrl = computed(() => `${apiBaseUrl}/safety-check-items/import`);
-const uploadHeaders = computed(() => ({
-  Authorization: `Bearer ${userStore.token}`
-}));
 const uploadRef = ref();
 
 // 工作性质列表（包含检查项目）
@@ -223,6 +268,7 @@ const workTypeForm = reactive({
   workTypeName: '',
   isDefault: false,
   sortOrder: 0,
+  points: 0,
   status: 'active'
 });
 
@@ -241,8 +287,19 @@ const checkItemForm = reactive({
   workTypeId: null,
   itemName: '',
   itemStandard: '',
+  parentId: null,
+  enableChildren: false,
+  triggerValue: 1,
   sortOrder: 0,
   status: 'active'
+});
+
+const availableParentItems = computed(() => {
+  const items = currentWorkType.value?.checkItems || [];
+  return items.filter(item =>
+    (item.parent_id === null || item.parent_id === undefined) &&
+    item.id !== checkItemForm.id
+  );
 });
 
 const checkItemRules = {
@@ -250,6 +307,58 @@ const checkItemRules = {
     { required: true, message: '请输入检查项目名称', trigger: 'blur' }
   ]
 };
+
+const buildCheckItemList = (items = []) => {
+  const parents = items.filter(item => item.parent_id === null || item.parent_id === undefined);
+  const parentIds = new Set(parents.map(item => item.id));
+  const childrenByParent = new Map();
+
+  items.forEach(item => {
+    if (item.parent_id !== null && item.parent_id !== undefined) {
+      if (!childrenByParent.has(item.parent_id)) {
+        childrenByParent.set(item.parent_id, []);
+      }
+      childrenByParent.get(item.parent_id).push(item);
+    }
+  });
+
+  const sortByOrder = (a, b) => {
+    const aOrder = a.sort_order !== undefined && a.sort_order !== null ? a.sort_order : 0;
+    const bOrder = b.sort_order !== undefined && b.sort_order !== null ? b.sort_order : 0;
+    if (aOrder !== bOrder) return aOrder - bOrder;
+    return (a.id || 0) - (b.id || 0);
+  };
+
+  parents.sort(sortByOrder);
+
+  const ordered = [];
+  parents.forEach(parent => {
+    ordered.push(parent);
+    const children = childrenByParent.get(parent.id) || [];
+    children.sort(sortByOrder);
+    ordered.push(...children);
+  });
+
+  const orphanChildren = items.filter(item =>
+    item.parent_id !== null &&
+    item.parent_id !== undefined &&
+    !parentIds.has(item.parent_id)
+  );
+  if (orphanChildren.length > 0) {
+    orphanChildren.sort(sortByOrder);
+    ordered.push(...orphanChildren);
+  }
+
+  return ordered;
+};
+
+const getParentItemName = (item, workType) => {
+  if (!item?.parent_id || !workType?.checkItems) return '-';
+  const parent = workType.checkItems.find(entry => entry.id === item.parent_id);
+  return parent ? parent.item_name : '-';
+};
+
+const formatTriggerValue = (value) => (Number(value) === 0 ? '否' : '是');
 
 // 加载工作性质列表（包含检查项目）
 const loadWorkTypes = async () => {
@@ -264,7 +373,7 @@ const loadWorkTypes = async () => {
         const items = await request.get('/safety-check-items', {
           params: { workTypeId: type.id }
         });
-        type.checkItems = items || [];
+        type.checkItems = buildCheckItemList(items || []);
       } catch {
         type.checkItems = [];
       }
@@ -285,6 +394,7 @@ const addWorkType = () => {
     workTypeName: '',
     isDefault: false,
     sortOrder: workTypes.value.length,
+    points: 0,
     status: 'active'
   });
   workTypeDialogVisible.value = true;
@@ -297,6 +407,7 @@ const editWorkType = (row) => {
     workTypeName: row.work_type_name,
     isDefault: row.is_default === 1,
     sortOrder: row.sort_order,
+    points: row.points || 0,
     status: row.status
   });
   workTypeDialogVisible.value = true;
@@ -312,6 +423,7 @@ const saveWorkType = async () => {
       workTypeName: workTypeForm.workTypeName,
       isDefault: workTypeForm.isDefault,
       sortOrder: workTypeForm.sortOrder,
+      points: workTypeForm.points,
       status: workTypeForm.status
     };
 
@@ -361,6 +473,9 @@ const addCheckItem = (workType) => {
     workTypeId: workType.id,
     itemName: '',
     itemStandard: '',
+    parentId: null,
+    enableChildren: false,
+    triggerValue: 1,
     sortOrder: workType.checkItems?.length || 0,
     status: 'active'
   });
@@ -375,6 +490,9 @@ const editCheckItem = (item, workType) => {
     workTypeId: item.work_type_id,
     itemName: item.item_name,
     itemStandard: item.item_standard || '',
+    parentId: item.parent_id ?? null,
+    enableChildren: Number(item.enable_children) === 1,
+    triggerValue: item.trigger_value ?? 1,
     sortOrder: item.sort_order,
     status: item.status
   });
@@ -391,6 +509,9 @@ const saveCheckItem = async () => {
       workTypeId: checkItemForm.workTypeId,
       itemName: checkItemForm.itemName,
       itemStandard: checkItemForm.itemStandard,
+      parentId: checkItemForm.parentId,
+      enableChildren: checkItemForm.enableChildren,
+      triggerValue: checkItemForm.triggerValue,
       sortOrder: checkItemForm.sortOrder,
       status: checkItemForm.status
     };
@@ -590,6 +711,18 @@ onMounted(() => {
       flex: 1;
       min-width: 150px;
       padding: 0 10px;
+
+      .item-name {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+
+      .item-meta {
+        margin-top: 4px;
+        font-size: 12px;
+        color: #909399;
+      }
     }
 
     .col-standard {

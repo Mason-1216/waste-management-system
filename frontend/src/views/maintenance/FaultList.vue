@@ -5,7 +5,7 @@
     </div>
 
     <!-- 筛选条件 -->
-    <div class="filter-bar">
+    <FilterBar>
       <el-select v-model="filters.status" placeholder="状态" clearable @change="loadList">
         <el-option label="待处理" value="pending" />
         <el-option label="已派发" value="assigned" />
@@ -34,7 +34,7 @@
         @keyup.enter="loadList"
       />
       <el-button type="primary" @click="loadList">搜索</el-button>
-    </div>
+    </FilterBar>
 
     <!-- 列表 -->
     <el-table :data="faultList" stripe border>
@@ -65,7 +65,7 @@
           {{ formatDateTime(row.createdAt) }}
         </template>
       </el-table-column>
-      <el-table-column label="操作" width="200" fixed="right">
+      <el-table-column label="操作" width="200">
         <template #default="{ row }">
           <el-button link type="primary" @click="viewDetail(row)">详情</el-button>
           <el-button
@@ -102,7 +102,13 @@
     </div>
 
     <!-- 详情对话框 -->
-    <el-dialog v-model="detailVisible" title="故障详情" width="600px">
+    <FormDialog
+      v-model="detailVisible"
+      title="故障详情"
+      width="600px"
+      :show-confirm="false"
+      :show-cancel="false"
+    >
       <el-descriptions :column="2" border>
         <el-descriptions-item label="设备名称">{{ currentFault?.equipmentName }}</el-descriptions-item>
         <el-descriptions-item label="故障类型">{{ getFaultTypeLabel(currentFault?.faultType) }}</el-descriptions-item>
@@ -132,10 +138,18 @@
           fit="cover"
         />
       </div>
-    </el-dialog>
+    </FormDialog>
 
     <!-- 派发维修对话框 -->
-    <el-dialog v-model="dispatchVisible" title="派发维修" width="500px">
+    <FormDialog
+      v-model="dispatchVisible"
+      title="派发维修"
+      width="500px"
+      :confirm-text="'确认派发'"
+      :cancel-text="'取消'"
+      :confirm-loading="dispatching"
+      @confirm="confirmDispatch"
+    >
       <el-form :model="dispatchForm" label-width="100px">
         <el-form-item label="维修人员" required>
           <el-select v-model="dispatchForm.repairerId" placeholder="请选择维修人员">
@@ -165,22 +179,17 @@
           />
         </el-form-item>
       </el-form>
-      <template #footer>
-        <el-button @click="dispatchVisible = false">取消</el-button>
-        <el-button type="primary" @click="confirmDispatch" :loading="dispatching">
-          确认派发
-        </el-button>
-      </template>
-    </el-dialog>
+    </FormDialog>
   </div>
 </template>
 
 <script setup>
 import { ref, computed, onMounted } from 'vue';
-import { useUserStore } from '@/store/user';
+import { useUserStore } from '@/store/modules/user';
 import { ElMessage } from 'element-plus';
 import dayjs from 'dayjs';
 import request from '@/api/request';
+import FormDialog from '@/components/system/FormDialog.vue';
 
 const userStore = useUserStore();
 

@@ -26,6 +26,12 @@ const MaintenancePlanLibrary = sequelize.define('MaintenancePlanLibrary', {
     type: DataTypes.STRING(200),
     comment: '安装位置'
   },
+  cycle_type: {
+    type: DataTypes.ENUM('daily', 'weekly', 'monthly', 'yearly'),
+    allowNull: false,
+    defaultValue: 'monthly',
+    comment: '保养周期'
+  },
   // 多周期支持
   daily_enabled: {
     type: DataTypes.BOOLEAN,

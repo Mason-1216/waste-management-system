@@ -1,5 +1,5 @@
 ﻿# 运行项目管理系统 - 上下文摘要
-> 最后更新 2026-01-03
+> 最后更新 2026-01-26
 
 ## 项目目标
 构建废弃物处理场站的运行管理系统，覆盖多角色、多场站的日常运营管理：
@@ -12,9 +12,130 @@
 
 ## 当前状态
 ### 已完成（摘要）
+- 排班日历支持同日多岗位展示（我的排班/人员日历）。
+- 管理层排班表同日多岗时“班”字橙色提示。
+- 前端路由按业务模块拆分，新增 router/modules 统一装配，保持路径与权限不变。
+- 前端菜单配置按角色拆分为独立模块，并保留 menuConfig 出口。
+- 前端新增 api/index.js 聚合出口，便于按模块调用。
+- 前端 store 拆分为 store/modules，并保留原有导出路径。
+- 前端抽离通用组件 FilterBar/TableWrapper/TableCard 并全局替换页面使用。
+- 前端新增通用上传组件 BaseUpload，并替换页面 el-upload 使用。
+- 组织架构管理页面的场站/部门/公司/角色弹窗统一为 FormDialog 组件。
+- 用户管理新增/编辑弹窗统一为 FormDialog 组件。
+- 单价管理新增/编辑弹窗统一为 FormDialog 组件。
+- 卫生工作安排的责任区/点位/分配弹窗统一为 FormDialog 组件。
+- 安全检查项目管理的工作性质/检查项弹窗统一为 FormDialog 组件。
+- 岗位工作任务库新增/编辑弹窗统一为 FormDialog 组件。
+- 表单弹窗进一步统一：排班、设备、临时任务、维修故障、自检/他检、隐患与导入预览等页面改用 FormDialog，并扩展 FormDialog 支持透传属性与自定义 footer。
+- ?????? window.location ?????? useUserStore ?????????/????????????????
+- ?? Vite ???? Sass modern API???????? chunk ??? warning limit?
+- ?????????? safety_work_types ? safety_check_items??????????????????????? /api/safety-check-items 500?
+- ?? database/update_schema.sql ???????????????????????????????
+- database/update_schema.sql now includes USE waste_management to avoid running against the wrong schema.
+- ?? docs/MIGRATION_CHECKLIST.md ???????? schema ?????????
+- 前端新增上传配置 composable（useUpload），统一 uploadUrl/uploadHeaders。
+- 设备保养/故障耗材与配件表格抽离为 MaintenanceItemTable 组件复用。
+- 设备保养任务详情弹窗抽离为 MaintenanceAssignmentDetailDialog 组件复用。
+- 设备保养记录详情弹窗抽离为 MaintenanceWorkRecordDetailDialog 组件复用。
+- 设备故障详情弹窗抽离为 MaintenanceFaultDetailDialog 组件复用。
+- 设备保养计划新增/编辑弹窗抽离为 MaintenancePlanDialog 组件复用。
+- 保养任务页复用 MaintenanceWorkRecordDetailDialog 展示验收信息。
+- 保养任务菜单合并：移除设备保养入口，保养计划改为单行标准展示并新增积分字段与导入模板支持。
+- 保养工作支持延期提醒与未完成记录：逾期任务可补填并在保养工作显示延期标记与提示条，周期结束后在工作记录显示“本日/本周/本月/本年未完成”。
+- docs/MODULARIZATION_PLAN.md 补充系统全局待拆分清单。
+- 进一步细分 schedule/task/inspection/report 模块为更细的子路由文件。
+- 路由模块内部细分：保养拆分为 plan/record/fault/repair/library/assignment/position/requisition，设备拆分为 equipment/price，审批拆分为 approvals/notifications，支持拆分为 feedback/upload。
+- 后端路由继续细分：保养/设备/审批/支持模块内部再拆分子路由文件。
+- 新增统一模块注册器，主路由使用 publicModules/privateModules 注册模块。
+- 核心平台路由继续拆分：auth/users/access/org 子模块化。
+- 后端路由模块化：新增 PLC 与运维支持（反馈/上传）模块路由注册。
+- 修复 /api/maintenance-records 与 /api/fault-reports 500：补齐保养记录与故障上报的用户关联定义。
+- 后端路由模块化：新增保养/故障维修模块与设备/单价模块路由注册。
+- 设备故障/维修控制器下沉到 maintenance/services，提升模块内服务分层。
+- 保养计划/保养记录/领料申请控制器下沉到 maintenance/services，提升模块内服务分层。
+- 安全检查配置控制器下沉到 inspection/services/safetyCheckService，控制器改为薄层转发。
+- 自检/他检/隐患与卫生管理控制器下沉到 inspection/services，控制器改为薄层转发。
+- 审批/通知/报表/设备/单价/反馈/上传控制器下沉到对应模块 services，控制器改为薄层转发。
+- 核心平台 auth/user/role/permission/station/department/company 控制器下沉到 core/services，控制器改为薄层转发。
+- 保养计划库/分配控制器下沉到 maintenance/services/planLibraryService。
+- 任务模块（任务配置/岗位任务/临时任务/临时任务库/岗位工作记录）控制器下沉到 task/services。
+- 排班控制器下沉到 schedule/services/scheduleService。
+- 保养岗位分配/工作记录控制器下沉到 maintenance/services/positionService。
+- 前端卫生自检/他检责任区点位列表抽离为 HygieneAreaChecklist 组件复用。
+- 前端安全自检/他检检查项列表抽离为 SafetyCheckItemList 组件复用。
+- 报表统计卡片/图表卡片抽离为 ReportSummaryCards 与 ReportChartCard 组件复用。
+- 后端路由模块化：新增审批/通知与报表模块路由注册。
+- 新增排班聚合接口 /api/schedules/overview，支持日期范围与任务汇总。
+- 后端路由模块化：新增岗位/任务模块与安全/卫生模块路由注册。
+- 侧边栏“岗位工作”改为子菜单（固定任务/岗位工作任务库/岗位工作完成情况记录），补充新路由与记录页占位，并补齐子菜单权限配置；固定任务/岗位工作任务库改为路由直达视图，不再使用 Tab 组件。
+- 权限种子中岗位工作菜单名称修复为：岗位工作/固定任务/岗位工作任务库/岗位工作完成情况记录。
+- 新增 .gitignore 并从版本控制移除 dist/node_modules/uploads/logs 与本地 settings.local.json（保留本地文件）。
+- 岗位工作积分配置与审核流程：岗位任务库新增任务类别/给分方式/单位积分/数量/积分规则/数量是否可修改/派发任务是否强制审核字段，数量限制 1-1000，单位积分必填允许正负/0。
+- 岗位工作记录扩展任务来源与审核状态：固定/派发/自行申请任务，支持派发与申请填报，完成记录可审核（扣分原因+负数扣分值），固定/派发未审自动通过。
+- 岗位工作前端重构：固定任务支持数量填报与积分展示；岗位工作任务库支持关键字筛选、申请填报与派发任务；新增岗位工作完成情况记录页用于审核。
+- 岗位工作-岗位工作任务库筛选改为按表头字段逐列筛选，分页支持选择每页条数；岗位工作完成情况记录页支持表头逐列筛选与完成情况列，并可按提交/审核时间筛选。
+- 岗位工作新功能暂仅对 dev_test 可见（管理/记录路由与菜单限制）。
+- 岗位工作迁移脚本改为 information_schema 判断列是否存在，避免 MySQL 不支持 ADD COLUMN IF NOT EXISTS 语法。
+- 临时工作任务库搜索框改为输入即搜索，移动端无需回车。
+- 修复表格外横向滑动条在电脑端不可拖拽的问题，支持点击轨道直接拖动，并避免绑定到不可横向滚动的容器。
+- 表格滚动条全局统一：自动包裹表格并统一滚动条容器宽度，确保各页面样式一致。
+- 岗位工作提交完成状态：前后端统一校验并标准化完成状态，避免提交后被错误标记为未完成。
+- 日期范围选择器移动端适配：限制最小宽度并固定日历表格布局，确保手机日历格子完整显示且不影响桌面端。
+- 表格滚动条改为仅使用原生滚动条：移除外置自定义条、加粗原生滚动条，并尽量保持水平滚动条常显。
+- 表格滚动条去重：隐藏 el-table 内置自定义滚动条，仅保留原生横向滚动条，并统一加粗到 12px。
+- 角色菜单权限树同步清理：自动删除权限种子中不存在的旧菜单/模块权限，并清理关联的角色/用户权限记录。
+- 侧边栏“数据报表”更名为“维保数据报表”，同步权限名称与页面标题。
+- 全局表格自定义滑动条（已取消，改为原生滚动条）：为所有 el-table 增加常驻横向滚动条，拖拽同步真实滚动容器并支持容器切换，滑块高度提升为 12px。
+- 排班表移动端横向滚动修正：移除外层容器横向滚动/最小宽度限制，避免滑动条范围不足导致操作列不可见。
+- 岗位工作岗位名称编辑：支持重命名确认并同步更新岗位工作项目与排班岗位名，避免编辑后被视为新增。
+- 岗位重命名确认弹窗文案改为中文。
+- 路由进入自动刷新：生产环境下每次进入新页面强制刷新一次，避免快捷方式进入空白页。
+- PWA 自动更新：启用 service worker 自动注册脚本，已安装桌面端可在新版本发布后自动更新并刷新。
+- 移动端表格滑动修复加强：边缘手势优先横滑，表头不再显示独立横向滚动条。
+- 移动端表格横向滑动防手势冲突：新增全局横向拖拽拦截与 overscroll 处理，避免浏览器右滑返回导致表格锁死。
+- Backend startup fix: replaced malformed maintenance controller messages with safe ASCII strings.
+- Backend 502 fix: repaired broken strings in maintenance controllers that prevented Node from starting.
+- 所有导入模板统一行高 25、字体 12、居中显示与表头底色，列宽按内容自适应；“填写说明”改为“表头/填写说明”两列描述字段含义。
+- 保养计划模板示例设备编号调整为 4 位数字。
+- Schedule import now switches to the imported month when the current month is not included so records show immediately.
+- /api/schedules 支持缺省 year/month 时使用当前年月，参数格式或月份范围非法时返回 400。
+- Schedule add user selection: role filter matches base_role_code and station managers are not restricted by station when loading users.
+- 修复日期范围选择器开始/结束时间输入框挤压，桌面保持双栏，移动端纵向排列。
+- 卫生区域划分导入：支持合并单元格/空白责任区继承，避免责任区空值导致行被跳过。
+- 卫生区域划分导入：模板与解析统一使用标准中文表头（场站/责任区/卫生点/工作要求及标准/积分），避免表头乱码导致导入为空。
+- 卫生区域划分导入：积分解析更健壮，支持非首行出现的积分值并同步更新。
+- 卫生区域划分模板：下载示例积分不再留空，避免误用空积分模板。
+- 卫生工作安排页面：场站/责任区/卫生点文案统一，并修复场站与列表数据加载取值，避免下拉无选项。
+- 卫生区域划分页：卫生点与工作要求按行对应展示，积分列移动到工作要求及标准之后。
+- 卫生区域划分页：责任区下的卫生点拆为独立行显示，并合并责任区层级的场站/积分/操作单元格。
+- 卫生区域划分页：新增分页，支持每页 5/10/20 条并按当前页重算合并行。
+- 卫生区域划分：分页按责任区数量统计（默认 5/10/20），新增批量删除责任区。
+- 卫生任务分配：按所选场站过滤岗位与责任区下拉，岗位列表包含“站长”。
+- 卫生区域划分编辑：保存时同步新增/修改/删除卫生点及工作要求，避免编辑后数据不落库。
+- 卫生任务分配保存：提交字段使用 hygieneAreaId，修复后端提示“场站不能为空”。
+- 卫生任务分配后端：创建岗位责任区时兼容 areaId/hygieneAreaId，避免 400 导致无法绑定多个责任区。
+- 卫生自检：自检表单兼容责任区/卫生点字段的驼峰与下划线命名，避免卫生点与标准显示为空。
+- 卫生自检：每个责任区照片必传（至少 1 张，上限 3），不合格项需至少 1 张（可任选点位上传），详情支持展示。
+- 卫生自检上传：上传完成后同步组件文件列表与 photoUrls，避免手机拍照上传 100% 后图片消失。
+- 上传文件类型放宽：支持 webp/heic/heif 图片，允许按扩展名或 MIME 识别，兼容手机拍照与相册上传。
+- 上传大小上限提高：Nginx 允许 20MB，后端单文件上限 20MB，并在卫生自检上传失败时提示原因。
+- 上传文件访问：后端对 /uploads 路径做静态映射，确保上传后图片可正常访问与预览。
+- 图片上传统一处理：所有图片上传组件同步文件列表与响应 URL，避免上传后缩略图消失，失败时统一提示。
+- 上传文件命名：当原始文件名无扩展名时按 MIME 补扩展名，避免手机上传后图片预览损坏。
+- 卫生他检：责任区/卫生点/工作要求字段兼容驼峰与下划线命名，避免显示为空并修正岗位/责任区匹配。
+- 后端卫生责任区更新：场站变更时同步更新卫生点与岗位分配的 station_id。
+- 修复历史数据：hygiene_points 的 station_id 同步为所属责任区的 station_id，避免卫生他检无点位。
 - 用户认证与权限（JWT）。
+- 新增“开发测试”(dev_test) 角色：全量菜单/模块/操作权限、不可删除，并预置账号 sum/605315220。
+- 修复 dev_test 模块权限默认值为字符串数组，避免 /api/roles 500。
+- 修复 sum 账号密码哈希，恢复 sum/605315220 登录。
+- 备份脚本 backup-all.ps1 改为 UTF-8 BOM，PowerShell 可直接运行。
+- 后端路由模块化：核心平台与排班路由拆到 backend/src/modules/core/routes.js 与 backend/src/modules/schedule/routes.js。
 - 角色菜单、角色首页快捷操作与统计卡片。
+- 权限体系细化：permissions 支持 module 类型，新增 user_permissions 表；模块权限按子选项卡拆分（报表/保养/故障/临时工作/岗位工作/自检他检等），用户支持额外允许/禁止权限叠加在基准角色上。
 - 用户管理重构（岗位层级、部门、单价管理员、批量导入）。
+- 用户导入：仅甲方按填写场站绑定，其他角色导入时忽略场站。
+- 用户管理新增：基准角色必选，权限树自动勾选基准角色权限，支持在菜单/模块树中直接加/减个人权限。
 - 场站列表更新为 16 个指定名称。
 - 部门接口 /api/departments。
 - 通知接口与表结构对齐（notify_type 等字段）。
@@ -75,6 +196,25 @@
 - 安全自检历史/今日记录前端去重，避免重复显示。
 - 批量移除前后端 console 调试输出，关闭 Sequelize 日志。
 - 所有表单时间选择统一到“小时:分钟”。
+- 数据报表页面切换为“设备保养统计/设备维修统计”，含场站+日期筛选、设备排行、状态分布、周期完成率、年度趋势与 Excel 导出。
+- 数据报表代码整理：拆分图表渲染函数、移除调试日志、统一导出文案，保持现有业务逻辑不变。
+- 新增文档：docs/PROJECT_OVERVIEW.md（项目功能与依赖说明）、docs/USER_GUIDE.md（面向新手的使用说明）。
+- 文档新增：docs/MODULARIZATION_PLAN.md（模块化拆分与迁移路径）。
+- 模块化文档补充排班聚合看板接口草案。
+- 前端路由移除进出料/库存模块（/inbound、/outbound、/inventory）以彻底隐藏该模块。
+- 后端彻底移除进出料/库存模块：删除相关路由、控制器、模型（Warehouse/IcCard/InboundRecord/OutboundRecord）及报表接口。
+- 全局样式适配：统一筛选/搜索区域自适应宽度，表格取消固定列（冻结窗格），表单/分页/弹窗在移动端自动纵向布局，防止窄屏显示不全。
+- 全局样式增强：列表横向滚动更顺滑、弹窗内容超高自动滚动，筛选框最小宽度提升，基础字号与行高调整为更舒适的阅读体验。
+- PLC 可视化报表修复：报表接口返回结构解析调整，避免前端拿不到数据；用量排名图改为横轴监控点名称、纵轴用量。
+- 移动端表格体验：移除前端操作列固定列配置，补充表格滚动容器的横向滚动兜底，避免右侧列缺失与刷新后无法横向滑动。
+- PLC 报表修复：可视化报表改回正确的接口返回解析，修复图表无数据；补齐用量/数值轴标题并调整 PLC 报表筛选控件最小宽度。
+- PLC 报表默认筛选：管理类默认查看全部场站，站长/甲方默认本场站；移除 PLC 数据报表筛选控件固定宽度，使用自适应最小宽度。
+- 全局筛选条宽度统一：为 filter-bar/filter-form/search-form/table-toolbar 内的筛选控件设置统一最小宽度与自适应布局，避免筛选项过短。
+- 移动端表格与标签卡滚动优化：用户管理操作列按钮改为弹性布局避免错行，组织架构表格与标签卡支持横向手势滑动。
+- 移动端滑动锁死修复：表格滚动容器改为支持横纵滑动触控，避免在表格上上下滑动后锁死。
+- 移动端表格交互优化：表格滚动容器取消纵向滚动捕获，避免多次滑动后锁死；用户管理表格进入/切换时强制布局刷新避免空白。
+- 移动端展示修复：排班表去固定列以支持横向滚动；日期范围选择器改为纵向布局防止右侧日历被挤压；卫生区域划分标题不折行；PLC 报表图表与按钮间距与高度在窄屏下优化。
+- 后端新增报表接口：/api/reports/maintenance-by-month 与 /api/reports/repair-by-month（按设备/年/场站返回月度次数）。
 - 安全隐患新增隐患：支持新增/删除隐患类别；类别乱码修复与重置脚本。
 - 认证与用户信息接口补充 departmentName。
 - 数据权限：部门经理/副经理范围改为按 departmentName 过滤。
@@ -98,6 +238,15 @@
 - “设备管理”界面仅对站长/部门经理/部门副经理显示。
 - 设备保养计划表格按场站+设备+周期合并单元格，逐条展示保养标准。
 - 设备保养计划页面与入口仅对站长/部门经理/部门副经理开放。
+- 设备保养→保养计划列表补充保养标准/保养规范/检查时间列，并支持批量删除。
+- 保养计划模板与导入支持周/月/年检查时间字段，导入保养标准/规范不丢失。
+- 保养计划模板填写说明：保养周期用全称（日保养/周保养/月保养/年保养），周/月/年检查说明同步全称。
+- 设备保养保养计划批量删除表格增加 row-key，修复选择行不稳定问题。
+- 批量删除补充 fallback 逻辑，避免选择行无计划ID导致无法删除。
+- 批量删除进一步扩展 groupKey/设备信息兜底，避免选择行缺少周期/ID时仍提示无可删除计划。
+- 设备保养保养计划批量/单条删除：补充从行/分组兜底提取计划ID，避免勾选后仍提示未选择或删除无效。
+- 设备保养保养计划删除：当行内未带计划ID时自动回查接口匹配设备信息，避免“未识别到可删除计划”。
+- 设备保养保养计划导入：后端支持按场站名/ID解析并按检查日推断周期，缺失场站名时对站长角色回退到当前场站；补齐 plan 模型的 cycle_type 并在列表接口为旧数据推断周期；前端导入提示展示成功/失败与示例错误。
 - 修复“设备故障上报”页面模板语法错误，恢复故障上报表单与设备管理面板渲染。
 - 人员安全自检默认不限定日期范围；部门经理/副经理无部门名时仍可看到本人记录。
 - 修复安全自检详情“结果”列模板错误导致的 Vue 编译报错。
@@ -117,7 +266,22 @@
 - 设备故障维修验收支持“退回重做”。
 - 设备故障列表新增状态筛选（含退回重做）。
 - 排班页移除临时调试信息展示。
+- 卫生工作安排：前端 API 引用统一到 hygieneManagement，修复构建时缺失 hygienePoint/hygieneArea/hygienePositionArea 导致的前端镜像构建失败。
+- 卫生工作安排：岗位下拉接口引用修正为 positionJob，修复构建时缺失 position API。
+- 卫生工作安排：后端 HygieneArea 关联别名调整为 hygienePoints，并在卫生管理接口中映射 points/areaPoints 字段，修复后端启动报错与 502。
+- 安全工作性质/卫生责任区：补齐数据库 points 字段（migration_add_points_fields.sql 已执行），修复 safety-work-types 500。
+- 卫生工作安排：新增 permissions 菜单项 menu:/hygiene-work-arrangement 并同步角色权限，恢复侧边栏显示。
+- 移动端故障上报表单：输入控件改为纵向布局并全宽显示，避免表单折叠。
+- 排班视图：周/日历网格改用 minmax(0, 1fr) 并补充宽度/盒模型，避免周日列溢出卡片。
+- 卫生工作安排导入：站点列表改用 /stations/all 并统一 name 映射，修复导入提示“场站不存在”。
+- 数据权限：部门副经理/部门经理/高层统一放开为全场站数据（station_manager 保持本场站）。
+- 设备故障弹窗：限制弹窗本体横向滚动，日期时间字段不再需要右拉；仅耗材/配件表格保留横向滚动。
+- PLC 可视化报表：移动端筛选控件宽度下调，避免筛选框过大。
 - 设备保养分配：保养计划下拉按场站+设备+周期聚合，选择后展示计划内标准清单。
+- 设备保养：站长/操作岗/甲方按所属场站过滤，站长/操作岗跟随当前场站上下文，甲方固定所属场站。
+- 设备保养后端：保养计划/分配/岗位分配/工作记录列表对站长/操作岗按当前场站过滤、甲方按固定所属场站过滤。
+- 设备保养后端：站长/操作岗优先使用请求头 X-Station-Id 匹配所属场站过滤。
+- 设备保养后端：当前场站仅在用户已绑定场站内生效，避免历史场站越权。
 - 安全自检页面优化：今日状态卡片拆分为“基本工作/操作”两行，历史工作性质统一用“、”分隔。
 - 人员安全自检场站下拉：站长角色优先使用用户管理绑定场站列表。
 - 人员安全自检“工作性质”筛选：支持数组/字符串/单值，避免筛选不出记录。
@@ -126,12 +290,13 @@
 - 安全他检列表接口补充站点关联，表格“场站”列可正常显示。
 - 安全他检列表：若记录未保存站点，按被检查人当日排班补站点显示。
 - 修复他检接口权限配置：POST /other-inspections 增加部门经理/副经理权限。
-- 岗位工作-人员岗位管理：岗位筛选改为模糊匹配（单字命中）。
+- 岗位工作-岗位工作任务库：岗位筛选改为模糊匹配（单字命中）。
 - 临时工作列表表头与任务库对齐，新增“具体工作内容”。
 - 设备故障 Tab 默认选中修复：侧边栏进入后不再折叠。
 - 设备故障“新增报障”按钮补回文字显示。
 - 设备故障“紧急程度”下拉文案修复为 低/中/高/紧急。
 - 设备故障上报信息“场站”“设备编号”必填。
+- 设备故障上报补齐 project_id（默认 lastProjectId 或 0），修复 /api/fault-reports 400。
 - 设备故障表单修复乱码标题与按钮文字。
 - 设备故障耗材/配件改为单独一行展示。
 - 设备故障已派单步骤显示绿色勾。
@@ -168,9 +333,73 @@
 - 消息提醒权限规则：安全隐患/他检/卫生他检/临时任务/设备故障按角色/关联人过滤提醒。
 - 菜单配置重写为 UTF-8，修复 Vite 解析报错；“消息通知”固定在侧边栏底部（帮助与反馈上方）。
 - PLC 记录：新增 /plc-records 页面、菜单与权限；后端提供 /api/plc/upload、/api/plc/records、/api/plc/files/scan。
+- PLC 菜单权限补齐：新增“PLC 数据报表/可视化报表”菜单权限，默认分配给管理类角色（含安全员/高层），侧边栏 PLC 监控下显示三项子菜单。
+- PLC 数据报表接口修复：累计报表 SQL 使用保留字 alias 导致 500，已更名并映射到前端使用的用量字段。
+- PLC 数据报表/可视化报表前端空白问题修复：接口返回对象被错误当作 res.data 导致表格/图表无数据，已改为直接使用接口对象并重建前端镜像。
+- PLC 数据报表/可视化报表增强：支持日/周/月/年粒度与默认当月时间范围，按角色自动限制场站（站长/甲方仅本场站，管理角色全量），排名取当前筛选场站前 10；可视化趋势/极值图支持粒度切换，波动型最小/平均/最大柱线样式调整。
+- PLC 数据报表：为避免 Vue 组件更新时的 DOM 插入异常，页面路由关闭过渡动画。
+- PLC 数据报表：禁用自定义表格滚动条注入，避免 DOM 变更导致 insertBefore 运行时错误。
+- Fix frontend build chunking: keep @vue packages in vue-core to avoid element-plus <-> vue-core cycle that caused blank page error.
 - 用户管理：新增当月排班场站显示（scheduleStations），从排班动态计算。
 - 排班页自检/他检详情 UI：分组卡片 + 弹窗详情，显示完成/异常数与完成时间（HH:mm）。
-- 设备保养“保养弹窗”：耗材/配件表格新增按钮右对齐与横向滚动（代码已改，若未生效需重建前端）。
+- 设备保养"保养弹窗"：耗材/配件表格新增按钮右对齐与横向滚动（代码已改，若未生效需重建前端）。
+- 安全检查项目支持父子联动：新增 parent_id/enable_children/trigger_value 字段与迁移，管理页可配置父级/触发值，导入模板与导入逻辑同步支持。
+- 安全自检/他检按联动规则展示子项，父项变化时清空隐藏子项，仅提交可见项；“不合格”文案统一改为“异常”。
+- 修复安全隐患整改页面构建错误：补回 decodeMojibake 方法，避免 “return outside of function” 报错。
+
+### PLC 监控微服务与 Docker 优化（2026-01-18）
+**功能：新增独立 PLC Python 微服务，支持 PLC 数据采集与监控**
+
+**Docker 多服务架构：**
+- mysql: MySQL 8.0 数据库，端口 3307
+- plc-service: Python Flask PLC 微服务，端口 5001
+- backend: Node.js Koa 后端，端口 3000
+- frontend: Nginx 前端，端口 80
+
+**Docker 镜像优化（中国镜像加速）：**
+- plc-service/Dockerfile: 使用 docker.m.daocloud.io/library/python:3.11-slim
+- pip 源: https://pypi.tuna.tsinghua.edu.cn/simple
+- npm 源: https://registry.npmmirror.com
+- Docker Desktop registry-mirrors 配置: DaoCloud/阿里云/1Panel
+
+**数据库新增表：**
+- plc_categories - PLC 数据分类
+  - id, category_name, category_code, data_source, read_interval, enabled, created_at, updated_at
+- plc_monitor_configs - PLC 监控点配置
+  - id, category_id, point_name, point_code, data_type, unit, min_value, max_value, enabled
+- plc_readings - PLC 历史数据
+  - id, config_id, value, quality, read_time, created_at
+
+**数据库表结构修改：**
+- permissions 表: resource_type ENUM 新增 'module' 值（原仅 menu/button/api）
+
+**后端新增：**
+- models/PlcCategory.js、PlcMonitorConfig.js、PlcReading.js
+- controllers/plcMonitorController.js
+- services/plcBridgeService.js（后端与 PLC 微服务通信）
+- 依赖新增: axios
+
+**前端新增：**
+- api/plcMonitor.js
+- views/plc/PlcRealtimeMonitor.vue - 实时监控
+- views/plc/PlcHistoryView.vue - 历史数据
+- views/plc/PlcMonitorConfigView.vue - 监控配置
+- views/plc/PlcCategoryManagement.vue - 分类管理
+- views/plc/PlcReports.vue - PLC 报表
+- views/plc/PlcScaleRecords.vue - 地磅记录
+- utils/request.js - 兼容层（重导出 api/request）
+- components/ 目录新增
+
+**PLC 微服务（plc-service/）：**
+- app.py - Flask 主应用
+- requirements.txt - Python 依赖
+- Dockerfile - 容器配置
+
+**API 新增：**
+- GET /api/plc-monitor/realtime - 实时数据
+- GET /api/plc-monitor/history - 历史数据
+- GET /api/plc-monitor/configs - 监控配置
+- GET /api/plc/records - PLC 记录
 
 ### 安全隐患模块重构（2025-12-27）
 **功能：重构安全隐患流程，实现安全员发起→站长整改→安全员复核的完整流程**
@@ -196,11 +425,13 @@
 **后端新增：**
 - models/HazardCategory.js、models/HazardRootCause.js
 - controllers/hazardConfigController.js（类别/原因增删改查）
-- outes/index.js 新增隐患配置路由
+- 
+outes/index.js 新增隐患配置路由
 
 **前端新增/修改：**
 - pi/hazardConfig.js
-- iews/inspection/SafetyRectification.vue 重构（发起信息/整改信息/详情流转图）
+- 
+iews/inspection/SafetyRectification.vue 重构（发起信息/整改信息/详情流转图）
 
 **业务流程：**
 1. 安全员发起隐患 → 状态“待整改”，通知站长
@@ -219,7 +450,8 @@
 ### 组织架构管理功能（2025-12-27）
 **功能：系统管理员新增“场站”和“部门”的增删改管理**
 - 后端新增：department create/update/delete 接口
-- 前端新增：pi/department.js、iews/system/OrganizationManagement.vue
+- 前端新增：pi/department.js、
+iews/system/OrganizationManagement.vue
 - 场站管理标签：列表/搜索/新增/编辑/删除
 - 部门管理标签：列表/搜索/新增/编辑/删除（有用户时提示无法删除）
 - 路由：/organization-management（仅 admin）
@@ -266,8 +498,7 @@
 
 **前端新增/修改：**
 - api/maintenancePosition.js
-- views/maintenance/EquipmentMaintenance.vue：日保养、周期调度、岗位分配Tab、工作记录Tab
-- views/maintenance/MaintenanceTask.vue（新增）：员工今日保养任务入口
+- views/maintenance/MaintenanceTask.vue：保养工作/保养计划/岗位分配/工作记录统一入口（含员工今日保养任务）。
 - router/index.js、config/menuConfig.js：新增路由和菜单
 
 **业务流程：**
@@ -280,7 +511,7 @@
 ## 角色菜单/首页（摘要）
 - 操作岗：首页显示今日自检/固定任务/排班表；快捷操作：排班表/安全自检/卫生自检/固定任务/设备故障。
 - 维修岗：首页显示今日自检/设备故障；快捷操作：安全自检/设备故障。
-- 站长：首页显示今日自检/岗位工作/设备故障；卫生检查改名；侧边栏岗位现场工作改名为“岗位工作”。
+- 站长：首页显示今日自检/岗位工作/设备故障；卫生检查改名；侧边栏固定任务改名为“岗位工作”。
 - 部门经理/副经理：首页显示安全检查/卫生检查/排班表。
 - 安全员：首页显示安全检查/卫生检查/安全隐患；快捷操作：安全自检/卫生自检/安全隐患。
 - 系统管理员：快捷操作：用户管理/组织架构。
@@ -402,6 +633,9 @@
 - POST /api/plc/files/scan
 - GET /api/plc/records
 - POST /api/plc/upload
+- GET /api/plc-monitor/realtime
+- GET /api/plc-monitor/history
+- GET /api/plc-monitor/configs
 - GET /api/position-jobs
 - POST /api/position-jobs
 - DELETE /api/position-jobs/:id
@@ -529,6 +763,9 @@ docker-compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
 # 重建
 docker-compose up -d --build
 
+# 仅重建前端
+docker-compose up -d --build frontend
+
 # 日志
 docker logs wms-backend --tail 50
 `
@@ -536,6 +773,7 @@ docker logs wms-backend --tail 50
 ## 访问地址
 - 前端：http://localhost
 - 后端：http://localhost:3000
+- PLC 服务：http://localhost:5001
 - MySQL：localhost:3307
 
 ## 测试账号
@@ -543,13 +781,50 @@ docker logs wms-backend --tail 50
 - operator1 / admin123
 - station_mgr / admin123
 - maintenance1 / admin123
+- sum / 605315220
 
 ## 备注
+- 自动运行测试，在代码发生修改之后，重启前端和后端，并重构镜像。
 - 数据库与连接统一使用 utf8mb4。
-- 乱码根因：部分前端文件被以错误编码（如 GBK/Latin1）读写或二次解码导致文本损坏。
-- 根目录脚本：
-  - update_stations.sql
-  - update_schema.sql
-  - update_approval_tables.sql
-  - update_inspection_fault_tables.sql
-- 此版本为“恢复重建版”，若需继续补充历史细节请告知。
+- 乱码根因：部分前端文件被以错误编码读写或二次解码导致文本损坏。
+- Docker 镜像加速：使用 DaoCloud/阿里云/1Panel 镜像源，配置文件见 scripts/docker-daemon.json。
+- PLC 微服务独立运行，后端通过 plcBridgeService.js 与其通信。
+- 根目录脚本：update_stations.sql、update_schema.sql、update_approval_tables.sql、update_inspection_fault_tables.sql
+- 数据库补充脚本：database/migration_user_permissions.sql（扩展 permissions 枚举并创建 user_permissions 表，用于用户额外权限）。
+- 用户管理：基准角色自动勾选菜单权限；前端树控件改为在角色切换/新增时调用 setCheckedKeys，确保菜单权限勾选显示正常。
+- scripts/ 目录：backup-all.ps1/sh (数据库备份)、docker-daemon.json (镜像加速配置)、setup-docker-mirrors.ps1 (配置镜像源)
+- 此版本为恢复重建版，若需继续补充历史细节请告知。
+
+### 安全检查与卫生管理积分功能及菜单重构（2026-01-20）
+**功能：为安全工作性质和卫生责任区添加积分字段，卫生工作安排独立为子菜单**
+
+**数据库表结构调整：**
+- safety_work_types：新增 points 字段（INT，默认 0，积分）
+- hygiene_areas：新增 points 字段（INT，默认 0，积分）
+
+**后端调整：**
+- SafetyWorkType 模型：添加 points 字段
+- HygieneArea 模型：添加 points 字段
+- safetyCheckController：createWorkType/updateWorkType 方法支持 points 参数
+- hygieneManagementController：createHygieneArea/updateHygieneArea 方法支持 areaPoints 参数
+
+**前端新增/修改：**
+- views/inspection/HygieneWorkArrangement.vue（新建）：卫生工作安排独立页面
+  - 卫生区域划分 tab：支持积分字段输入，支持 Excel 模板导入
+  - 卫生任务分配 tab：岗位责任区分配管理
+- views/inspection/HygieneOtherInspection.vue：简化为纯卫生他检功能，移除工作安排相关内容
+- views/inspection/SafetyCheckManagement.vue：工作性质表单添加积分输入字段
+- router/index.js：新增 /hygiene-work-arrangement 路由
+- config/menuConfig.js：所有角色的卫生检查菜单新增"卫生工作安排"子菜单项
+
+**菜单结构调整：**
+- 卫生检查
+  - 卫生自检
+  - 卫生他检（仅检查记录）
+  - 卫生工作安排（新增，包含区域划分和任务分配）
+
+**迁移脚本：** database/migration_add_points_fields.sql
+- 修复全局表格表头与内容错位：移除强制 min-width 与 scrollbar-gutter 覆盖。
+
+
+

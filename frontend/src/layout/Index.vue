@@ -1,6 +1,16 @@
 ﻿<template>
   <el-container class="layout-container">
-    <el-aside :width="isCollapse ? '64px' : '220px'" class="sidebar">
+    <!-- 移动端遮罩层 -->
+    <div
+      v-if="isMobile && mobileMenuVisible"
+      class="mobile-overlay"
+      @click="closeMobileMenu"
+    ></div>
+
+    <el-aside
+      :width="isMobile ? '220px' : (isCollapse ? '64px' : '220px')"
+      :class="['sidebar', { 'mobile-sidebar': isMobile, 'mobile-visible': mobileMenuVisible }]"
+    >
       <div class="logo">
         <img src="/logo.svg" alt="logo" v-if="!isCollapse" />
         <span>运行管理系统</span>
@@ -58,12 +68,18 @@
     <el-container>
       <el-header class="header">
         <div class="header-left">
-          <el-icon class="collapse-btn" @click="toggleCollapse">
+          <!-- 移动端汉堡菜单按钮 -->
+          <el-icon v-if="isMobile" class="hamburger-btn" @click="toggleMobileMenu">
+            <Fold v-if="mobileMenuVisible" />
+            <Expand v-else />
+          </el-icon>
+          <!-- 桌面端折叠按钮 -->
+          <el-icon v-else class="collapse-btn" @click="toggleCollapse">
             <Fold v-if="!isCollapse" />
             <Expand v-else />
           </el-icon>
 
-          
+
         </div>
 
         <div class="header-right">
@@ -95,13 +111,19 @@
       </el-header>
       <el-main class="main-content">
         <router-view v-slot="{ Component, route: currentRoute }">
-          <transition name="fade" mode="out-in">
-            <component 
-              :is="Component" 
+          <transition v-if="shouldUseTransition" name="fade" mode="out-in">
+            <component
+              :is="Component"
               v-if="Component"
               :key="`${currentRoute.fullPath}-${routeKey}`"
             />
           </transition>
+          <component
+            v-else
+            :is="Component"
+            v-if="Component"
+            :key="`${currentRoute.fullPath}-${routeKey}`"
+          />
         </router-view>
       </el-main>
     </el-container>
@@ -126,9 +148,9 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onErrorCaptured, watch, nextTick } from 'vue';
+import { ref, computed, onMounted, onBeforeUnmount, onErrorCaptured, watch, nextTick } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
-import { useUserStore } from '@/store/user';
+import { useUserStore } from '@/store/modules/user';
 import { menuConfig, bottomMenus } from '@/config/menuConfig';
 import { getNotifications, getUnreadCount, markAsRead as markRead } from '@/api/notification';
 import { ElMessage } from 'element-plus';
@@ -138,12 +160,35 @@ const router = useRouter();
 const route = useRoute();
 const userStore = useUserStore();
 const displayName = computed(() => userStore.realName || userStore.userInfo?.username || '');
+const shouldUseTransition = computed(() => route.meta?.disableTransition !== true);
 
 const isCollapse = ref(false);
 const notificationDrawer = ref(false);
 const notifications = ref([]);
 const unreadCount = ref(0);
 const routeKey = ref(0);
+
+// 移动端响应式检测
+const MOBILE_BREAKPOINT = 768;
+const isMobile = ref(window.innerWidth <= MOBILE_BREAKPOINT);
+const mobileMenuVisible = ref(false);
+
+const checkMobile = () => {
+  isMobile.value = window.innerWidth <= MOBILE_BREAKPOINT;
+  // 切换到桌面端时自动关闭移动端菜单
+  if (!isMobile.value) {
+    mobileMenuVisible.value = false;
+  }
+};
+
+const toggleMobileMenu = () => {
+  mobileMenuVisible.value = !mobileMenuVisible.value;
+};
+
+const closeMobileMenu = () => {
+  mobileMenuVisible.value = false;
+};
+
 const SIDEBAR_RELOAD_KEY = 'wms:sidebar-reload-target';
 const SIDEBAR_RELOAD_DONE = 'wms:sidebar-reload-done';
 const pushRouteLog = (entry) => {
@@ -203,6 +248,10 @@ const bottomMenuItems = computed(() => bottomMenus);
 // 处理菜单选择
 const handleMenuSelect = async (path) => {
   if (path && path.startsWith('/')) {
+    // 移动端选择菜单后自动关闭侧边栏
+    if (isMobile.value) {
+      closeMobileMenu();
+    }
     // 强制刷新路由 key，确保组件重新渲染
     routeKey.value++;
     sessionStorage.setItem(SIDEBAR_RELOAD_KEY, path);
@@ -212,7 +261,7 @@ const handleMenuSelect = async (path) => {
     router.push(path).catch(err => {
       // 忽略重复导航错误
       if (err.name !== 'NavigationDuplicated') {
-        console.error('路由导航错误:', err);
+        pushRouteLog({ type: 'sidebar-nav-error', message: String(err) });
       }
     });
   }
@@ -226,7 +275,7 @@ const handleBottomMenuClick = (menu) => {
     router.push(menu.path).catch(err => {
       // 忽略重复导航错误
       if (err.name !== 'NavigationDuplicated') {
-        console.error('路由导航错误:', err);
+        pushRouteLog({ type: 'bottom-menu-nav-error', message: String(err) });
       }
     });
   }
@@ -325,7 +374,6 @@ watch(() => route.path, async (newPath, oldPath) => {
 
 // 错误捕获
 onErrorCaptured((err, instance, info) => {
-  console.error('组件错误:', err, info);
   pushRouteLog({ type: 'component-error', message: err?.message || String(err), info });
   ElMessage.error('页面加载失败，请刷新重试');
   return false; // 阻止错误继续传播
@@ -334,6 +382,12 @@ onErrorCaptured((err, instance, info) => {
 onMounted(() => {
   loadUnreadCount();
   setInterval(loadUnreadCount, 60000);
+  // 添加窗口尺寸监听
+  window.addEventListener('resize', checkMobile);
+});
+
+onBeforeUnmount(() => {
+  window.removeEventListener('resize', checkMobile);
 });
 </script>
 
@@ -525,5 +579,67 @@ onMounted(() => {
     height: 100%;
   }
 
+  // 移动端侧边栏样式
+  .mobile-sidebar {
+    position: fixed;
+    left: 0;
+    top: 0;
+    height: 100vh;
+    z-index: 1001;
+    transform: translateX(-100%);
+    transition: transform 0.3s ease;
+
+    &.mobile-visible {
+      transform: translateX(0);
+    }
+  }
+
+  // 主内容区移动端适配
+  .main-content {
+    padding: 12px;
+  }
+
+  // 隐藏桌面用户名
+  .header-right .user-info .username {
+    display: none;
+  }
+
+  // 头部间距调整
+  .header {
+    padding: 0 12px;
+
+    .header-right {
+      gap: 12px;
+    }
+  }
+}
+
+// 移动端遮罩层
+.mobile-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 1000;
+}
+
+// 汉堡菜单按钮
+.hamburger-btn {
+  font-size: 24px;
+  cursor: pointer;
+  color: #606266;
+  padding: 10px;
+  margin: -10px;
+  min-width: 44px;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  &:hover {
+    color: #409EFF;
+  }
 }
 </style>

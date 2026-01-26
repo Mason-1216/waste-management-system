@@ -69,7 +69,7 @@
     </el-card>
 
     <!-- 检查记录列表 -->
-    <el-card class="table-card">
+    <TableCard>
       <el-table :data="inspectionList" stripe border v-loading="loading">
         <el-table-column prop="inspection_date" label="检查日期" width="120" />
         <el-table-column label="场站" width="150">
@@ -99,7 +99,7 @@
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="100" fixed="right">
+        <el-table-column label="操作" width="100">
           <template #default="{ row }">
             <el-button link type="primary" @click="viewDetail(row)">查看</el-button>
           </template>
@@ -115,10 +115,17 @@
           @current-change="loadInspectionList"
         />
       </div>
-    </el-card>
+    </TableCard>
 
     <!-- 新建检查对话框 -->
-    <el-dialog v-model="dialogVisible" title="安全他检" width="750px" :close-on-click-modal="false">
+    <FormDialog
+      v-model="dialogVisible"
+      title="安全他检"
+      width="750px"
+      :close-on-click-modal="false"
+      :show-confirm="false"
+      :show-cancel="false"
+    >
       <el-form :model="inspectionForm" :rules="formRules" ref="formRef" label-width="100px">
         <el-form-item label="场站" prop="stationId">
           <el-select
@@ -168,46 +175,30 @@
 
         <!-- 检查项目 -->
         <div v-if="groupedCheckItems.length > 0">
-          <div v-for="group in groupedCheckItems" :key="group.workType.id" class="check-group">
-            <el-divider content-position="left">{{ group.workType.work_type_name }}</el-divider>
-            <div class="check-item-list">
-              <div v-for="item in group.items" :key="item.id" class="check-item">
-                <div class="check-item-header">
-                  <span class="item-name">{{ item.item_name }}</span>
-                  <el-radio-group v-model="item.result" size="small">
-                    <el-radio-button label="pass">合格</el-radio-button>
-                    <el-radio-button label="fail">不合格</el-radio-button>
-                  </el-radio-group>
-                </div>
-                <div class="check-item-standard" v-if="item.item_standard">
-                  标准：{{ item.item_standard }}
-                </div>
-                <div class="check-item-remark" v-if="item.result === 'fail'">
-                  <el-input
-                    v-model="item.remark"
-                    placeholder="请填写不合格原因"
-                    size="small"
-                    style="margin-top: 8px"
-                  />
-                  <div class="check-item-photo">
-                    <div class="photo-label">上传不合格项照片：</div>
-                    <el-upload
-                      :action="uploadUrl"
-                      :headers="uploadHeaders"
-                      :on-success="(res, file) => handleItemUploadSuccess(item, res, file)"
-                      :on-remove="(file) => handleItemRemove(item, file)"
-                      :file-list="item.photoList || []"
-                      list-type="picture-card"
-                      accept="image/*"
-                      :limit="3"
-                    >
-                      <el-icon><Plus /></el-icon>
-                    </el-upload>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
+          <SafetyCheckItemList
+            :groups="groupedCheckItems"
+            :upload-url="uploadUrl"
+            :upload-headers="uploadHeaders"
+            status-field="result"
+            pass-value="pass"
+            fail-value="fail"
+            :pass-label="'合格'"
+            :fail-label="'异常'"
+            :parent-label="'父项'"
+            :child-label="'子项'"
+            :standard-label="'标准：'"
+            :photo-label="'上传异常项照片：'"
+            :show-remark="true"
+            remark-field="remark"
+            :remark-placeholder="'请填写异常原因'"
+            remark-position="before"
+            :use-button-radio="true"
+            radio-group-size="small"
+            :is-child-visible="isChildVisible"
+            @status-change="handleResultChange"
+            @photo-change="updateItemPhotoList"
+            @upload-error="handleUploadError"
+          />
         </div>
         <el-empty v-else-if="inspectionForm.selectedWorkTypes.length > 0" description="该工作性质下暂无检查项目" />
 
@@ -225,10 +216,16 @@
         <el-button @click="dialogVisible = false">取消</el-button>
         <el-button type="primary" @click="submitInspection" :loading="submitting">提交</el-button>
       </template>
-    </el-dialog>
+    </FormDialog>
 
     <!-- 详情对话框 -->
-    <el-dialog v-model="detailDialogVisible" title="检查详情" width="700px">
+    <FormDialog
+      v-model="detailDialogVisible"
+      title="检查详情"
+      width="700px"
+      :show-confirm="false"
+      :show-cancel="false"
+    >
       <div class="detail-content" v-if="detailData">
         <el-descriptions :column="2" border>
           <el-descriptions-item label="检查人">{{ detailData.inspector?.real_name || detailData.inspector_name }}</el-descriptions-item>
@@ -240,7 +237,7 @@
           </el-descriptions-item>
           <el-descriptions-item label="总体结论">
             <el-tag :type="detailData.is_qualified ? 'success' : 'danger'">
-              {{ detailData.is_qualified ? '合格' : '不合格' }}
+              {{ detailData.is_qualified ? '合格' : '异常' }}
             </el-tag>
           </el-descriptions-item>
           <el-descriptions-item label="备注">{{ detailData.remark || '-' }}</el-descriptions-item>
@@ -250,7 +247,12 @@
           <h4>检查项目</h4>
           <el-table :data="detailData.inspection_items" border size="small">
             <el-table-column prop="workTypeName" label="工作性质" width="100" />
-            <el-table-column prop="itemName" label="检查项目" min-width="120" />
+            <el-table-column prop="itemName" label="检查项目" min-width="120">
+              <template #default="{ row }">
+                <span v-if="row.parentName">{{ row.parentName }} / {{ row.itemName }}</span>
+                <span v-else>{{ row.itemName }}</span>
+              </template>
+            </el-table-column>
             <el-table-column prop="itemStandard" label="检查标准" min-width="140">
               <template #default="{ row }">
                 {{ row.itemStandard || '-' }}
@@ -259,7 +261,7 @@
             <el-table-column label="结果" width="80">
               <template #default="{ row }">
                 <el-tag :type="row.result === 'pass' ? 'success' : 'danger'" size="small">
-                  {{ row.result === 'pass' ? '合格' : '不合格' }}
+                  {{ row.result === 'pass' ? '合格' : '异常' }}
                 </el-tag>
               </template>
             </el-table-column>
@@ -289,7 +291,7 @@
       <template #footer>
         <el-button @click="detailDialogVisible = false">关闭</el-button>
       </template>
-    </el-dialog>
+    </FormDialog>
   </div>
 </template>
 
@@ -297,11 +299,16 @@
 import { ref, reactive, computed, onMounted, watch } from 'vue';
 import { ElMessage } from 'element-plus';
 import { Plus } from '@element-plus/icons-vue';
-import { useUserStore } from '@/store/user';
+import { useUserStore } from '@/store/modules/user';
+import { useUpload } from '@/composables/useUpload';
 import request from '@/api/request';
 import dayjs from 'dayjs';
+import SafetyCheckItemList from '@/components/inspection/SafetyCheckItemList.vue';
+import FormDialog from '@/components/system/FormDialog.vue';
 
 const userStore = useUserStore();
+
+const { uploadUrl, uploadHeaders } = useUpload();
 
 // 场站筛选显示控制
 const showStationFilter = computed(() => {
@@ -331,10 +338,6 @@ const workTypesMap = ref({});
 const isActiveStatus = (status) => status === undefined || status === null || status === '' || status === 'active' || status === 1 || status === '1' || status === true;
 
 // 上传配置
-const uploadUrl = computed(() => `${import.meta.env.VITE_API_BASE_URL}/upload`);
-const uploadHeaders = computed(() => ({
-  Authorization: `Bearer ${userStore.token}`
-}));
 
 // 筛选条件
 const filters = reactive({
@@ -347,7 +350,7 @@ const filters = reactive({
 // 分页
 const pagination = reactive({
   page: 1,
-  pageSize: 20,
+  pageSize: 10,
   total: 0
 });
 
@@ -383,9 +386,46 @@ const groupedCheckItems = computed(() => {
     if (workType) {
       const items = allCheckItems.value.filter(item => item.work_type_id === wtId);
       if (items.length > 0) {
+        const parents = items.filter(item => item.parent_id === null || item.parent_id === undefined);
+        const parentIds = new Set(parents.map(item => item.id));
+        const childrenByParent = new Map();
+
+        items.forEach(item => {
+          if (item.parent_id !== null && item.parent_id !== undefined) {
+            if (!childrenByParent.has(item.parent_id)) {
+              childrenByParent.set(item.parent_id, []);
+            }
+            childrenByParent.get(item.parent_id).push(item);
+          }
+        });
+
+        const sortByOrder = (a, b) => {
+          const aOrder = a.sort_order ?? 0;
+          const bOrder = b.sort_order ?? 0;
+          if (aOrder !== bOrder) return aOrder - bOrder;
+          return (a.id || 0) - (b.id || 0);
+        };
+
+        parents.sort(sortByOrder);
+
+        const groupedItems = parents.map(parent => ({
+          parent,
+          children: (childrenByParent.get(parent.id) || []).sort(sortByOrder)
+        }));
+
+        const orphanChildren = items.filter(item =>
+          item.parent_id !== null &&
+          item.parent_id !== undefined &&
+          !parentIds.has(item.parent_id)
+        );
+        orphanChildren.sort(sortByOrder);
+        orphanChildren.forEach(orphan => {
+          groupedItems.push({ parent: orphan, children: [] });
+        });
+
         groups.push({
           workType,
-          items
+          items: groupedItems
         });
       }
     }
@@ -448,31 +488,75 @@ const loadCheckItems = async (workTypeIds) => {
   }
 };
 
-// 处理检查项照片上传成功
-const handleItemUploadSuccess = (item, res) => {
-  if (res && res.url) {
-    if (!item.photoUrls) item.photoUrls = [];
-    if (!item.photoList) item.photoList = [];
-    item.photoUrls.push(res.url);
-    item.photoList.push({ url: res.url, name: res.url });
-  }
+const normalizeUploadFile = (file) => {
+  const responseUrl = file?.response?.data?.url ?? file?.response?.url ?? '';
+  const url = responseUrl ? responseUrl : (file?.url ?? '');
+  return url ? { ...file, url } : file;
 };
 
-// 处理检查项照片移除
-const handleItemRemove = (item, file) => {
-  const url = file.url || file.response?.url;
-  if (url && item.photoUrls) {
-    const index = item.photoUrls.indexOf(url);
-    if (index > -1) {
-      item.photoUrls.splice(index, 1);
-    }
+const updateItemPhotoList = (item, fileList) => {
+  const normalized = (fileList ?? []).map(normalizeUploadFile);
+  item.photoList = normalized;
+  item.photoUrls = normalized
+    .map(file => file.response?.data?.url ?? file.response?.url)
+    .filter(Boolean);
+};
+
+const getParentItem = (child) => {
+  if (!child?.parent_id) return null;
+  return allCheckItems.value.find(item => item.id === child.parent_id) || null;
+};
+
+const resolveParentResultValue = (parent) => {
+  if (parent.result === 'pass') return 1;
+  if (parent.result === 'fail') return 0;
+  return null;
+};
+
+const isChildVisible = (child) => {
+  if (!child?.parent_id) return true;
+  const parent = getParentItem(child);
+  if (!parent || Number(parent.enable_children) !== 1) return false;
+  const parentValue = resolveParentResultValue(parent);
+  if (parentValue === null) return false;
+  const triggerValue = child.trigger_value !== null && child.trigger_value !== undefined
+    ? Number(child.trigger_value)
+    : 1;
+  return parentValue === triggerValue;
+};
+
+const resetChildItem = (child) => {
+  child.result = null;
+  child.remark = '';
+  child.photoList = [];
+  child.photoUrls = [];
+};
+
+const handleResultChange = (item) => {
+  if (!item || item.parent_id) return;
+  const children = allCheckItems.value.filter(child => child.parent_id === item.id);
+  if (Number(item.enable_children) !== 1) {
+    children.forEach(resetChildItem);
+    return;
   }
-  if (item.photoList) {
-    const idx = item.photoList.findIndex(f => (f.url || f.response?.url) === url);
-    if (idx > -1) {
-      item.photoList.splice(idx, 1);
+  children.forEach(child => {
+    if (!isChildVisible(child)) {
+      resetChildItem(child);
     }
-  }
+  });
+};
+
+const getVisibleCheckItems = () => allCheckItems.value.filter(
+  item => item.parent_id === null || item.parent_id === undefined || isChildVisible(item)
+);
+
+const getParentName = (item) => {
+  const parent = getParentItem(item);
+  return parent ? parent.item_name : '';
+};
+
+const handleUploadError = () => {
+  ElMessage.error('图片上传失败，请检查图片大小或网络');
 };
 
 // 加载检查列表
@@ -598,7 +682,8 @@ const submitInspection = async () => {
     await formRef.value.validate();
 
     // 检查是否所有项目都已填写结果
-    const uncheckedItems = allCheckItems.value.filter(item => item.result === null);
+    const visibleItems = getVisibleCheckItems();
+    const uncheckedItems = visibleItems.filter(item => item.result === null);
     if (uncheckedItems.length > 0) {
       ElMessage.warning('请对所有检查项目进行评价');
       return;
@@ -610,11 +695,15 @@ const submitInspection = async () => {
     const inspectedUser = userList.value.find(u => u.id === inspectionForm.inspectedUserId);
 
     // 构建检查项目数据
-    const inspectionItems = allCheckItems.value.map(item => ({
+    const inspectionItems = visibleItems.map(item => ({
       workTypeId: item.work_type_id,
       workTypeName: workTypesMap.value[item.work_type_id]?.work_type_name || '',
       itemId: item.id,
       itemName: item.item_name,
+      parentId: item.parent_id ?? null,
+      parentName: item.parent_id ? getParentName(item) : '',
+      triggerValue: item.trigger_value ?? null,
+      enableChildren: item.enable_children ?? 0,
       itemStandard: item.item_standard,
       result: item.result,
       remark: item.remark,
@@ -627,7 +716,7 @@ const submitInspection = async () => {
       inspectedUserName: inspectedUser?.real_name || '',
       workTypeIds: inspectionForm.selectedWorkTypes,
       inspectionItems,
-      isQualified: allCheckItems.value.every(item => item.result === 'pass'),
+      isQualified: visibleItems.every(item => item.result === 'pass'),
       remark: inspectionForm.remark
     });
 
@@ -662,7 +751,7 @@ const getInspectionResult = (row) => {
   if (row.is_qualified) {
     return { type: 'success', text: '合格' };
   } else {
-    return { type: 'danger', text: '不合格' };
+    return { type: 'danger', text: '异常' };
   }
 };
 
@@ -708,6 +797,10 @@ onMounted(async () => {
     padding-left: 20px;
   }
 
+  .check-item-group {
+    margin-bottom: 12px;
+  }
+
   .check-item {
     margin-bottom: 12px;
     padding: 12px;
@@ -720,6 +813,9 @@ onMounted(async () => {
       align-items: center;
 
       .item-name {
+        display: flex;
+        align-items: center;
+        gap: 6px;
         font-weight: 500;
       }
     }
@@ -749,6 +845,13 @@ onMounted(async () => {
         height: 80px;
       }
     }
+  }
+
+  .check-item.child {
+    margin-top: 8px;
+    margin-left: 16px;
+    background: #fff;
+    border: 1px dashed #dcdfe6;
   }
 
   .photo-preview {

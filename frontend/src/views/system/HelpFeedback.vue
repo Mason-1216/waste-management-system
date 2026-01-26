@@ -4,6 +4,29 @@
       <h2>帮助与反馈</h2>
     </div>
 
+    <!-- 管理员查看反馈记录 -->
+    <div class="section" v-if="userStore.roleCode === 'admin'">
+      <h3>用户反馈记录</h3>
+      <el-table :data="feedbackList" stripe border v-loading="loadingFeedback">
+        <el-table-column prop="userName" label="用户" width="120" />
+        <el-table-column prop="type" label="类型" width="100">
+          <template #default="{ row }">
+            <el-tag v-if="row.type === 'suggestion'" type="success">功能建议</el-tag>
+            <el-tag v-else-if="row.type === 'bug'" type="danger">问题反馈</el-tag>
+            <el-tag v-else type="info">其他</el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column prop="content" label="反馈内容" min-width="300" show-overflow-tooltip />
+        <el-table-column prop="contact" label="联系方式" width="150" />
+        <el-table-column prop="createdAt" label="提交时间" width="180" />
+        <el-table-column label="操作" width="100">
+          <template #default="{ row }">
+            <el-button link type="primary" @click="viewFeedbackDetail(row)">查看</el-button>
+          </template>
+        </el-table-column>
+      </el-table>
+    </div>
+
     <!-- 常见问题 -->
     <div class="section">
       <h3>常见问题</h3>
@@ -54,8 +77,8 @@
           <el-input v-model="feedbackForm.contact" placeholder="可选，方便我们联系您" style="width: 300px;" />
         </el-form-item>
         <el-form-item label="截图">
-          <el-upload
-            action="/api/upload"
+          <BaseUpload
+            :action="uploadUrl"
             list-type="picture-card"
             :headers="uploadHeaders"
             :limit="3"
@@ -64,9 +87,11 @@
             :on-remove="handleUploadRemove"
             :on-exceed="handleUploadExceed"
             accept="image/*"
+            @change="(file, fileList) => syncImageList(fileList)"
+            @error="handleUploadError"
           >
             <el-icon><Plus /></el-icon>
-          </el-upload>
+          </BaseUpload>
         </el-form-item>
         <el-form-item>
           <el-button type="primary" @click="submitFeedback" :loading="submitting">
@@ -89,20 +114,47 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue';
+import { ref, onMounted } from 'vue';
 import { ElMessage } from 'element-plus';
 import request from '@/api/request';
-import { useUserStore } from '@/store/user';
+import { useUserStore } from '@/store/modules/user';
+import { useUpload } from '@/composables/useUpload';
 import { Plus } from '@element-plus/icons-vue';
 
 const activeFaq = ref(['1']);
 const feedbackFormRef = ref(null);
 const submitting = ref(false);
 const userStore = useUserStore();
+
+const { uploadUrl, uploadHeaders } = useUpload();
 const imageList = ref([]);
-const uploadHeaders = computed(() => ({
-  Authorization: userStore.token ? `Bearer ${userStore.token}` : ''
-}));
+
+// 管理员查看反馈列表
+const feedbackList = ref([]);
+const loadingFeedback = ref(false);
+
+const loadFeedbackList = async () => {
+  if (userStore.roleCode !== 'admin') return;
+
+  loadingFeedback.value = true;
+  try {
+    const res = await request.get('/feedback');
+    feedbackList.value = res.data || [];
+  } catch (e) {
+    // 如果API不存在，使用模拟数据
+    feedbackList.value = [];
+  } finally {
+    loadingFeedback.value = false;
+  }
+};
+
+const viewFeedbackDetail = (row) => {
+  ElMessage.info('查看反馈详情功能开发中');
+};
+
+onMounted(() => {
+  loadFeedbackList();
+});
 
 const feedbackForm = ref({
   type: '',
@@ -135,23 +187,34 @@ const submitFeedback = async () => {
   }
 };
 
+const normalizeUploadFile = (file) => {
+  const responseUrl = file?.response?.data?.url ?? file?.response?.url ?? '';
+  const url = responseUrl ? responseUrl : (file?.url ?? '');
+  return url ? { ...file, url } : file;
+};
+
+const syncImageList = (fileList) => {
+  const normalized = (fileList ?? []).map(normalizeUploadFile);
+  imageList.value = normalized;
+  feedbackForm.value.images = normalized
+    .map(file => file.response?.data?.url ?? file.response?.url)
+    .filter(Boolean);
+};
+
 const handleUploadSuccess = (response, file, fileList) => {
-  if (response?.data?.url) {
-    feedbackForm.value.images.push(response.data.url);
-  }
-  imageList.value = fileList;
+  syncImageList(fileList);
 };
 
 const handleUploadRemove = (file, fileList) => {
-  const url = file?.response?.data?.url || file?.url;
-  if (url) {
-    feedbackForm.value.images = feedbackForm.value.images.filter(item => item !== url);
-  }
-  imageList.value = fileList;
+  syncImageList(fileList);
 };
 
 const handleUploadExceed = () => {
   ElMessage.warning('最多上传 3 张图片');
+};
+
+const handleUploadError = () => {
+  ElMessage.error('图片上传失败，请检查图片大小或网络');
 };
 </script>
 
@@ -198,6 +261,41 @@ const handleUploadExceed = () => {
 
       .el-icon {
         color: #409EFF;
+      }
+    }
+  }
+}
+// 移动端适配
+@media screen and (max-width: 768px) {
+  .help-feedback-page {
+    .section {
+      padding: 12px;
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+
+      .el-table {
+        min-width: 600px;
+      }
+
+      h3 {
+        font-size: 15px;
+      }
+    }
+
+    .el-form {
+      .el-form-item__label {
+        width: 80px !important;
+      }
+
+      .el-select,
+      .el-input {
+        width: 100% !important;
+      }
+    }
+
+    .contact-info {
+      p {
+        font-size: 13px;
       }
     }
   }

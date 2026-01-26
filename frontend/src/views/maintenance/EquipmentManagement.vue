@@ -7,7 +7,14 @@
           <el-icon><Plus /></el-icon>
           新增设备
         </el-button>
-        <el-upload
+        <el-button
+          type="danger"
+          :disabled="selectedEquipmentIds.length === 0"
+          @click="handleBatchDelete"
+        >
+          批量删除
+        </el-button>
+        <BaseUpload
           :action="`${apiBaseUrl}/equipment/import`"
           :headers="uploadHeaders"
           :on-success="handleImportSuccess"
@@ -20,7 +27,7 @@
             <el-icon><Download /></el-icon>
             批量导入
           </el-button>
-        </el-upload>
+        </BaseUpload>
         <el-button @click="downloadTemplate" type="primary" plain>
           <el-icon><Download /></el-icon>
           下载模板
@@ -78,13 +85,17 @@
     </el-card>
 
     <!-- 设备列表 -->
-    <el-card class="table-card">
+    <TableCard>
       <el-table
-        :data="equipmentList"
+        ref="equipmentTable"
+        :data="equipmentPageList"
         v-loading="loading"
         border
         style="width: 100%"
+        row-key="id"
+        @selection-change="handleSelectionChange"
       >
+        <el-table-column type="selection" width="50" />
         <el-table-column prop="station.station_name" label="场站" width="150">
           <template #default="{ row }">
             {{ row.station?.station_name || '-' }}
@@ -97,7 +108,7 @@
             {{ row.installation_location || '-' }}
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="150" fixed="right">
+        <el-table-column label="操作" width="150">
           <template #default="{ row }">
             <el-button
               type="primary"
@@ -116,13 +127,27 @@
           </template>
         </el-table-column>
       </el-table>
-    </el-card>
+      <div class="pagination-wrapper">
+        <el-pagination
+          v-model:current-page="pagination.page"
+          v-model:page-size="pagination.pageSize"
+          :total="pagination.total"
+          :page-sizes="pagination.pageSizes"
+          layout="total, sizes, prev, pager, next"
+          @current-change="handlePageChange"
+          @size-change="handlePageSizeChange"
+        />
+      </div>
+    </TableCard>
 
     <!-- 新增/编辑对话框 -->
-    <el-dialog
+    <FormDialog
       v-model="dialogVisible"
       :title="dialogTitle"
       width="500px"
+      :confirm-text="'确定'"
+      :cancel-text="'取消'"
+      @confirm="saveEquipment"
     >
       <el-form
         :model="equipmentForm"
@@ -163,17 +188,12 @@
           />
         </el-form-item>
       </el-form>
-
-      <template #footer>
-        <el-button @click="dialogVisible = false">取消</el-button>
-        <el-button type="primary" @click="saveEquipment">确定</el-button>
-      </template>
-    </el-dialog>
+    </FormDialog>
   </div>
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted } from 'vue';
+import { ref, reactive, computed, onMounted, watch } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { Upload, Download, Plus } from '@element-plus/icons-vue';
 import {
@@ -184,21 +204,23 @@ import {
   downloadEquipmentTemplate
 } from '@/api/equipment';
 import { getStations } from '@/api/station';
-import { useUserStore } from '@/store/user';
+import { useUserStore } from '@/store/modules/user';
+import { useUpload } from '@/composables/useUpload';
+import FormDialog from '@/components/system/FormDialog.vue';
 
 const userStore = useUserStore();
 
+const { apiBaseUrl, uploadHeaders } = useUpload();
+
 // API基础URL
-const apiBaseUrl = computed(() => import.meta.env.VITE_API_BASE_URL || '/api');
 
 // 上传文件的请求头
-const uploadHeaders = computed(() => ({
-  Authorization: `Bearer ${userStore.token}`
-}));
 
 // 响应式数据
 const loading = ref(false);
 const equipmentList = ref([]);
+const equipmentTable = ref(null);
+const selectedEquipmentIds = ref([]);
 const stations = ref([]);
 const isActiveStatus = (status) => status === undefined || status === null || status === '' || status === 'active' || status === 1 || status === '1' || status === true;
 const activeStationList = computed(() => stations.value.filter(station => isActiveStatus(station.status)));
@@ -233,6 +255,19 @@ const equipmentForm = reactive({
   equipmentName: '',
   installationLocation: ''
 });
+const pagination = reactive({
+  page: 1,
+  pageSize: 10,
+  pageSizes: [10, 20, 50],
+  total: 0
+});
+
+const equipmentPageList = computed(() => {
+  const rows = Array.isArray(equipmentList.value) ? equipmentList.value : [];
+  const start = (pagination.page - 1) * pagination.pageSize;
+  const end = start + pagination.pageSize;
+  return rows.slice(start, end);
+});
 
 // 表单验证规则
 const equipmentRules = {
@@ -248,9 +283,12 @@ const equipmentRules = {
 };
 
 // 获取设备列表
-const loadEquipmentList = async () => {
+const loadEquipmentList = async (resetPage = false) => {
   loading.value = true;
   try {
+    if (resetPage) {
+      pagination.page = 1;
+    }
     const params = {
       stationId: searchForm.stationId || undefined,
       equipmentCode: searchForm.equipmentCode || undefined,
@@ -260,6 +298,10 @@ const loadEquipmentList = async () => {
 
     const res = await getEquipment(params);
     equipmentList.value = res || [];
+    selectedEquipmentIds.value = [];
+    if (equipmentTable.value) {
+      equipmentTable.value.clearSelection();
+    }
   } catch (error) {
     ElMessage.error('获取设备列表失败');
   } finally {
@@ -279,7 +321,7 @@ const loadStations = async () => {
 
 // 搜索
 const search = () => {
-  loadEquipmentList();
+  loadEquipmentList(true);
 };
 
 // 重置搜索
@@ -288,7 +330,7 @@ const resetSearch = () => {
   searchForm.equipmentCode = '';
   searchForm.equipmentName = '';
   searchForm.installationLocation = '';
-  loadEquipmentList();
+  loadEquipmentList(true);
 };
 
 // 新增设备
@@ -340,7 +382,7 @@ const saveEquipment = async () => {
     }
 
     dialogVisible.value = false;
-    loadEquipmentList();
+    loadEquipmentList(true);
   } catch (error) {
     if (error.message) {
       ElMessage.error(error.message);
@@ -359,11 +401,68 @@ const deleteEquipment = async (id) => {
 
     await deleteEquipmentApi(id);
     ElMessage.success('删除成功');
-    loadEquipmentList();
+    loadEquipmentList(true);
   } catch (error) {
     if (error !== 'cancel') {
       ElMessage.error('删除失败');
     }
+  }
+};
+
+const handleSelectionChange = (rows) => {
+  selectedEquipmentIds.value = rows.map(row => row.id);
+};
+
+const handleBatchDelete = async () => {
+  if (selectedEquipmentIds.value.length === 0) {
+    ElMessage.warning('请选择要删除的设备');
+    return;
+  }
+
+  try {
+    await ElMessageBox.confirm(
+      `确定删除选中的 ${selectedEquipmentIds.value.length} 台设备吗？`,
+      '批量删除',
+      {
+        type: 'warning',
+        confirmButtonText: '确定',
+        cancelButtonText: '取消'
+      }
+    );
+  } catch (error) {
+    return;
+  }
+
+  let successCount = 0;
+  for (const id of selectedEquipmentIds.value) {
+    try {
+      await deleteEquipmentApi(id);
+      successCount += 1;
+    } catch (error) {
+      ElMessage.error('删除失败');
+    }
+  }
+
+  if (successCount > 0) {
+    ElMessage.success(`成功删除 ${successCount} 台设备`);
+  }
+  loadEquipmentList(true);
+};
+
+const handlePageChange = (page) => {
+  pagination.page = page;
+  selectedEquipmentIds.value = [];
+  if (equipmentTable.value) {
+    equipmentTable.value.clearSelection();
+  }
+};
+
+const handlePageSizeChange = (size) => {
+  pagination.pageSize = size;
+  pagination.page = 1;
+  selectedEquipmentIds.value = [];
+  if (equipmentTable.value) {
+    equipmentTable.value.clearSelection();
   }
 };
 
@@ -409,7 +508,7 @@ const beforeUpload = (file) => {
 const handleImportSuccess = (response) => {
   if (response && response.code === 200) {
     ElMessage.success(response.message || '导入成功');
-    loadEquipmentList();
+    loadEquipmentList(true);
   } else {
     ElMessage.error(response.message || '导入失败');
   }
@@ -428,8 +527,19 @@ const handleImportError = (error) => {
 
 onMounted(() => {
   loadStations();
-  loadEquipmentList();
+  loadEquipmentList(true);
 });
+
+watch(
+  () => equipmentList.value.length,
+  (total) => {
+    pagination.total = total;
+    const maxPage = Math.max(1, Math.ceil(total / pagination.pageSize));
+    if (pagination.page > maxPage) {
+      pagination.page = maxPage;
+    }
+  }
+);
 </script>
 
 <style lang="scss" scoped>
@@ -459,6 +569,12 @@ onMounted(() => {
     .el-table {
       margin-bottom: 20px;
     }
+  }
+
+  .pagination-wrapper {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: 10px;
   }
 }
 </style>

@@ -5,6 +5,7 @@ import Role from './Role.js';
 import User from './User.js';
 import Permission from './Permission.js';
 import RolePermission from './RolePermission.js';
+import UserPermission from './UserPermission.js';
 import Department from './Department.js';
 import Station from './Station.js';
 import UserStation from './UserStation.js';
@@ -23,10 +24,6 @@ import SafetySelfInspection from './SafetySelfInspection.js';
 import SafetyOtherInspection from './SafetyOtherInspection.js';
 import SafetyHazardInspection from './SafetyHazardInspection.js';
 import SafetyRectification from './SafetyRectification.js';
-import Warehouse from './Warehouse.js';
-import IcCard from './IcCard.js';
-import InboundRecord from './InboundRecord.js';
-import OutboundRecord from './OutboundRecord.js';
 import PriceManagement from './PriceManagement.js';
 import SystemConfig from './SystemConfig.js';
 import Notification from './Notification.js';
@@ -48,6 +45,9 @@ import MaintenancePositionPlan from './MaintenancePositionPlan.js';
 import MaintenanceWorkRecord from './MaintenanceWorkRecord.js';
 import PlcScaleRecord from './PlcScaleRecord.js';
 import PlcFileImport from './PlcFileImport.js';
+import PlcCategory from './PlcCategory.js';
+import PlcMonitorConfig from './PlcMonitorConfig.js';
+import PlcReading from './PlcReading.js';
 
 // 导出所有模型
 export {
@@ -56,6 +56,7 @@ export {
   User,
   Permission,
   RolePermission,
+  UserPermission,
   Department,
   Station,
   UserStation,
@@ -74,10 +75,6 @@ export {
   SafetyOtherInspection,
   SafetyHazardInspection,
   SafetyRectification,
-  Warehouse,
-  IcCard,
-  InboundRecord,
-  OutboundRecord,
   PriceManagement,
   SystemConfig,
   Notification,
@@ -98,7 +95,10 @@ export {
   MaintenancePositionPlan,
   MaintenanceWorkRecord,
   PlcScaleRecord,
-  PlcFileImport
+  PlcFileImport,
+  PlcCategory,
+  PlcMonitorConfig,
+  PlcReading
 };
 
 // 定义模型关联关系
@@ -106,6 +106,11 @@ export const defineAssociations = () => {
   // 用户与角色
   User.belongsTo(Role, { foreignKey: 'role_id', as: 'role' });
   Role.hasMany(User, { foreignKey: 'role_id', as: 'users' });
+
+  // 浜虹敤鎴风О鐜囨潈闄?
+  UserPermission.belongsTo(User, { foreignKey: 'user_id', as: 'user' });
+  UserPermission.belongsTo(Permission, { foreignKey: 'permission_id', as: 'permission' });
+  User.hasMany(UserPermission, { foreignKey: 'user_id', as: 'userPermissions' });
 
   // 角色与权限 (多对多)
   Role.belongsToMany(Permission, { through: RolePermission, foreignKey: 'role_id', as: 'permissions' });
@@ -151,10 +156,13 @@ export const defineAssociations = () => {
   // 保养记录与保养计划
   MaintenanceRecord.belongsTo(MaintenancePlan, { foreignKey: 'plan_id', as: 'plan' });
   MaintenancePlan.hasMany(MaintenanceRecord, { foreignKey: 'plan_id', as: 'records' });
+  MaintenanceRecord.belongsTo(User, { foreignKey: 'maintainer_id', as: 'maintainer' });
 
   // 维修记录与故障上报
   RepairRecord.belongsTo(FaultReport, { foreignKey: 'fault_report_id', as: 'faultReport' });
   FaultReport.hasOne(RepairRecord, { foreignKey: 'fault_report_id', as: 'repairRecord' });
+  FaultReport.belongsTo(User, { foreignKey: 'reporter_id', as: 'reporter' });
+  FaultReport.belongsTo(User, { foreignKey: 'assigned_to', as: 'assignee' });
 
   // 维修记录与用户
   RepairRecord.belongsTo(User, { foreignKey: 'repair_person_id', as: 'repairPerson' });
@@ -185,20 +193,6 @@ export const defineAssociations = () => {
   SafetyRectification.belongsTo(User, { foreignKey: 'punished_person_id', as: 'punishedPerson' });
 
   // 仓库与场站
-  Warehouse.belongsTo(Station, { foreignKey: 'station_id', as: 'station' });
-
-  // IC卡与仓库/用户
-  IcCard.belongsTo(Warehouse, { foreignKey: 'warehouse_id', as: 'warehouse' });
-  IcCard.belongsTo(User, { foreignKey: 'user_id', as: 'user' });
-
-  // 进料记录
-  InboundRecord.belongsTo(User, { foreignKey: 'operator_id', as: 'operator' });
-  InboundRecord.belongsTo(Station, { foreignKey: 'station_id', as: 'station' });
-
-  // 出料记录
-  OutboundRecord.belongsTo(User, { foreignKey: 'operator_id', as: 'operator' });
-  OutboundRecord.belongsTo(Station, { foreignKey: 'station_id', as: 'station' });
-
   // 通知与用户
   Notification.belongsTo(User, { foreignKey: 'receiver_id', as: 'receiver' });
   User.hasMany(Notification, { foreignKey: 'receiver_id', as: 'notifications' });
@@ -248,7 +242,7 @@ export const defineAssociations = () => {
     SafetyWorkType.associate({ SafetyCheckItem });
   }
   if (SafetyCheckItem.associate) {
-    SafetyCheckItem.associate({ SafetyWorkType });
+    SafetyCheckItem.associate({ SafetyWorkType, SafetyCheckItem });
   }
 
   // 保养计划库与场站
@@ -271,6 +265,17 @@ export const defineAssociations = () => {
   MaintenanceWorkRecord.belongsTo(MaintenancePlanLibrary, { foreignKey: 'plan_id', as: 'plan' });
   MaintenanceWorkRecord.belongsTo(User, { foreignKey: 'executor_id', as: 'executor' });
   MaintenancePlanLibrary.hasMany(MaintenanceWorkRecord, { foreignKey: 'plan_id', as: 'workRecords' });
+
+  // PLC监控配置与场站、分类
+  PlcMonitorConfig.belongsTo(Station, { foreignKey: 'station_id', as: 'station' });
+  PlcMonitorConfig.belongsTo(PlcCategory, { foreignKey: 'category_id', as: 'category' });
+  PlcCategory.hasMany(PlcMonitorConfig, { foreignKey: 'category_id', as: 'configs' });
+
+  // PLC读数与配置、分类、场站
+  PlcReading.belongsTo(PlcMonitorConfig, { foreignKey: 'config_id', as: 'config' });
+  PlcReading.belongsTo(PlcCategory, { foreignKey: 'category_id', as: 'category' });
+  PlcReading.belongsTo(Station, { foreignKey: 'station_id', as: 'station' });
+  PlcMonitorConfig.hasMany(PlcReading, { foreignKey: 'config_id', as: 'readings' });
 };
 
 export default {
@@ -279,6 +284,7 @@ export default {
   User,
   Permission,
   RolePermission,
+  UserPermission,
   Department,
   Station,
   UserStation,
@@ -297,10 +303,6 @@ export default {
   SafetyOtherInspection,
   SafetyHazardInspection,
   SafetyRectification,
-  Warehouse,
-  IcCard,
-  InboundRecord,
-  OutboundRecord,
   PriceManagement,
   SystemConfig,
   Notification,
@@ -320,5 +322,8 @@ export default {
   MaintenanceAssignment,
   MaintenancePositionPlan,
   MaintenanceWorkRecord,
+  PlcCategory,
+  PlcMonitorConfig,
+  PlcReading,
   defineAssociations
 };
