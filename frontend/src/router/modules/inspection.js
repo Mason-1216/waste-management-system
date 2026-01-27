@@ -6,16 +6,16 @@ export const inspectionRoutes = [
     meta: { title: '卫生自检' }
   },
   {
+    path: '/hygiene-other-inspection',
+    name: 'HygieneOtherInspection',
+    component: () => import('@/views/inspection/HygieneOtherInspection.vue'),
+    meta: { title: '员工检查记录' }
+  },
+  {
     path: '/safety-rectification',
     name: 'SafetyRectification',
     component: () => import('@/views/inspection/SafetyRectification.vue'),
     meta: { title: '安全隐患' }
-  },
-  {
-    path: '/hygiene-other-inspection',
-    name: 'HygieneOtherInspection',
-    component: () => import('@/views/inspection/HygieneOtherInspection.vue'),
-    meta: { title: '卫生他检' }
   },
   {
     path: '/hygiene-work-arrangement',
@@ -33,7 +33,7 @@ export const inspectionRoutes = [
     path: '/safety-other-inspection',
     name: 'SafetyOtherInspection',
     component: () => import('@/views/inspection/OtherInspection.vue'),
-    meta: { title: '安全他检' }
+    meta: { title: '员工检查记录' }
   },
   {
     path: '/safety-check-management',

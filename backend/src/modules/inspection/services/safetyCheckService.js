@@ -13,23 +13,31 @@ const normalizeParentId = (value) => {
 };
 
 const parseBooleanFlag = (value) => {
-  if (value === true || value === 1 || value === '1' || value === 'true' || value === '是') {
+  if (value === true || value === 1 || value === '1' || value === 'true' || value === '\u662f' || value === '是') {
     return 1;
   }
-  if (value === false || value === 0 || value === '0' || value === 'false' || value === '否') {
+  if (value === false || value === 0 || value === '0' || value === 'false' || value === '\u5426' || value === '否') {
     return 0;
   }
   return null;
 };
 
 const parseTriggerValue = (value) => {
-  if (value === true || value === 1 || value === '1' || value === 'true' || value === '是') {
+  if (value === true || value === 1 || value === '1' || value === 'true' || value === '\u662f' || value === '是') {
     return 1;
   }
-  if (value === false || value === 0 || value === '0' || value === 'false' || value === '否') {
+  if (value === false || value === 0 || value === '0' || value === 'false' || value === '\u5426' || value === '否') {
     return 0;
   }
   return null;
+};
+
+const parseSortOrder = (value) => {
+  if (value === undefined || value === null || value === '') {
+    return null;
+  }
+  const parsed = Number(value);
+  return Number.isNaN(parsed) ? null : parsed;
 };
 
 /**
@@ -242,8 +250,9 @@ export const createCheckItem = async (ctx) => {
   const normalizedParentId = normalizeParentId(parentId);
   const resolvedWorkTypeId = Number(workTypeId);
 
+  let parentItem = null;
   if (workType && normalizedParentId !== null) {
-    const parentItem = await SafetyCheckItem.findByPk(normalizedParentId);
+    parentItem = await SafetyCheckItem.findByPk(normalizedParentId);
     if (!parentItem) {
       throw createError(400, '父级检查项不存在');
     }
@@ -292,6 +301,10 @@ export const createCheckItem = async (ctx) => {
     enable_children: normalizedParentId !== null ? 0 : enableChildrenValue,
     trigger_value: triggerValueValue
   });
+
+  if (parentItem && parentItem.enable_children !== 1) {
+    await parentItem.update({ enable_children: 1 });
+  }
 
   ctx.body = {
     code: 200,
@@ -368,6 +381,13 @@ export const batchCreateCheckItems = async (ctx) => {
       { transaction: t }
     );
 
+    if (parentIds.length > 0) {
+      await SafetyCheckItem.update(
+        { enable_children: 1 },
+        { where: { id: { [Op.in]: parentIds } }, transaction: t }
+      );
+    }
+
     await t.commit();
 
     ctx.body = {
@@ -411,11 +431,12 @@ export const updateCheckItem = async (ctx) => {
     nextParentId = normalizeParentId(parentId);
   }
 
+  let parentItem = null;
   if (nextParentId !== null && nextParentId !== undefined) {
     if (Number(nextParentId) === Number(id)) {
       throw createError(400, '父级检查项不能是自身');
     }
-    const parentItem = await SafetyCheckItem.findByPk(nextParentId);
+    parentItem = await SafetyCheckItem.findByPk(nextParentId);
     if (!parentItem) {
       throw createError(400, '父级检查项不存在');
     }
@@ -471,6 +492,10 @@ export const updateCheckItem = async (ctx) => {
     enable_children: nextEnableChildren,
     trigger_value: nextTriggerValue
   });
+
+  if (parentItem && parentItem.enable_children !== 1) {
+    await parentItem.update({ enable_children: 1 });
+  }
 
   ctx.body = {
     code: 200,
@@ -563,7 +588,8 @@ export const getCheckItemsTemplate = async (ctx) => {
       { header: '是否默认必选(是/否)', key: 'isDefault', width: 20 },
       { header: '父级检查项目', key: 'parentItemName', width: 30 },
       { header: '是否启用子项联动(是/否)', key: 'enableChildren', width: 24 },
-      { header: '子项触发值(是/否)', key: 'triggerValue', width: 20 }
+      { header: '子项触发值(是/否)', key: 'triggerValue', width: 20 },
+      { header: '排序', key: 'sortOrder', width: 10 }
     ];
 
     // 添加示例数据
@@ -574,7 +600,8 @@ export const getCheckItemsTemplate = async (ctx) => {
       isDefault: '是',
       parentItemName: '',
       enableChildren: '',
-      triggerValue: ''
+      triggerValue: '',
+      sortOrder: 1
     });
     worksheet.addRow({
       workTypeName: '基本工作',
@@ -583,7 +610,8 @@ export const getCheckItemsTemplate = async (ctx) => {
       isDefault: '是',
       parentItemName: '',
       enableChildren: '',
-      triggerValue: ''
+      triggerValue: '',
+      sortOrder: 2
     });
     worksheet.addRow({
       workTypeName: '焊接',
@@ -592,7 +620,8 @@ export const getCheckItemsTemplate = async (ctx) => {
       isDefault: '否',
       parentItemName: '',
       enableChildren: '',
-      triggerValue: ''
+      triggerValue: '',
+      sortOrder: 3
     });
     worksheet.addRow({
       workTypeName: '焊接',
@@ -601,7 +630,8 @@ export const getCheckItemsTemplate = async (ctx) => {
       isDefault: '否',
       parentItemName: '',
       enableChildren: '是',
-      triggerValue: ''
+      triggerValue: '',
+      sortOrder: 4
     });
     worksheet.addRow({
       workTypeName: '焊接',
@@ -610,7 +640,8 @@ export const getCheckItemsTemplate = async (ctx) => {
       isDefault: '否',
       parentItemName: '焊接点是否连接通电设备',
       enableChildren: '',
-      triggerValue: '是'
+      triggerValue: '是',
+      sortOrder: 5
     });
     worksheet.addRow({
       workTypeName: '焊接',
@@ -619,7 +650,18 @@ export const getCheckItemsTemplate = async (ctx) => {
       isDefault: '否',
       parentItemName: '焊接点是否连接通电设备',
       enableChildren: '',
-      triggerValue: '是'
+      triggerValue: '是',
+      sortOrder: 6
+    });
+    worksheet.addRow({
+      workTypeName: '焊接',
+      itemName: '确认焊接点未连接通电设备',
+      itemStandard: '',
+      isDefault: '否',
+      parentItemName: '焊接点是否连接通电设备',
+      enableChildren: '',
+      triggerValue: '否',
+      sortOrder: 7
     });
 
     // 设置标题行样式
@@ -632,7 +674,8 @@ export const getCheckItemsTemplate = async (ctx) => {
       ['父级检查项目', '选填，子项必填。填写父级检查项目名称，父项留空。'],
       ['是否启用子项联动(是/否)', '选填，仅父项填写。开启后，子项会按触发值显示。'],
       ['子项触发值(是/否)', '选填，仅子项填写。父项选择为“是/否”时显示该子项。'],
-      ['注意事项', '同一工作性质 + 同一父级下检查项目名称不能重复；导入时会自动创建不存在的工作性质。']
+      ['排序', '选填，数值越小越靠前，空白时按导入顺序自动排序。'],
+      ['注意事项', '同一工作性质 + 同一父级下检查项目名称不能重复；导入时会自动创建不存在的工作性质；如存在子项且父项未开启联动，会自动开启。']
     ]);
 
     // 设置响应头
@@ -689,6 +732,7 @@ export const importCheckItems = async (ctx) => {
         const parentCell = row.getCell(5).value;
         const enableChildrenCell = row.getCell(6).value;
         const triggerValueCell = row.getCell(7).value;
+        const sortOrderCell = row.getCell(8).value;
 
         const workTypeName = workTypeCell ? workTypeCell.toString().trim() : '';
         const itemName = itemCell ? itemCell.toString().trim() : '';
@@ -697,6 +741,7 @@ export const importCheckItems = async (ctx) => {
         const parentItemName = parentCell ? parentCell.toString().trim() : '';
         const enableChildrenStr = enableChildrenCell ? enableChildrenCell.toString().trim() : '';
         const triggerValueStr = triggerValueCell ? triggerValueCell.toString().trim() : '';
+        const sortOrder = parseSortOrder(sortOrderCell);
 
         if (!workTypeName || !itemName) {
           continue;
@@ -710,7 +755,8 @@ export const importCheckItems = async (ctx) => {
           isDefaultStr,
           parentItemName,
           enableChildrenStr,
-          triggerValueStr
+          triggerValueStr,
+          sortOrder
         });
       }
 
@@ -752,6 +798,10 @@ export const importCheckItems = async (ctx) => {
 
         const parentRows = rows.filter(row => !row.parentItemName);
         const childRows = rows.filter(row => row.parentItemName);
+        const childCountByParent = childRows.reduce((acc, row) => {
+          acc[row.parentItemName] = (acc[row.parentItemName] || 0) + 1;
+          return acc;
+        }, {});
 
         for (const row of parentRows) {
           const existingItem = await SafetyCheckItem.findOne({
@@ -771,18 +821,24 @@ export const importCheckItems = async (ctx) => {
               status: 'duplicate',
               message: '该工作性质下已存在同名检查项目'
             });
+            if (childCountByParent[row.itemName] && existingItem.enable_children !== 1) {
+              await existingItem.update({ enable_children: 1 }, { transaction: t });
+            }
             parentMap.set(existingItem.item_name, existingItem);
             continue;
           }
 
           const parsedEnable = parseBooleanFlag(row.enableChildrenStr);
-          const enableChildrenValue = parsedEnable === null ? 0 : parsedEnable;
+          let enableChildrenValue = parsedEnable === null ? 0 : parsedEnable;
+          if (childCountByParent[row.itemName] && enableChildrenValue !== 1) {
+            enableChildrenValue = 1;
+          }
 
           const createdParent = await SafetyCheckItem.create({
             work_type_id: workType.id,
             item_name: row.itemName,
             item_standard: row.itemStandard,
-            sort_order: 0,
+            sort_order: row.sortOrder ?? row.rowNumber,
             status: 'active',
             parent_id: null,
             enable_children: enableChildrenValue,
@@ -812,6 +868,9 @@ export const importCheckItems = async (ctx) => {
             continue;
           }
 
+          if (parentItem.enable_children !== 1) {
+            await parentItem.update({ enable_children: 1 }, { transaction: t });
+          }
           const existingItem = await SafetyCheckItem.findOne({
             where: {
               work_type_id: workType.id,
@@ -839,7 +898,7 @@ export const importCheckItems = async (ctx) => {
             work_type_id: workType.id,
             item_name: row.itemName,
             item_standard: row.itemStandard,
-            sort_order: 0,
+            sort_order: row.sortOrder ?? row.rowNumber,
             status: 'active',
             parent_id: parentItem.id,
             enable_children: 0,

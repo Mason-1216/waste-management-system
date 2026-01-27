@@ -1,9 +1,9 @@
-<template>
+﻿<template>
   <div class="safety-other-page">
     <div class="page-header">
-      <h3>安全他检</h3>
+      <h3>员工检查记录</h3>
       <el-button type="primary" @click="showNewInspection">
-        <el-icon><Plus /></el-icon>新建检查
+        <el-icon><Plus /></el-icon>新增他检
       </el-button>
     </div>
 
@@ -85,6 +85,11 @@
         <el-table-column label="工作性质" min-width="150">
           <template #default="{ row }">
             {{ getWorkTypeNames(row.work_type_ids) }}
+          </template>
+        </el-table-column>
+        <el-table-column label="积分" width="90">
+          <template #default="{ row }">
+            {{ getInspectionPoints(row) }}
           </template>
         </el-table-column>
         <el-table-column label="检查人" width="100">
@@ -565,7 +570,8 @@ const loadInspectionList = async () => {
   try {
     const params = {
       page: pagination.page,
-      pageSize: pagination.pageSize
+      pageSize: pagination.pageSize,
+      inspectionType: 'safety'
     };
 
     if (filters.dateRange && filters.dateRange.length === 2) {
@@ -711,6 +717,7 @@ const submitInspection = async () => {
     }));
 
     await request.post('/other-inspections', {
+      inspectionType: 'safety',
       stationId: inspectionForm.stationId,
       inspectedUserId: inspectionForm.inspectedUserId,
       inspectedUserName: inspectedUser?.real_name || '',
@@ -738,12 +745,40 @@ const viewDetail = (row) => {
   detailDialogVisible.value = true;
 };
 
+const normalizeWorkTypeIds = (value) => {
+  if (value === undefined || value === null) return [];
+  if (Array.isArray(value)) return value;
+  if (typeof value === 'string') {
+    return value
+      .split(',')
+      .map(id => id.trim())
+      .filter(Boolean);
+  }
+  return [value];
+};
+
 // 获取工作性质名称
 const getWorkTypeNames = (workTypeIds) => {
-  if (!workTypeIds || !Array.isArray(workTypeIds)) return '-';
-  return workTypeIds
-    .map(id => workTypesMap.value[id]?.work_type_name || `ID:${id}`)
+  const ids = normalizeWorkTypeIds(workTypeIds);
+  if (!ids.length) return '-';
+  return ids
+    .map(id => workTypesMap.value[id]?.work_type_name || workTypesMap.value[Number(id)]?.work_type_name || `ID:${id}`)
     .join('、');
+};
+
+const getInspectionPoints = (row) => {
+  const ids = normalizeWorkTypeIds(row?.work_type_ids ?? row?.workTypeIds);
+  let total = 0;
+  ids.forEach(id => {
+    const workType = workTypesMap.value[id] ?? workTypesMap.value[Number(id)];
+    const points = workType?.points;
+    if (points === undefined || points === null) return;
+    const value = Number(points);
+    if (!Number.isNaN(value)) {
+      total += value;
+    }
+  });
+  return total;
 };
 
 // 获取检查结果

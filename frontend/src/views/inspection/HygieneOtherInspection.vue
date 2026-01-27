@@ -1,203 +1,227 @@
-<template>
+﻿<template>
   <div class="hygiene-other-page">
     <div class="page-header">
-      <h3>卫生他检记录</h3>
+      <h3>员工检查记录</h3>
       <el-button type="primary" @click="showNewInspection">
-        <el-icon><Plus /></el-icon>新建检查
+        <el-icon><Plus /></el-icon>新增他检
       </el-button>
     </div>
 
-    <div class="panel-filters inspection-filters">
-      <el-select
-        v-model="inspectionFilters.stationId"
-        placeholder="筛选场站"
-        clearable
-        filterable
-        style="width: 200px;"
-        @change="applyInspectionFilters"
-      >
-        <el-option
-          v-for="station in stationIdOptions"
-          :key="station.id"
-          :label="station.name"
-          :value="station.id"
-        />
-      </el-select>
-      <el-select
-        v-model="inspectionFilters.inspectedUserName"
-        placeholder="筛选被检查人"
-        clearable
-        filterable
-        allow-create
-        default-first-option
-        style="width: 200px;"
-        @change="applyInspectionFilters"
-      >
-        <el-option
-          v-for="name in inspectedUserOptions"
-          :key="name"
-          :label="name"
-          :value="name"
-        />
-      </el-select>
-      <el-select
-        v-model="inspectionFilters.positionName"
-        placeholder="筛选岗位"
-        clearable
-        filterable
-        allow-create
-        default-first-option
-        style="width: 200px;"
-        @change="applyInspectionFilters"
-      >
-        <el-option
-          v-for="name in inspectionPositionOptions"
-          :key="name"
-          :label="name"
-          :value="name"
-        />
-      </el-select>
-      <el-select
-        v-model="inspectionFilters.areaName"
-        placeholder="筛选责任区"
-        clearable
-        filterable
-        allow-create
-        default-first-option
-        style="width: 200px;"
-        @change="applyInspectionFilters"
-      >
-        <el-option
-          v-for="name in inspectionAreaOptions"
-          :key="name"
-          :label="name"
-          :value="name"
-        />
-      </el-select>
-      <el-button @click="resetInspectionFilters">重置</el-button>
-    </div>
+    <!-- 筛选条件 -->
+    <el-card class="filter-card">
+      <el-form :inline="true">
+        <el-form-item>
+          <el-date-picker
+            v-model="filters.dateRange"
+            type="daterange"
+            start-placeholder="开始日期"
+            end-placeholder="结束日期"
+            value-format="YYYY-MM-DD"
+            style="width: 240px"
+          />
+        </el-form-item>
+        <el-form-item v-if="showStationFilter">
+          <el-select
+            v-model="filters.stationId"
+            placeholder="请选择场站"
+            clearable
+            style="width: 180px"
+          >
+            <el-option
+              v-for="station in stationList"
+              :key="station.id"
+              :label="station.stationName"
+              :value="station.id"
+            />
+          </el-select>
+        </el-form-item>
+        <el-form-item>
+          <el-input
+            v-model="filters.inspectedName"
+            placeholder="请输入姓名"
+            clearable
+            style="width: 150px"
+          />
+        </el-form-item>
+        <el-form-item>
+          <el-select
+            v-model="filters.workTypeIds"
+            placeholder="请选择责任区"
+            clearable
+            multiple
+            collapse-tags
+            collapse-tags-tooltip
+            filterable
+            style="width: 240px"
+          >
+            <el-option
+              v-for="wt in workTypes"
+              :key="wt.id"
+              :label="wt.work_type_name"
+              :value="wt.id"
+            />
+          </el-select>
+        </el-form-item>
+        <el-form-item>
+          <el-button @click="resetFilters">重置</el-button>
+        </el-form-item>
+      </el-form>
+    </el-card>
 
-    <el-table :data="filteredInspectionList" stripe border v-loading="loadingInspection">
-      <el-table-column prop="inspectionDate" label="检查日期" width="120" />
-      <el-table-column prop="stationName" label="场站" width="140" />
-      <el-table-column prop="inspectedUserName" label="被检查人" width="140" />
-      <el-table-column prop="positionName" label="岗位" width="120" />
-      <el-table-column prop="areaName" label="责任区" min-width="160" />
-      <el-table-column prop="inspectorName" label="检查人" width="120" />
-      <el-table-column label="检查结果" width="100">
-        <template #default="{ row }">
-          <el-tag :type="row.isQualified ? 'success' : 'danger'">
-            {{ row.isQualified ? '合格' : '不合格' }}
-          </el-tag>
-        </template>
-      </el-table-column>
-      <el-table-column label="操作" width="120">
-        <template #default="{ row }">
-          <el-button link type="primary" @click="viewInspectionDetail(row)">查看</el-button>
-        </template>
-      </el-table-column>
-    </el-table>
+    <!-- 检查记录列表 -->
+    <TableCard>
+      <el-table :data="inspectionList" stripe border v-loading="loading">
+        <el-table-column prop="inspection_date" label="检查日期" width="120" />
+        <el-table-column label="场站" width="150">
+          <template #default="{ row }">
+            {{ row.station?.station_name || '-' }}
+          </template>
+        </el-table-column>
+        <el-table-column label="被检查人" width="100">
+          <template #default="{ row }">
+            {{ row.inspected_user_name || '-' }}
+          </template>
+        </el-table-column>
+        <el-table-column label="责任区" min-width="150">
+          <template #default="{ row }">
+            {{ getWorkTypeNames(row.work_type_ids) }}
+          </template>
+        </el-table-column>
+        <el-table-column label="积分" width="90">
+          <template #default="{ row }">
+            {{ getInspectionPoints(row) }}
+          </template>
+        </el-table-column>
+        <el-table-column label="检查人" width="100">
+          <template #default="{ row }">
+            {{ row.inspector?.real_name || row.inspector_name || '-' }}
+          </template>
+        </el-table-column>
+        <el-table-column label="检查结果" width="100">
+          <template #default="{ row }">
+            <el-tag :type="row.is_qualified ? 'success' : 'danger'">
+              {{ row.is_qualified ? '合格' : '异常' }}
+            </el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column label="操作" width="100">
+          <template #default="{ row }">
+            <el-button link type="primary" @click="viewDetail(row)">查看</el-button>
+          </template>
+        </el-table-column>
+      </el-table>
 
-    <div class="pagination-wrapper">
-      <el-pagination
-        v-model:current-page="inspectionPagination.page"
-        v-model:page-size="inspectionPagination.pageSize"
-        :total="inspectionPagination.total"
-        :page-sizes="[10, 20, 50]"
-        layout="total, sizes, prev, pager, next"
-        @current-change="loadInspectionList"
-        @size-change="loadInspectionList"
-      />
-    </div>
+      <div class="pagination-wrapper">
+        <el-pagination
+          v-model:current-page="pagination.page"
+          v-model:page-size="pagination.pageSize"
+          :total="pagination.total"
+          layout="total, prev, pager, next"
+          @current-change="loadInspectionList"
+        />
+      </div>
+    </TableCard>
 
+    <!-- 新建检查对话框 -->
     <FormDialog
-      v-model="inspectionDialogVisible"
-      title="卫生他检"
-      width="700px"
+      v-model="dialogVisible"
+      title="新增他检"
+      width="750px"
+      :close-on-click-modal="false"
       :show-confirm="false"
       :show-cancel="false"
     >
-      <el-form :model="inspectionForm" :rules="inspectionRules" ref="inspectionFormRef" label-width="120px">
+      <el-form :model="inspectionForm" :rules="formRules" ref="formRef" label-width="100px">
         <el-form-item label="场站" prop="stationId">
           <el-select
             v-model="inspectionForm.stationId"
             placeholder="请选择场站"
             @change="handleStationChange"
-            style="width: 220px;"
+            style="width: 200px"
           >
             <el-option
-              v-for="station in stationIdOptions"
+              v-for="station in formStationOptions"
               :key="station.id"
-              :label="station.name"
+              :label="station.stationName"
               :value="station.id"
             />
           </el-select>
         </el-form-item>
 
-        <el-form-item label="责任区" prop="selectedAreaIds">
-          <el-select
-            v-model="inspectionForm.selectedAreaIds"
-            placeholder="请选择责任区"
-            multiple
-            style="width: 100%;"
-            @change="handleAreaChange"
-          >
-            <el-option
-              v-for="area in areaList"
-              :key="area.id"
-              :label="area.areaName ?? area.area_name ?? ''"
-              :value="area.id"
-            />
-          </el-select>
-        </el-form-item>
-
-        <el-form-item label="岗位">
-          <el-input v-model="inspectionForm.positionName" disabled placeholder="根据责任区自动填写" />
-        </el-form-item>
-
         <el-form-item label="被检查人" prop="inspectedUserId">
           <el-select
             v-model="inspectionForm.inspectedUserId"
-            placeholder="根据岗位自动填写"
-            style="width: 220px;"
-            disabled
+            placeholder="请选择被检查人"
+            filterable
+            style="width: 200px"
           >
             <el-option
-              v-for="user in todayUsers"
-              :key="user.userId"
-              :label="`${user.userName} (${user.positionName})`"
-              :value="user.userId"
+              v-for="user in userList"
+              :key="user.id"
+              :label="user.real_name"
+              :value="user.id"
             />
           </el-select>
         </el-form-item>
 
-        <el-divider content-position="left">检查内容</el-divider>
+        <el-form-item label="责任区" prop="selectedWorkTypes">
+          <el-checkbox-group v-model="inspectionForm.selectedWorkTypes" @change="handleWorkTypesChange">
+            <el-checkbox
+              v-for="wt in formWorkTypes"
+              :key="wt.id"
+              :label="wt.id"
+            >
+              {{ wt.work_type_name }}
+            </el-checkbox>
+          </el-checkbox-group>
+        </el-form-item>
 
-        <HygieneAreaChecklist
-          :areas="inspectionForm.areas"
-          :upload-url="uploadUrl"
-          :upload-headers="uploadHeaders"
-          header-type="title"
-          :empty-description="'请先选择责任区'"
-          :requirement-prefix="'要求：'"
-          :requirement-fallback="'-'"
-          :pass-label="'是'"
-          :fail-label="'否'"
-          :show-point-remark="true"
-          :remark-placeholder="'不合格备注（选填）'"
-          @point-status-change="handlePointStatusChange"
-          @point-photo-change="updatePointPhotoList"
-          @upload-error="handleUploadError"
-        />
+        <!-- 检查项目 -->
+        <div v-if="groupedCheckItems.length > 0">
+          <SafetyCheckItemList
+            :groups="groupedCheckItems"
+            :upload-url="uploadUrl"
+            :upload-headers="uploadHeaders"
+            status-field="result"
+            pass-value="pass"
+            fail-value="fail"
+            :pass-label="'合格'"
+            :fail-label="'异常'"
+            :parent-label="'点位'"
+            :child-label="'子项'"
+            :standard-label="'要求：'"
+            :photo-label="'上传异常项照片：'"
+            :show-remark="true"
+            remark-field="remark"
+            :remark-placeholder="'请填写异常原因'"
+            remark-position="before"
+            :use-button-radio="true"
+            radio-group-size="small"
+            :is-child-visible="isChildVisible"
+            @status-change="handleResultChange"
+            @photo-change="updateItemPhotoList"
+            @upload-error="handleUploadError"
+          />
+        </div>
+        <el-empty v-else-if="inspectionForm.selectedWorkTypes.length > 0" description="该责任区下暂无检查项目" />
+
+        <el-form-item label="备注">
+          <el-input
+            v-model="inspectionForm.remark"
+            type="textarea"
+            :rows="3"
+            placeholder="请填写检查备注"
+          />
+        </el-form-item>
       </el-form>
+
       <template #footer>
-        <el-button @click="inspectionDialogVisible = false">取消</el-button>
-        <el-button type="primary" @click="submitInspection" :loading="submittingInspection">
-          提交
-        </el-button>
+        <el-button @click="dialogVisible = false">取消</el-button>
+        <el-button type="primary" @click="submitInspection" :loading="submitting">提交</el-button>
       </template>
     </FormDialog>
 
+    <!-- 详情对话框 -->
     <FormDialog
       v-model="detailDialogVisible"
       title="检查详情"
@@ -205,353 +229,356 @@
       :show-confirm="false"
       :show-cancel="false"
     >
-      <el-descriptions :column="2" border>
-        <el-descriptions-item label="检查日期">{{ currentRecord?.inspectionDate }}</el-descriptions-item>
-        <el-descriptions-item label="被检查人">{{ currentRecord?.inspectedUserName }}</el-descriptions-item>
-        <el-descriptions-item label="岗位">{{ currentRecord?.positionName }}</el-descriptions-item>
-        <el-descriptions-item label="责任区">{{ currentRecord?.areaName }}</el-descriptions-item>
-        <el-descriptions-item label="检查人">{{ currentRecord?.inspectorName }}</el-descriptions-item>
-        <el-descriptions-item label="检查结果">
-          <el-tag :type="currentRecord?.isQualified ? 'success' : 'danger'">
-            {{ currentRecord?.isQualified ? '合格' : '不合格' }}
-          </el-tag>
-        </el-descriptions-item>
-      </el-descriptions>
+      <div class="detail-content" v-if="detailData">
+        <el-descriptions :column="2" border>
+          <el-descriptions-item label="检查人">{{ detailData.inspector?.real_name || detailData.inspector_name }}</el-descriptions-item>
+          <el-descriptions-item label="被检查人">{{ detailData.inspected_user_name }}</el-descriptions-item>
+          <el-descriptions-item label="场站">{{ detailData.station?.station_name || '-' }}</el-descriptions-item>
+          <el-descriptions-item label="检查日期">{{ detailData.inspection_date }}</el-descriptions-item>
+          <el-descriptions-item label="责任区" :span="2">
+            {{ getWorkTypeNames(detailData.work_type_ids) }}
+          </el-descriptions-item>
+          <el-descriptions-item label="总体结论">
+            <el-tag :type="detailData.is_qualified ? 'success' : 'danger'">
+              {{ detailData.is_qualified ? '合格' : '异常' }}
+            </el-tag>
+          </el-descriptions-item>
+          <el-descriptions-item label="备注">{{ detailData.remark || '-' }}</el-descriptions-item>
+        </el-descriptions>
 
-      <el-divider content-position="left">检查项目</el-divider>
-
-      <el-table :data="currentRecord?.items || []" border size="small">
-        <el-table-column label="责任区" min-width="140">
-          <template #default="{ row }">
-            {{ row.areaName || row.area_name || currentRecord?.areaName || '-' }}
-          </template>
-        </el-table-column>
-        <el-table-column label="卫生点" min-width="140">
-          <template #default="{ row }">
-            {{ row.pointName || row.point_name || row.itemName || '-' }}
-          </template>
-        </el-table-column>
-        <el-table-column label="工作要求及标准" min-width="200">
-          <template #default="{ row }">
-            {{ row.workRequirements || row.work_requirements || '-' }}
-          </template>
-        </el-table-column>
-        <el-table-column label="是否合格" width="100">
-          <template #default="{ row }">
-            {{ row.status === 1 ? '是' : row.status === 0 ? '否' : '-' }}
-          </template>
-        </el-table-column>
-        <el-table-column label="备注" min-width="180">
-          <template #default="{ row }">
-            {{ row.remark || '-' }}
-          </template>
-        </el-table-column>
-      </el-table>
+        <div class="detail-items" v-if="detailItems.length">
+          <h4>检查项目</h4>
+          <el-table :data="detailItems" border size="small">
+            <el-table-column prop="workTypeName" label="责任区" width="120" />
+            <el-table-column prop="itemName" label="检查点位" min-width="140" />
+            <el-table-column prop="itemStandard" label="工作要求" min-width="160">
+              <template #default="{ row }">
+                {{ row.itemStandard || '-' }}
+              </template>
+            </el-table-column>
+            <el-table-column label="结果" width="80">
+              <template #default="{ row }">
+                <el-tag :type="row.result === 'pass' ? 'success' : 'danger'" size="small">
+                  {{ row.result === 'pass' ? '合格' : '异常' }}
+                </el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column prop="remark" label="备注" width="100">
+              <template #default="{ row }">
+                {{ row.remark || '-' }}
+              </template>
+            </el-table-column>
+            <el-table-column label="照片" width="120">
+              <template #default="{ row }">
+                <div v-if="row.photoUrls?.length" class="photo-preview">
+                  <el-image
+                    v-for="(url, idx) in row.photoUrls"
+                    :key="idx"
+                    :src="url"
+                    :preview-src-list="row.photoUrls"
+                    fit="cover"
+                    style="width: 40px; height: 40px; margin-right: 4px;"
+                  />
+                </div>
+                <span v-else>-</span>
+              </template>
+            </el-table-column>
+          </el-table>
+        </div>
+      </div>
+      <template #footer>
+        <el-button @click="detailDialogVisible = false">关闭</el-button>
+      </template>
     </FormDialog>
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted, computed, reactive, watch } from 'vue';
+import { ref, reactive, computed, onMounted, watch } from 'vue';
+import { ElMessage } from 'element-plus';
+import { Plus } from '@element-plus/icons-vue';
 import { useUserStore } from '@/store/modules/user';
 import { useUpload } from '@/composables/useUpload';
-import { ElMessage } from 'element-plus';
 import request from '@/api/request';
 import dayjs from 'dayjs';
-import { Plus } from '@element-plus/icons-vue';
-import { getHygieneAreas, getHygienePoints, getHygienePositionAreas } from '@/api/hygieneManagement';
-import HygieneAreaChecklist from '@/components/inspection/HygieneAreaChecklist.vue';
+import SafetyCheckItemList from '@/components/inspection/SafetyCheckItemList.vue';
 import FormDialog from '@/components/system/FormDialog.vue';
 
 const userStore = useUserStore();
-
 const { uploadUrl, uploadHeaders } = useUpload();
 
-const loadingInspection = ref(false);
-const submittingInspection = ref(false);
-const inspectionDialogVisible = ref(false);
-const inspectionFormRef = ref(null);
-const inspectionList = ref([]);
-const stationList = ref([]);
-const areaList = ref([]);
-const todayUsers = ref([]);
-const detailDialogVisible = ref(false);
-const currentRecord = ref(null);
+const showStationFilter = computed(() => {
+  const user = userStore.userInfo;
+  if (user?.roleCode === 'station_manager' && user?.stations?.length > 1) {
+    return true;
+  }
+  return ['deputy_manager', 'department_manager', 'admin', 'safety_inspector'].includes(user?.roleCode);
+});
 
-const inspectionPagination = ref({
+const stationList = ref([]);
+const activeStationList = computed(() => stationList.value.filter(station => isActiveStatus(station.status)));
+const formStationOptions = computed(() => {
+  const selectedId = inspectionForm.stationId;
+  if (!selectedId) return activeStationList.value;
+  const selected = stationList.value.find(station => station.id === selectedId);
+  if (selected && !isActiveStatus(selected.status)) {
+    return [selected, ...activeStationList.value.filter(station => station.id !== selectedId)];
+  }
+  return activeStationList.value;
+});
+
+const workTypes = ref([]);
+const workTypesMap = ref({});
+const formWorkTypes = ref([]);
+const formWorkTypesMap = ref({});
+const stationAreas = ref([]);
+const areaPointsMap = ref({});
+
+const isActiveStatus = (status) => status === undefined || status === null || status === '' || status === 'active' || status === 1 || status === '1' || status === true;
+
+const filters = reactive({
+  dateRange: [],
+  stationId: null,
+  inspectedName: '',
+  workTypeIds: []
+});
+
+const pagination = reactive({
   page: 1,
   pageSize: 10,
   total: 0
 });
 
-const inspectionFilters = reactive({
-  stationId: null,
-  inspectedUserName: '',
-  positionName: '',
-  areaName: ''
-});
+const inspectionList = ref([]);
+const loading = ref(false);
 
-const inspectionForm = ref({
+const dialogVisible = ref(false);
+const submitting = ref(false);
+const formRef = ref();
+const userList = ref([]);
+const allCheckItems = ref([]);
+
+const inspectionForm = reactive({
   stationId: null,
-  selectedAreaIds: [],
   inspectedUserId: null,
-  positionName: '',
-  areas: []
+  selectedWorkTypes: [],
+  remark: ''
 });
 
-const inspectionRules = {
+const formRules = {
   stationId: [{ required: true, message: '请选择场站', trigger: 'change' }],
-  selectedAreaIds: [
-    { required: true, type: 'array', min: 1, message: '请至少选择一个责任区', trigger: 'change' }
-  ],
-  inspectedUserId: [{ required: true, message: '请选择被检查人', trigger: 'change' }]
+  inspectedUserId: [{ required: true, message: '请选择被检查人', trigger: 'change' }],
+  selectedWorkTypes: [{ required: true, message: '请选择责任区', trigger: 'change', type: 'array', min: 1 }]
 };
 
-const normalizeRecord = (item) => {
-  let meta = {};
-  try {
-    meta = item.unqualified_items ? JSON.parse(item.unqualified_items) : {};
-  } catch (e) {
-    meta = {};
-  }
-  const items = Array.isArray(meta.items) ? meta.items : [];
-  const isQualified = item.is_qualified === 1 || item.isQualified === true;
+const groupedCheckItems = computed(() => {
+  const groups = [];
+  inspectionForm.selectedWorkTypes.forEach(wtId => {
+    const workType = formWorkTypesMap.value[wtId];
+    if (workType) {
+      const items = allCheckItems.value.filter(item => item.work_type_id === wtId);
+      if (items.length > 0) {
+        const parents = items.filter(item => item.parent_id === null || item.parent_id === undefined);
+        const parentIds = new Set(parents.map(item => item.id));
+        const childrenByParent = new Map();
 
-  return {
-    inspectionDate: item.inspection_date || item.inspectionDate,
-    stationId: item.station_id || item.station?.id || null,
-    stationName: item.station?.station_name || item.station_name || '-',
-    inspectedUserName: item.inspected_user_name || item.inspectedUser?.realName,
-    inspectorName: item.inspector_name || item.inspector?.realName,
-    positionName: meta.positionName || '-',
-    areaName: meta.areaName || '-',
-    items,
-    isQualified
-  };
-};
+        items.forEach(item => {
+          if (item.parent_id !== null && item.parent_id !== undefined) {
+            if (!childrenByParent.has(item.parent_id)) {
+              childrenByParent.set(item.parent_id, []);
+            }
+            childrenByParent.get(item.parent_id).push(item);
+          }
+        });
 
-const filteredInspectionList = computed(() => {
-  const stationId = inspectionFilters.stationId;
-  const inspectedKeyword = inspectionFilters.inspectedUserName?.trim().toLowerCase() || '';
-  const positionKeyword = inspectionFilters.positionName?.trim().toLowerCase() || '';
-  const areaKeyword = inspectionFilters.areaName?.trim().toLowerCase() || '';
+        const groupedItems = parents.map(parent => ({
+          parent,
+          children: childrenByParent.get(parent.id) || []
+        }));
 
-  return inspectionList.value.filter(row => {
-    const matchStation = stationId ? row.stationId === stationId : true;
-    const matchInspected = inspectedKeyword
-      ? (row.inspectedUserName || '').toLowerCase().includes(inspectedKeyword)
-      : true;
-    const matchPosition = positionKeyword
-      ? (row.positionName || '').toLowerCase().includes(positionKeyword)
-      : true;
-    const matchArea = areaKeyword
-      ? (row.areaName || '').toLowerCase().includes(areaKeyword)
-      : true;
-    return matchStation && matchInspected && matchPosition && matchArea;
-  });
-});
+        const orphanChildren = items.filter(item =>
+          item.parent_id !== null &&
+          item.parent_id !== undefined &&
+          !parentIds.has(item.parent_id)
+        );
+        orphanChildren.forEach(orphan => {
+          groupedItems.push({ parent: orphan, children: [] });
+        });
 
-const inspectedUserOptions = computed(() => {
-  const names = new Set();
-  inspectionList.value.forEach(row => {
-    if (row?.inspectedUserName) names.add(row.inspectedUserName);
-  });
-  return Array.from(names);
-});
-
-const inspectionPositionOptions = computed(() => {
-  const names = new Set();
-  inspectionList.value.forEach(row => {
-    if (row?.positionName && row.positionName !== '-') names.add(row.positionName);
-  });
-  return Array.from(names);
-});
-
-const inspectionAreaOptions = computed(() => {
-  const names = new Set();
-  inspectionList.value.forEach(row => {
-    if (row?.areaName && row.areaName !== '-') names.add(row.areaName);
-  });
-  return Array.from(names);
-});
-
-const applyInspectionFilters = () => {
-  inspectionPagination.value.page = 1;
-  loadInspectionList();
-};
-
-const resetInspectionFilters = () => {
-  inspectionFilters.stationId = null;
-  inspectionFilters.inspectedUserName = '';
-  inspectionFilters.positionName = '';
-  inspectionFilters.areaName = '';
-};
-
-watch(inspectionFilters, () => {
-  applyInspectionFilters();
-}, { deep: true });
-
-const loadInspectionList = async () => {
-  loadingInspection.value = true;
-  try {
-    const stationParam = inspectionFilters.stationId || undefined;
-    const res = await request.get('/other-inspections', {
-      params: {
-        inspectionType: 'hygiene',
-        page: inspectionPagination.value.page,
-        pageSize: inspectionPagination.value.pageSize,
-        stationId: stationParam
+        groups.push({
+          workType,
+          items: groupedItems
+        });
       }
-    });
-    inspectionList.value = (res.list || []).map(normalizeRecord);
-    inspectionPagination.value.total = res.total || 0;
-  } catch (e) {
-    ElMessage.error(e.message || '加载检查记录失败');
-  } finally {
-    loadingInspection.value = false;
-  }
+    }
+  });
+  return groups;
+});
+
+const detailDialogVisible = ref(false);
+const detailData = ref(null);
+
+const isMetaItem = (item) => {
+  const name = item?.itemName || item?.item_name || '';
+  const type = item?.itemType || item?.item_type || '';
+  return type === 'remark' || type === 'area_photo' || name === '不合格说明' || name === '责任区照片';
 };
+
+const getDetailItems = (row) => {
+  const items = row?.inspection_items || [];
+  return items.filter(item => !isMetaItem(item));
+};
+
+const detailItems = computed(() => getDetailItems(detailData.value));
 
 const loadStations = async () => {
   try {
-    const res = await request.get('/stations/all');
-    const list = Array.isArray(res) ? res : (res?.list || []);
-    stationList.value = list;
-  } catch (e) {
-    ElMessage.error(e.message || '加载场站列表失败');
-  }
-};
-
-const stationOptions = computed(() => {
-  const list = Array.isArray(stationList.value) ? stationList.value : [];
-  return list
-    .filter(Boolean)
-    .map(station => ({
-      id: station.id ?? station.station_id ?? station.stationId ?? null,
-      name: station.station_name || station.stationName || station.name || ''
-    }))
-    .filter(station => station.name);
-});
-
-const stationIdOptions = computed(() => {
-  return stationOptions.value.filter(station => station.id !== null && station.id !== undefined && station.id !== '');
-});
-
-const handleStationChange = async (stationId) => {
-  inspectionForm.value.selectedAreaIds = [];
-  inspectionForm.value.inspectedUserId = null;
-  inspectionForm.value.positionName = '';
-  inspectionForm.value.areas = [];
-  todayUsers.value = [];
-
-  if (!stationId) return;
-
-  try {
-    const areas = await getHygieneAreas({
-      stationId: stationId || userStore.currentStationId
-    });
-
-    const areasWithPoints = await Promise.all(
-      (areas || []).map(async (area) => {
-        try {
-          const points = await getHygienePoints({
-            hygieneAreaId: area.id
-          });
-          return { ...area, points: points || [] };
-        } catch (e) {
-          return { ...area, points: [] };
-        }
-      })
-    );
-
-    areaList.value = areasWithPoints.map(area => ({
-      ...area,
-      areaName: area.areaName ?? area.area_name ?? '',
-      points: (area.points || []).map(point => ({
-        ...point,
-        pointName: point.pointName ?? point.point_name ?? '',
-        workRequirements: point.workRequirements ?? point.work_requirements ?? ''
-      }))
+    const res = await request.get('/stations', { params: { pageSize: 200 } });
+    stationList.value = (res.list || res || []).map(s => ({
+      id: s.id,
+      stationName: s.stationName || s.station_name,
+      status: s.status
     }));
-  } catch (e) {
-    ElMessage.error(e.message || '加载责任区失败');
-  }
-
-  try {
-    const res = await request.get('/schedules/today', { params: { stationId } });
-    todayUsers.value = res || [];
-  } catch (e) {
-    ElMessage.error(e.message || '加载排班人员失败');
+  } catch (error) {
+    
   }
 };
 
-const handleAreaChange = async (selectedIds) => {
-  if (!selectedIds || selectedIds.length === 0) {
-    inspectionForm.value.areas = [];
-    inspectionForm.value.positionName = '';
-    inspectionForm.value.inspectedUserId = null;
+const mapWorkTypes = (list, targetMap) => {
+  targetMap.value = {};
+  (list || []).forEach(wt => {
+    targetMap.value[wt.id] = wt;
+  });
+};
+
+const mapAreasToWorkTypes = (areas) => (areas || []).map(area => ({
+  id: area.id,
+  work_type_name: area.areaName ?? area.area_name ?? '',
+  points: area.areaPoints ?? area.points ?? 0,
+  pointsList: area.points ?? area.hygienePoints ?? []
+}));
+
+const loadHygieneAreas = async (stationId) => {
+  const params = {};
+  if (stationId) {
+    params.stationId = stationId;
+  }
+  const res = await request.get('/hygiene-areas', { params });
+  return res || [];
+};
+
+const loadFilterWorkTypes = async () => {
+  try {
+    const areas = await loadHygieneAreas();
+    workTypes.value = mapAreasToWorkTypes(areas);
+    mapWorkTypes(workTypes.value, workTypesMap);
+    const pointsMap = {};
+    workTypes.value.forEach(area => {
+      pointsMap[area.id] = area.points ?? 0;
+    });
+    areaPointsMap.value = pointsMap;
+  } catch (error) {
+    
+  }
+};
+
+const loadFormWorkTypes = async () => {
+  try {
+    const areas = await loadHygieneAreas(inspectionForm.stationId);
+    stationAreas.value = areas;
+    formWorkTypes.value = mapAreasToWorkTypes(areas);
+    mapWorkTypes(formWorkTypes.value, formWorkTypesMap);
+  } catch (error) {
+    
+  }
+};
+
+const buildHygieneCheckItems = (areas, workTypeIds) => {
+  const selected = new Set((workTypeIds || []).map(id => Number(id)));
+  const items = [];
+  (areas || []).forEach(area => {
+    if (!selected.has(Number(area.id))) return;
+    const points = area.points || area.hygienePoints || [];
+    points.forEach(point => {
+      items.push({
+        id: point.id,
+        item_name: point.pointName ?? point.point_name ?? '',
+        item_standard: point.workRequirements ?? point.work_requirements ?? '',
+        work_type_id: area.id,
+        parent_id: null,
+        result: null,
+        remark: '',
+        photoList: [],
+        photoUrls: []
+      });
+    });
+  });
+  return items;
+};
+
+const loadCheckItems = async (workTypeIds) => {
+  if (!workTypeIds || workTypeIds.length === 0) {
+    allCheckItems.value = [];
     return;
   }
-
-  try {
-    const assignments = await getHygienePositionAreas({
-      stationId: inspectionForm.value.stationId
-    });
-
-    const selectedAssignments = assignments.filter(item =>
-      selectedIds.includes(item.areaId ?? item.hygiene_area_id)
-    );
-
-    const positionNames = [...new Set(selectedAssignments.map(item => item.positionName ?? item.position_name).filter(Boolean))];
-
-    if (positionNames.length === 0) {
-      ElMessage.warning('所选责任区未分配岗位，请先在【卫生工作安排】中配置');
-      inspectionForm.value.selectedAreaIds = [];
-      inspectionForm.value.areas = [];
-      return;
-    }
-
-    if (positionNames.length > 1) {
-      ElMessage.warning('所选责任区属于不同岗位，请选择同一岗位的责任区');
-      inspectionForm.value.selectedAreaIds = [];
-      inspectionForm.value.areas = [];
-      return;
-    }
-
-    const positionName = positionNames[0];
-    inspectionForm.value.positionName = positionName;
-
-    const userWithPosition = todayUsers.value.find(u => u.positionName === positionName);
-    if (userWithPosition) {
-      inspectionForm.value.inspectedUserId = userWithPosition.userId;
-    } else {
-      ElMessage.warning(`今日排班中未找到岗位"${positionName}"的人员`);
-      inspectionForm.value.inspectedUserId = null;
-    }
-
-    const selectedAreas = areaList.value.filter(area => selectedIds.includes(area.id));
-    inspectionForm.value.areas = selectedAreas.map(area => ({
-      ...area,
-      areaName: area.areaName ?? area.area_name ?? '',
-      points: (area.points || []).map(point => ({
-        ...point,
-        pointName: point.pointName ?? point.point_name ?? '',
-        workRequirements: point.workRequirements ?? point.work_requirements ?? '',
-        checkStatus: null,
-        remark: '',
-        photoList: []
-      }))
-    }));
-  } catch (e) {
-    ElMessage.error(e.message || '加载责任区失败');
-  }
+  allCheckItems.value = buildHygieneCheckItems(stationAreas.value, workTypeIds);
 };
 
-const updatePointPhotoList = (point, fileList) => {
-  point.photoList = (fileList ?? []).map(file => {
-    const responseUrl = file?.response?.data?.url ?? file?.response?.url ?? '';
-    const url = responseUrl ? responseUrl : (file?.url ?? '');
-    return url ? { ...file, url } : file;
+const normalizeUploadFile = (file) => {
+  const responseUrl = file?.response?.data?.url ?? file?.response?.url ?? '';
+  const url = responseUrl ? responseUrl : (file?.url ?? '');
+  return url ? { ...file, url } : file;
+};
+
+const updateItemPhotoList = (item, fileList) => {
+  const normalized = (fileList ?? []).map(normalizeUploadFile);
+  item.photoList = normalized;
+  item.photoUrls = normalized
+    .map(file => file.response?.data?.url ?? file.response?.url)
+    .filter(Boolean);
+};
+
+const getParentItem = (child) => {
+  if (!child?.parent_id) return null;
+  return allCheckItems.value.find(item => item.id === child.parent_id) || null;
+};
+
+const resolveParentResultValue = (parent) => {
+  if (parent.result === 'pass') return 1;
+  if (parent.result === 'fail') return 0;
+  return null;
+};
+
+const isChildVisible = (child) => {
+  if (!child?.parent_id) return true;
+  const parent = getParentItem(child);
+  if (!parent || Number(parent.enable_children) !== 1) return false;
+  const parentValue = resolveParentResultValue(parent);
+  if (parentValue === null) return false;
+  const triggerValue = child.trigger_value !== null && child.trigger_value !== undefined
+    ? Number(child.trigger_value)
+    : 1;
+  return parentValue === triggerValue;
+};
+
+const resetChildItem = (child) => {
+  child.result = null;
+  child.remark = '';
+  child.photoList = [];
+  child.photoUrls = [];
+};
+
+const handleResultChange = (item) => {
+  if (!item || item.parent_id) return;
+  const children = allCheckItems.value.filter(child => child.parent_id === item.id);
+  if (Number(item.enable_children) !== 1) {
+    children.forEach(resetChildItem);
+    return;
+  }
+  children.forEach(child => {
+    if (!isChildVisible(child)) {
+      resetChildItem(child);
+    }
   });
 };
 
@@ -559,94 +586,203 @@ const handleUploadError = () => {
   ElMessage.error('图片上传失败，请检查图片大小或网络');
 };
 
-const handlePointStatusChange = (point) => {
-  if (point.checkStatus !== 0) {
-    point.remark = '';
-    point.photoList = [];
+const loadInspectionList = async () => {
+  loading.value = true;
+  try {
+    const params = {
+      page: pagination.page,
+      pageSize: pagination.pageSize,
+      inspectionType: 'hygiene'
+    };
+
+    if (filters.dateRange && filters.dateRange.length === 2) {
+      params.startDate = filters.dateRange[0];
+      params.endDate = filters.dateRange[1];
+    }
+    if (filters.stationId) {
+      params.stationId = filters.stationId;
+    }
+    if (filters.inspectedName) {
+      params.inspectedUserName = filters.inspectedName;
+    }
+    if (filters.workTypeIds && filters.workTypeIds.length > 0) {
+      params.workTypeIds = filters.workTypeIds.join(',');
+    }
+
+    const res = await request.get('/other-inspections', { params });
+    inspectionList.value = res?.list || res || [];
+    pagination.total = res?.total || 0;
+  } catch (error) {
+    
+  } finally {
+    loading.value = false;
   }
 };
 
-const submitInspection = async () => {
-  await inspectionFormRef.value.validate();
+const resetFilters = () => {
+  filters.dateRange = [];
+  filters.stationId = null;
+  filters.inspectedName = '';
+  filters.workTypeIds = [];
+  loadInspectionList();
+};
 
-  const allPoints = inspectionForm.value.areas.flatMap(area => area.points);
-  const hasUnchecked = allPoints.some(point => point.checkStatus === null);
-  if (hasUnchecked) {
+const applyFilters = () => {
+  pagination.page = 1;
+  loadInspectionList();
+};
+
+watch(
+  () => [filters.dateRange, filters.stationId, filters.inspectedName, filters.workTypeIds],
+  () => {
+    applyFilters();
+  },
+  { deep: true }
+);
+
+const handleStationChange = async (stationId) => {
+  inspectionForm.inspectedUserId = null;
+  userList.value = [];
+
+  if (stationId) {
+    try {
+      const res = await request.get('/schedules/today', {
+        params: { stationId }
+      });
+      const uniqueUsers = new Map();
+      (res || []).forEach(item => {
+        const userId = item.userId || item.user?.id;
+        if (!userId || uniqueUsers.has(userId)) return;
+        uniqueUsers.set(userId, {
+          id: userId,
+          real_name: item.user?.real_name || item.userName || ''
+        });
+      });
+      userList.value = Array.from(uniqueUsers.values());
+    } catch (error) {
+      
+    }
+  }
+
+  await loadFormWorkTypes();
+  inspectionForm.selectedWorkTypes = [];
+  allCheckItems.value = [];
+};
+
+const handleWorkTypesChange = async (selectedIds) => {
+  await loadCheckItems(selectedIds);
+};
+
+const showNewInspection = () => {
+  Object.assign(inspectionForm, {
+    stationId: null,
+    inspectedUserId: null,
+    selectedWorkTypes: [],
+    remark: ''
+  });
+  userList.value = [];
+  allCheckItems.value = [];
+  loadFormWorkTypes();
+
+  if (activeStationList.value.length === 1) {
+    inspectionForm.stationId = activeStationList.value[0].id;
+    handleStationChange(inspectionForm.stationId);
+  }
+
+  dialogVisible.value = true;
+};
+
+const submitInspection = async () => {
+  if (!inspectionForm.stationId) {
+    ElMessage.warning('请选择场站');
+    return;
+  }
+  if (!inspectionForm.inspectedUserId) {
+    ElMessage.warning('请选择被检查人');
+    return;
+  }
+  if (!inspectionForm.selectedWorkTypes.length) {
+    ElMessage.warning('请选择责任区');
+    return;
+  }
+
+  const visibleItems = allCheckItems.value.filter(item => item.result === 'pass' || item.result === 'fail');
+  const unselectedItems = allCheckItems.value.filter(item => item.result !== 'pass' && item.result !== 'fail');
+  if (unselectedItems.length > 0) {
     ElMessage.warning('请完成所有检查项');
     return;
   }
 
-  submittingInspection.value = true;
+  submitting.value = true;
   try {
-    const isQualified = allPoints.every(point => point.checkStatus === 1);
-    let itemIndex = 1;
-    const items = inspectionForm.value.areas.flatMap(area =>
-      (area.points || []).map(point => ({
-        itemId: itemIndex++,
-        areaName: area.areaName ?? area.area_name ?? '',
-        pointName: point.pointName ?? point.point_name ?? '',
-        workRequirements: point.workRequirements ?? point.work_requirements ?? '',
-        status: point.checkStatus,
-        itemName: point.pointName ?? point.point_name ?? '',
-        remark: point.remark || '',
-        photoUrls: (point.photoList || []).map(file => file.url).filter(Boolean)
-      }))
-    );
+    const inspectedUser = userList.value.find(user => user.id === inspectionForm.inspectedUserId);
 
-    const photoUrls = items.flatMap(item => item.photoUrls || []);
-    const inspectedUser = todayUsers.value.find(u => u.userId === inspectionForm.value.inspectedUserId);
-
-    const payloadMeta = {
-      positionName: inspectionForm.value.positionName,
-      areaName: inspectionForm.value.areas.map(a => a.areaName ?? a.area_name ?? '').filter(Boolean).join(', '),
-      items
-    };
+    const inspectionItems = visibleItems.map(item => ({
+      workTypeId: item.work_type_id,
+      workTypeName: formWorkTypesMap.value[item.work_type_id]?.work_type_name || '',
+      itemId: item.id,
+      itemName: item.item_name,
+      parentId: item.parent_id ?? null,
+      parentName: item.parent_id ? getParentItem(item)?.item_name || '' : '',
+      itemStandard: item.item_standard,
+      result: item.result,
+      remark: item.remark || '',
+      photoUrls: item.photoUrls || []
+    }));
 
     await request.post('/other-inspections', {
       inspectionType: 'hygiene',
-      stationId: inspectionForm.value.stationId,
-      inspectionDate: dayjs().format('YYYY-MM-DD'),
-      inspectedUserId: inspectionForm.value.inspectedUserId,
-      inspectedUserName: inspectedUser?.userName || inspectedUser?.realName || '',
-      violationDescription: isQualified ? '' : '存在不合格项',
-      isQualified,
-      unqualifiedItems: JSON.stringify(payloadMeta),
-      photoUrls
+      stationId: inspectionForm.stationId,
+      inspectedUserId: inspectionForm.inspectedUserId,
+      inspectedUserName: inspectedUser?.real_name || '',
+      workTypeIds: inspectionForm.selectedWorkTypes,
+      inspectionItems,
+      isQualified: inspectionItems.every(item => item.result === 'pass'),
+      remark: inspectionForm.remark
     });
 
-    ElMessage.success('提交成功');
-    inspectionDialogVisible.value = false;
+    ElMessage.success('他检提交成功');
+    dialogVisible.value = false;
     loadInspectionList();
-  } catch (e) {
-    ElMessage.error(e.message || '提交失败');
+  } catch (error) {
+    if (error.message) {
+      ElMessage.error(error.message);
+    }
   } finally {
-    submittingInspection.value = false;
+    submitting.value = false;
   }
 };
 
-const showNewInspection = () => {
-  inspectionForm.value = {
-    stationId: userStore.currentStationId,
-    selectedAreaIds: [],
-    inspectedUserId: null,
-    positionName: '',
-    areas: []
-  };
-  inspectionDialogVisible.value = true;
-
-  if (userStore.currentStationId) {
-    handleStationChange(userStore.currentStationId);
-  }
-};
-
-const viewInspectionDetail = (row) => {
-  currentRecord.value = row;
+const viewDetail = (row) => {
+  detailData.value = row;
   detailDialogVisible.value = true;
 };
 
-onMounted(() => {
-  loadInspectionList();
-  loadStations();
+const getWorkTypeNames = (workTypeIds) => {
+  const ids = Array.isArray(workTypeIds) ? workTypeIds : [];
+  if (!ids.length) return '-';
+  return ids
+    .map(id => workTypesMap.value[id]?.work_type_name || `ID:${id}`)
+    .join('、');
+};
+
+const getInspectionPoints = (row) => {
+  const ids = Array.isArray(row?.work_type_ids) ? row.work_type_ids : [];
+  let total = 0;
+  ids.forEach(id => {
+    const points = areaPointsMap.value[id];
+    const value = Number(points);
+    if (!Number.isNaN(value)) {
+      total += value;
+    }
+  });
+  return total;
+};
+
+onMounted(async () => {
+  await loadStations();
+  await loadFilterWorkTypes();
+  await loadInspectionList();
 });
 </script>
 
@@ -656,93 +792,36 @@ onMounted(() => {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 16px;
+    margin-bottom: 20px;
 
     h3 {
       margin: 0;
-      font-size: 16px;
-      font-weight: 500;
+      font-size: 18px;
     }
   }
 
-  .inspection-filters {
-    display: flex;
-    gap: 12px;
-    flex-wrap: wrap;
-    margin-bottom: 16px;
+  .filter-card {
+    margin-bottom: 20px;
   }
 
-  .pagination-wrapper {
-    display: flex;
-    justify-content: flex-end;
-    margin-top: 16px;
-  }
-
-  .area-section {
-    margin-bottom: 24px;
-
-    .area-title {
-      margin: 0 0 12px 0;
-      font-size: 14px;
-      font-weight: 500;
-      color: #409eff;
-    }
-  }
-
-  .panel-header {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    flex-wrap: wrap;
-
-    h4 {
-      margin: 0;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      flex: 1 1 100%;
-    }
-
-    .header-actions {
+  .table-card {
+    .pagination-wrapper {
+      margin-top: 16px;
       display: flex;
-      flex-wrap: wrap;
-      gap: 8px;
-      width: 100%;
+      justify-content: flex-end;
     }
   }
 
-  .point-list {
-    display: flex;
-    flex-direction: column;
-    gap: 16px;
-  }
+  .detail-content {
+    .detail-items {
+      margin-top: 16px;
+    }
 
-  .point-item {
-    padding: 12px;
-    background: #f5f7fa;
-    border-radius: 4px;
-
-    .point-header {
+    .photo-preview {
       display: flex;
-      justify-content: space-between;
       align-items: center;
-      margin-bottom: 8px;
-
-      .point-name {
-        font-weight: 500;
-        color: #303133;
-      }
+      flex-wrap: wrap;
     }
-
-    .point-requirement {
-      font-size: 12px;
-      color: #606266;
-      margin-bottom: 8px;
-    }
-  }
-
-  .empty-hint {
-    padding: 40px 0;
   }
 }
 </style>

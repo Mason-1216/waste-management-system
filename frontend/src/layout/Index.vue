@@ -214,11 +214,11 @@ const menuCodeFromPath = (path) => (path ? `menu:${path}` : null);
 const filterMenusByPermissions = (items, allowedCodes) => {
   return (items || []).reduce((acc, item) => {
     const menuCode = menuCodeFromPath(item.path);
+    const isAllowed = menuCode ? allowedCodes.has(menuCode) : false;
     let children = null;
     if (item.children?.length) {
-      children = filterMenusByPermissions(item.children, allowedCodes);
+      children = isAllowed ? item.children : filterMenusByPermissions(item.children, allowedCodes);
     }
-    const isAllowed = menuCode ? allowedCodes.has(menuCode) : false;
     if (isAllowed || (children && children.length > 0)) {
       acc.push({ ...item, children: children || item.children });
     }
@@ -375,6 +375,7 @@ watch(() => route.path, async (newPath, oldPath) => {
 // 错误捕获
 onErrorCaptured((err, instance, info) => {
   pushRouteLog({ type: 'component-error', message: err?.message || String(err), info });
+  console.error('component-error', err, info);
   ElMessage.error('页面加载失败，请刷新重试');
   return false; // 阻止错误继续传播
 });

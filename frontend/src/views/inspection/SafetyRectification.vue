@@ -516,6 +516,21 @@ const formatRootCauseName = (name) => {
   return decodeMojibake(name);
 };
 
+const formatDate = (date) => (date ? dayjs(date).format('YYYY-MM-DD') : '-');
+const formatTime = (time) => (time ? dayjs(time).format('HH:mm') : '-');
+
+const getStatusType = (status) => ({
+  pending: 'warning',
+  rectified: 'success',
+  reviewed: 'info'
+}[status] || 'info');
+
+const getStatusText = (status) => ({
+  pending: '待整改',
+  rectified: '已整改',
+  reviewed: '已复核'
+}[status] || '未知');
+
 const loadList = async () => {
   loading.value = true;
   try {

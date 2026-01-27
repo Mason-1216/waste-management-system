@@ -23,6 +23,7 @@ export const getPositionJobs = async (ctx) => {
     quantity,
     pointsRule,
     quantityEditable,
+    pointsEditable,
     dispatchReviewRequired,
     keyword,
     isActive
@@ -90,6 +91,13 @@ export const getPositionJobs = async (ctx) => {
     const normalized = Number(quantityEditable);
     if (normalized === 0 || normalized === 1) {
       where.quantity_editable = normalized;
+    }
+  }
+
+  if (hasValue(pointsEditable)) {
+    const normalized = Number(pointsEditable);
+    if (normalized === 0 || normalized === 1) {
+      where.points_editable = normalized;
     }
   }
 
@@ -169,6 +177,7 @@ export const createPositionJob = async (ctx) => {
     quantity,
     pointsRule,
     quantityEditable,
+    pointsEditable,
     dispatchReviewRequired,
     stationId
   } = ctx.request.body;
@@ -227,6 +236,7 @@ export const createPositionJob = async (ctx) => {
     quantity: normalizedQuantity,
     points_rule: pointsRule ?? null,
     quantity_editable: Number(quantityEditable) === 1 ? 1 : 0,
+    points_editable: Number(pointsEditable) === 1 ? 1 : 0,
     dispatch_review_required: Number(dispatchReviewRequired) === 1 ? 1 : 0,
     station_id: Number(stationId),
     is_active: 1
@@ -255,6 +265,7 @@ export const updatePositionJob = async (ctx) => {
     quantity,
     pointsRule,
     quantityEditable,
+    pointsEditable,
     dispatchReviewRequired,
     stationId,
     isActive,
@@ -347,6 +358,10 @@ export const updatePositionJob = async (ctx) => {
 
   if (quantityEditable !== undefined) {
     updateData.quantity_editable = Number(quantityEditable) === 1 ? 1 : 0;
+  }
+
+  if (pointsEditable !== undefined) {
+    updateData.points_editable = Number(pointsEditable) === 1 ? 1 : 0;
   }
 
   if (dispatchReviewRequired !== undefined) {
@@ -660,7 +675,8 @@ export const importPositionJobs = async (ctx) => {
       const quantity = parseNumber(row.getCell(8).value, Number.parseInt) ?? 1;
       const pointsRule = row.getCell(9).value?.toString().trim();
       const quantityEditable = parseBoolean(row.getCell(10).value);
-      const dispatchReviewRequired = parseBoolean(row.getCell(11).value);
+      const pointsEditable = parseBoolean(row.getCell(11).value);
+      const dispatchReviewRequired = parseBoolean(row.getCell(12).value);
 
       if (!positionName || !jobName) {
         results.push({
@@ -734,6 +750,7 @@ export const importPositionJobs = async (ctx) => {
           quantity: quantity,
           points_rule: pointsRule ?? null,
           quantity_editable: quantityEditable === 1 ? 1 : 0,
+          points_editable: pointsEditable === 1 ? 1 : 0,
           dispatch_review_required: dispatchReviewRequired === 1 ? 1 : 0,
           station_id: stationId,
           is_active: 1
@@ -755,6 +772,7 @@ export const importPositionJobs = async (ctx) => {
           quantity: quantity,
           points_rule: pointsRule ?? existing.points_rule,
           quantity_editable: quantityEditable === null ? existing.quantity_editable : quantityEditable,
+          points_editable: pointsEditable === null ? existing.points_editable : pointsEditable,
           dispatch_review_required: dispatchReviewRequired === null ? existing.dispatch_review_required : dispatchReviewRequired
         });
 
@@ -808,6 +826,7 @@ export const getPositionJobsTemplate = async (ctx) => {
       { header: '数量', key: 'quantity', width: 10 },
       { header: '积分规则', key: 'pointsRule', width: 20 },
       { header: '数量是否可修改', key: 'quantityEditable', width: 15 },
+      { header: '积分是否可修改', key: 'pointsEditable', width: 15 },
       { header: '派发任务是否强制审核', key: 'dispatchReviewRequired', width: 20 }
     ];
 
@@ -822,6 +841,7 @@ export const getPositionJobsTemplate = async (ctx) => {
       quantity: 1,
       pointsRule: '备注说明',
       quantityEditable: '是',
+      pointsEditable: '否',
       dispatchReviewRequired: '否'
     });
 
@@ -837,6 +857,7 @@ export const getPositionJobsTemplate = async (ctx) => {
       ['数量', '整数 1-1000，默认 1'],
       ['积分规则', '备注说明'],
       ['数量是否可修改', '填写 是/否'],
+      ['积分是否可修改', '填写 是/否'],
       ['派发任务是否强制审核', '填写 是/否']
     ]);
 

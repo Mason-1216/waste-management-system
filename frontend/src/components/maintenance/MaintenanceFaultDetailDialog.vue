@@ -244,6 +244,113 @@
           <el-input-number v-model="currentRow.work_hours" :disabled="!canEditRepair(currentRow)" :min="0" />
         </el-form-item>
 
+        <el-form-item label="工作内容" class="full-width">
+          <div class="list-block">
+            <div
+              v-for="(item, index) in workContents"
+              :key="`work-${index}`"
+              class="work-content-row"
+            >
+              <el-input
+                v-model="currentRow.work_contents[index]"
+                :disabled="!canEditRepair(currentRow)"
+                placeholder="填写工作内容（选填）"
+              />
+              <el-button
+                v-if="canEditRepair(currentRow)"
+                type="danger"
+                plain
+                @click="removeWorkContent(index)"
+              >
+                删除
+              </el-button>
+            </div>
+            <div class="list-actions">
+              <el-button v-if="canEditRepair(currentRow)" @click="addWorkContent">
+                新增
+              </el-button>
+            </div>
+          </div>
+        </el-form-item>
+
+        <el-form-item label="任务库调取" class="full-width">
+          <div class="list-block">
+            <div class="list-actions">
+              <el-button v-if="canEditRepair(currentRow)" type="primary" @click="openTaskLibrary">
+                选择任务
+              </el-button>
+            </div>
+            <div v-if="repairTasks.length > 0" class="task-table-scroll">
+              <el-table
+                :data="repairTasks"
+                border
+                stripe
+                class="task-table"
+                :row-key="repairTaskKey"
+              >
+                <el-table-column prop="task_category" label="任务类别" width="120">
+                  <template #default="{ row }">
+                    {{ row.task_category ?? '-' }}
+                  </template>
+                </el-table-column>
+                <el-table-column prop="task_name" label="任务名称" min-width="160">
+                  <template #default="{ row }">
+                    {{ row.task_name ?? row.job_name ?? '-' }}
+                  </template>
+                </el-table-column>
+                <el-table-column prop="score_method" label="给分方式" width="120">
+                  <template #default="{ row }">
+                    {{ row.score_method ?? '-' }}
+                  </template>
+                </el-table-column>
+                <el-table-column prop="points" label="单位积分" width="120">
+                  <template #default="{ row }">
+                    <el-input-number
+                      v-model="row.points"
+                      :disabled="!canEditPoints(currentRow, row)"
+                      controls-position="right"
+                    />
+                  </template>
+                </el-table-column>
+                <el-table-column prop="quantity" label="数量" width="110">
+                  <template #default="{ row }">
+                    <el-input-number
+                      v-model="row.quantity"
+                      :disabled="!canEditQuantity(currentRow, row)"
+                      :min="1"
+                      controls-position="right"
+                    />
+                  </template>
+                </el-table-column>
+                <el-table-column prop="points_rule" label="积分规则" min-width="180">
+                  <template #default="{ row }">
+                    <span class="cell-ellipsis" :title="row.points_rule ?? ''">
+                      {{ row.points_rule ?? '-' }}
+                    </span>
+                  </template>
+                </el-table-column>
+                <el-table-column label="操作" width="100">
+                  <template #default="{ $index }">
+                    <el-button
+                      v-if="canEditRepair(currentRow)"
+                      type="danger"
+                      link
+                      @click="removeRepairTask($index)"
+                    >
+                      移除
+                    </el-button>
+                  </template>
+                </el-table-column>
+              </el-table>
+            </div>
+            <el-empty v-else description="暂无任务" />
+            <div class="task-summary">
+              <span>任务数：{{ repairTaskCount }}</span>
+              <span>任务积分合计：{{ repairTaskPointsTotal }}</span>
+            </div>
+          </div>
+        </el-form-item>
+
         <el-form-item label="耗材" class="full-width">
           <MaintenanceItemTable
             :items="currentRow.consumables_list || []"
@@ -396,12 +503,18 @@
         </el-button>
       </div>
     </el-form>
+    <RepairTaskLibraryDialog
+      v-model:visible="taskLibraryVisible"
+      :selected-tasks="repairTasks"
+      @confirm="handleTaskLibraryConfirm"
+    />
   </el-dialog>
 </template>
 
 <script setup>
 import { computed, ref, toRef } from 'vue';
 import MaintenanceItemTable from '@/components/maintenance/MaintenanceItemTable.vue';
+import RepairTaskLibraryDialog from '@/components/maintenance/RepairTaskLibraryDialog.vue';
 
 const props = defineProps({
   visible: { type: Boolean, default: false },
@@ -455,6 +568,122 @@ const dialogVisible = computed({
   set: (value) => emit('update:visible', value)
 });
 
+const workContents = computed(() => {
+  const row = currentRow.value;
+  if (!row) return [];
+  if (!Array.isArray(row.work_contents)) {
+    row.work_contents = [];
+  }
+  return row.work_contents;
+});
+
+const repairTasks = computed(() => {
+  const row = currentRow.value;
+  if (!row) return [];
+  if (!Array.isArray(row.repair_tasks)) {
+    row.repair_tasks = [];
+  }
+  row.repair_tasks.forEach((task) => {
+    if (task === null || task === undefined) return;
+    if (task.quantity === undefined || task.quantity === null || task.quantity === '') {
+      task.quantity = 1;
+    }
+    if (task.quantity_editable === undefined || task.quantity_editable === null) {
+      task.quantity_editable = 0;
+    }
+    if (task.points_editable === undefined || task.points_editable === null) {
+      task.points_editable = 0;
+    }
+  });
+  return row.repair_tasks;
+});
+
+const getTaskPointsValue = (value) => {
+  if (value === undefined || value === null || value === '') return 0;
+  const parsed = Number(value);
+  if (Number.isNaN(parsed)) return 0;
+  return parsed;
+};
+
+const getTaskQuantityValue = (value) => {
+  if (value === undefined || value === null || value === '') return 1;
+  const parsed = Number.parseInt(value, 10);
+  if (!Number.isInteger(parsed)) return 1;
+  if (parsed < 1) return 1;
+  return parsed;
+};
+
+const repairTaskCount = computed(() => repairTasks.value.length);
+
+const repairTaskPointsTotal = computed(() => {
+  return repairTasks.value.reduce((sum, task) => {
+    const points = getTaskPointsValue(task?.points);
+    const quantity = getTaskQuantityValue(task?.quantity);
+    return sum + points * quantity;
+  }, 0);
+});
+
+const taskLibraryVisible = ref(false);
+
+const addWorkContent = () => {
+  if (!currentRow.value) return;
+  if (!Array.isArray(currentRow.value.work_contents)) {
+    currentRow.value.work_contents = [];
+  }
+  currentRow.value.work_contents.push('');
+};
+
+const removeWorkContent = (index) => {
+  if (!Array.isArray(currentRow.value?.work_contents)) return;
+  currentRow.value.work_contents.splice(index, 1);
+};
+
+const openTaskLibrary = () => {
+  if (!currentRow.value) return;
+  taskLibraryVisible.value = true;
+};
+
+const repairTaskKey = (row) => row?.task_id ?? row?.job_id ?? row?.id ?? row?.task_name ?? row?.job_name ?? '';
+
+const canEditPoints = (record, task) => {
+  if (!props.canEditRepair(record)) return false;
+  return Number(task?.points_editable) === 1;
+};
+
+const canEditQuantity = (record, task) => {
+  if (!props.canEditRepair(record)) return false;
+  return Number(task?.quantity_editable) === 1;
+};
+
+const handleTaskLibraryConfirm = (tasks) => {
+  if (!currentRow.value) return;
+  if (!Array.isArray(currentRow.value.repair_tasks)) {
+    currentRow.value.repair_tasks = [];
+  }
+  const existingIds = new Set(
+    currentRow.value.repair_tasks
+      .map(item => item?.task_id ?? item?.job_id ?? item?.id)
+      .filter(item => item !== undefined && item !== null)
+  );
+  tasks.forEach((task) => {
+    const id = task?.task_id ?? task?.job_id ?? task?.id;
+    if (id === undefined || id === null) return;
+    if (existingIds.has(id)) return;
+    const nextTask = {
+      ...task,
+      quantity: task?.quantity ?? 1,
+      quantity_editable: task?.quantity_editable ?? 0
+    };
+    currentRow.value.repair_tasks.push(nextTask);
+    existingIds.add(id);
+  });
+};
+
+const removeRepairTask = (index) => {
+  if (!Array.isArray(currentRow.value?.repair_tasks)) return;
+  currentRow.value.repair_tasks.splice(index, 1);
+};
+
 const resolveText = (value, fallback) => {
   if (value === undefined || value === null || value === '') {
     return fallback;
@@ -476,3 +705,41 @@ const flowSteps = computed(() => {
   return Array.isArray(steps) ? steps : [];
 });
 </script>
+
+<style lang="scss" scoped>
+.work-content-row {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.task-table {
+  width: 100%;
+  min-width: 980px;
+}
+
+.task-table-scroll {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.task-summary {
+  display: flex;
+  justify-content: flex-end;
+  gap: 16px;
+  margin-top: 8px;
+  color: #606266;
+  font-size: 13px;
+}
+
+.cell-ellipsis {
+  display: inline-block;
+  max-width: 200px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  vertical-align: middle;
+}
+</style>

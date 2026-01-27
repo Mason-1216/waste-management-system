@@ -250,9 +250,10 @@ CREATE TABLE IF NOT EXISTS safety_other_inspections (
     inspector_id INT NOT NULL,
     inspector_name VARCHAR(50),
     inspection_date DATE NOT NULL,
-    inspected_user_id INT,
-    inspected_user_name VARCHAR(50),
-    violation_description TEXT,
+      inspected_user_id INT,
+      inspected_user_name VARCHAR(50),
+      points INT DEFAULT 0,
+      violation_description TEXT,
     is_qualified TINYINT DEFAULT 1,
     unqualified_items TEXT,
     photo_urls TEXT,
@@ -347,6 +348,8 @@ CREATE TABLE IF NOT EXISTS repair_records (
     repair_end_time TIME,
     repair_content TEXT COMMENT '维修内容描述',
     repair_tools TEXT COMMENT '维修工具',
+    work_contents JSON COMMENT '维修工作内容',
+    repair_tasks JSON COMMENT '维修任务库选择',
     consumables_list JSON COMMENT '维修耗材明细',
     consumables_total DECIMAL(10,2) DEFAULT 0 COMMENT '耗材总金额',
     parts_list JSON COMMENT '更换配件明细',
@@ -382,6 +385,23 @@ CREATE TABLE IF NOT EXISTS repair_records (
     INDEX idx_repair_status (status),
     INDEX idx_repair_project_station (project_id, station_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='维修记录表';
+
+-- 维修任务库表
+CREATE TABLE IF NOT EXISTS repair_task_library (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    task_name VARCHAR(100) NOT NULL COMMENT '任务名称',
+    task_category VARCHAR(50) COMMENT '任务类别',
+    score_method VARCHAR(20) COMMENT '给分方式',
+    points INT NOT NULL COMMENT '单位积分',
+    quantity INT NOT NULL DEFAULT 1 COMMENT '数量',
+    points_rule TEXT COMMENT '积分规则',
+    quantity_editable TINYINT NOT NULL DEFAULT 0 COMMENT '数量是否可修改',
+    points_editable TINYINT NOT NULL DEFAULT 0 COMMENT '积分是否可修改',
+    is_active TINYINT DEFAULT 1 COMMENT '是否启用',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX idx_repair_task_name (task_name)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='维修任务库表';
 
 -- 领料申请表 (匹配 MaterialRequisition.js)
 CREATE TABLE IF NOT EXISTS material_requisitions (

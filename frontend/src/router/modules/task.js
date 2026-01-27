@@ -15,14 +15,14 @@ export const taskRoutes = [
     path: '/position-work/management',
     name: 'PositionWorkManagement',
     component: () => import('@/views/task/PositionWork.vue'),
-    meta: { title: '岗位工作任务库', roles: ['dev_test'] },
+    meta: { title: '岗位工作任务库', roles: ['dev_test', 'operator', 'station_manager', 'department_manager', 'deputy_manager', 'senior_management'] },
     props: { defaultTab: 'management' }
   },
   {
     path: '/position-work/records',
     name: 'PositionWorkRecords',
     component: () => import('@/views/task/PositionWorkRecords.vue'),
-    meta: { title: '岗位工作完成情况记录', roles: ['dev_test'] }
+    meta: { title: '岗位工作完成情况记录', roles: ['dev_test', 'operator', 'station_manager', 'department_manager', 'deputy_manager', 'senior_management'] }
   },
   {
     path: '/temporary-tasks',

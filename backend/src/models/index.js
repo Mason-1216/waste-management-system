@@ -19,6 +19,7 @@ import MaintenancePlan from './MaintenancePlan.js';
 import MaintenanceRecord from './MaintenanceRecord.js';
 import FaultReport from './FaultReport.js';
 import RepairRecord from './RepairRecord.js';
+import RepairTaskLibrary from './RepairTaskLibrary.js';
 import MaterialRequisition from './MaterialRequisition.js';
 import SafetySelfInspection from './SafetySelfInspection.js';
 import SafetyOtherInspection from './SafetyOtherInspection.js';
@@ -70,6 +71,7 @@ export {
   MaintenanceRecord,
   FaultReport,
   RepairRecord,
+  RepairTaskLibrary,
   MaterialRequisition,
   SafetySelfInspection,
   SafetyOtherInspection,
@@ -298,6 +300,7 @@ export default {
   MaintenanceRecord,
   FaultReport,
   RepairRecord,
+  RepairTaskLibrary,
   MaterialRequisition,
   SafetySelfInspection,
   SafetyOtherInspection,

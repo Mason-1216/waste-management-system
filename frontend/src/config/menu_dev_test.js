@@ -2,7 +2,16 @@ export const devTestMenus = [
   { path: '/home', name: '首页', icon: 'House' },
   { path: '/user-management', name: '用户管理', icon: 'User' },
   { path: '/organization-management', name: '组织架构', icon: 'OfficeBuilding' },
-  { path: '/schedule', name: '排班表', icon: 'Calendar' },
+  {
+    path: '/schedule',
+    name: '排班表',
+    icon: 'Calendar',
+    children: [
+      { path: '/schedule/my', name: '我的排班' },
+      { path: '/schedule/manage', name: '排班管理' }
+    ]
+  },
+  { path: '/points-summary', name: '积分统计', icon: 'DataAnalysis' },
   {
     path: '/safety',
     name: '安全检查',
@@ -10,7 +19,7 @@ export const devTestMenus = [
     children: [
       { path: '/safety-check-management', name: '检查项目管理' },
       { path: '/safety-self-inspection', name: '安全自检' },
-      { path: '/safety-other-inspection', name: '安全他检' }
+      { path: '/safety-other-inspection', name: '员工检查记录' }
     ]
   },
   { path: '/safety-rectification', name: '安全隐患', icon: 'Warning' },
@@ -20,7 +29,7 @@ export const devTestMenus = [
     icon: 'Brush',
     children: [
       { path: '/hygiene-self-inspection', name: '卫生自检' },
-      { path: '/hygiene-other-inspection', name: '卫生他检' },
+      { path: '/hygiene-other-inspection', name: '员工检查记录' },
       { path: '/hygiene-work-arrangement', name: '卫生工作安排' }
     ]
   },
@@ -37,7 +46,7 @@ export const devTestMenus = [
   { path: '/temporary-tasks', name: '临时任务', icon: 'Operation' },
   {
     path: '/maintenance-task',
-    name: '保养任务',
+    name: '设备保养',
     icon: 'Tools',
     children: [
       { path: '/maintenance-task/work', name: '保养工作' },
@@ -46,7 +55,15 @@ export const devTestMenus = [
       { path: '/maintenance-task/position', name: '保养计划岗位分配' }
     ]
   },
-  { path: '/device-faults', name: '设备故障', icon: 'List' },
+  {
+    path: '/device-faults',
+    name: '设备故障',
+    icon: 'List',
+    children: [
+      { path: '/device-faults/records', name: '设备维修记录' },
+      { path: '/device-faults/task-library', name: '维修任务库' }
+    ]
+  },
   {
     path: '/plc',
     name: 'PLC监控',

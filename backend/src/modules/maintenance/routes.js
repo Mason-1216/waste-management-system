@@ -6,6 +6,7 @@ import { registerMaterialRequisitionRoutes } from './requisition_routes.js';
 import { registerMaintenancePlanLibraryRoutes } from './library_routes.js';
 import { registerMaintenanceAssignmentRoutes } from './assignment_routes.js';
 import { registerMaintenancePositionRoutes } from './position_routes.js';
+import { registerRepairTaskLibraryRoutes } from './repair_task_library_routes.js';
 
 export const registerMaintenanceRoutes = (router) => {
   registerMaintenancePlanRoutes(router);
@@ -16,4 +17,5 @@ export const registerMaintenanceRoutes = (router) => {
   registerMaintenancePlanLibraryRoutes(router);
   registerMaintenanceAssignmentRoutes(router);
   registerMaintenancePositionRoutes(router);
+  registerRepairTaskLibraryRoutes(router);
 };

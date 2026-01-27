@@ -1,7 +1,7 @@
 <template>
   <div class="schedule-page">
     <div class="page-header">
-      <h2 v-if="canAddSchedule">排班管理</h2>
+      <h2 v-if="showScheduleTable">排班管理</h2>
       <div class="header-actions">
         <el-date-picker
           v-model="currentMonth"
@@ -11,13 +11,13 @@
           value-format="YYYY-MM"
           @change="loadSchedule"
         />
-        <el-button type="primary" @click="showAddDialog" v-if="canAddSchedule">
+        <el-button type="primary" @click="showAddDialog" v-if="showScheduleTable">
           <el-icon><Plus /></el-icon>新增排班
         </el-button>
-        <el-button @click="handleImport" v-if="canAddSchedule">
+        <el-button @click="handleImport" v-if="showScheduleTable">
           <el-icon><Download /></el-icon>导入
         </el-button>
-        <el-button @click="downloadTemplate" v-if="canAddSchedule">
+        <el-button @click="downloadTemplate" v-if="showScheduleTable">
           下载模板
         </el-button>
         <el-button @click="exportSchedule">
@@ -66,7 +66,7 @@
     </div>
 
     <!-- 排班表格视图（管理人员查看） -->
-    <div v-if="canAddSchedule" class="schedule-table-section">
+    <div v-if="showScheduleTable" class="schedule-table-section">
       <h3 v-if="showMyCalendar">{{ viewTitle }}</h3>
 
       <!-- 筛选栏 -->
@@ -628,6 +628,7 @@
 
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue';
+import { useRoute } from 'vue-router';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { ArrowLeft, ArrowRight, Briefcase, Warning, Brush, Operation, Tools } from '@element-plus/icons-vue';
 import dayjs from 'dayjs';
@@ -639,6 +640,7 @@ import { useUserStore } from '@/store/modules/user';
 import FormDialog from '@/components/system/FormDialog.vue';
 
 const userStore = useUserStore();
+const route = useRoute();
 
 const currentMonth = ref(dayjs().format('YYYY-MM'));
 const scheduleData = ref([]);
@@ -781,7 +783,7 @@ const effectiveRole = computed(() => userStore.baseRoleCode || userStore.roleCod
 const isManagerRole = computed(() => {
   const role = effectiveRole.value;
   const roleName = userStore.roleName || '';
-  return ['admin', 'station_manager', 'department_manager', 'deputy_manager'].includes(role)
+  return ['admin', 'dev_test', 'station_manager', 'department_manager', 'deputy_manager'].includes(role)
     || roleName.includes('经理');
 });
 
@@ -789,11 +791,12 @@ const canAddSchedule = computed(() => {
   return isManagerRole.value;
 });
 
+const viewMode = computed(() => route.meta?.scheduleView || 'my');
+
 // 是否显示我的排班日历（操作岗可能是 operator_1, operator_2 等）
-const showMyCalendar = computed(() => {
-  const role = effectiveRole.value;
-  return role.startsWith('operator') || role === 'station_manager' || role === 'maintenance';
-});
+const showMyCalendar = computed(() => viewMode.value === 'my');
+
+const showScheduleTable = computed(() => viewMode.value === 'manage' && canAddSchedule.value);
 
 // 视图标题
 const viewTitle = computed(() => {
@@ -878,6 +881,17 @@ const normalizeScheduleList = (scheduleInfo) => {
   }));
 };
 
+const buildScheduleListKey = (scheduleInfo) => {
+  const list = normalizeScheduleList(scheduleInfo);
+  if (list.length === 0) return null;
+  const parts = list
+    .map(item => getScheduleKey(item))
+    .filter(Boolean)
+    .sort();
+  if (parts.length === 0) return null;
+  return parts.join('|');
+};
+
 const formatScheduleLabel = (schedule) => {
   if (!schedule) return '';
   const stationName = schedule.stationName ?? '';
@@ -885,7 +899,7 @@ const formatScheduleLabel = (schedule) => {
   if (!stationName && !positionName) return '';
   if (!stationName) return positionName;
   if (!positionName) return stationName;
-  return `${stationName}·${positionName}`;
+  return `${stationName}-${positionName}`;
 };
 
 const openSafetyGroup = (group) => {
@@ -936,8 +950,7 @@ const calendarDays = computed(() => {
     const dateStr = dayjs(currentMonth.value).date(i).format('YYYY-MM-DD');
     const isToday = dayjs().format('YYYY-MM-DD') === dateStr;
     const schedules = monthSchedules[i - 1];
-    const primarySchedule = schedules[0] ?? null;
-    const currentKey = primarySchedule ? getScheduleKey(primarySchedule) : null;
+    const currentKey = buildScheduleListKey(schedules);
 
     // 如果当天有排班
     let colorIndex = -1;
@@ -1015,8 +1028,7 @@ const userCalendarDays = computed(() => {
     const dateStr = dayjs(calendarMonth.value).date(i).format('YYYY-MM-DD');
     const isToday = dayjs().format('YYYY-MM-DD') === dateStr;
     const schedules = monthSchedules[i - 1];
-    const primarySchedule = schedules[0] ?? null;
-    const currentKey = primarySchedule ? getScheduleKey(primarySchedule) : null;
+    const currentKey = buildScheduleListKey(schedules);
 
     // 如果当天有排班
     let colorIndex = -1;

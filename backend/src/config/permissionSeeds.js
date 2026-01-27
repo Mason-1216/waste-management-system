@@ -1,4 +1,4 @@
-// 菜单权限 - 控制侧边栏显示
+﻿// 菜单权限 - 控制侧边栏显示
 export const menuPermissions = [
   { code: 'menu:/home', name: '首页' },
   { code: 'menu:/plc-records', name: 'PLC记录' },
@@ -13,7 +13,7 @@ export const menuPermissions = [
     name: '安全检查',
     children: [
       { code: 'menu:/safety-self-inspection', name: '安全自检' },
-      { code: 'menu:/safety-other-inspection', name: '安全他检' },
+      { code: 'menu:/safety-other-inspection', name: '员工检查记录' },
       { code: 'menu:/safety-check-management', name: '检查项目管理' }
     ]
   },
@@ -23,7 +23,7 @@ export const menuPermissions = [
     name: '卫生检查',
     children: [
       { code: 'menu:/hygiene-self-inspection', name: '卫生自检' },
-      { code: 'menu:/hygiene-other-inspection', name: '卫生他检' },
+      { code: 'menu:/hygiene-other-inspection', name: '员工检查记录' },
       { code: 'menu:/hygiene-work-arrangement', name: '卫生工作安排' }
     ]
   },
@@ -94,13 +94,13 @@ export const modulePermissions = [
       { code: 'module:safety-self-inspection:staff:edit', name: '人员安全自检-编辑' }
     ]
   },
-  // 安全他检
+  // 员工检查记录
   {
     code: 'module:safety-other-inspection',
-    name: '安全他检',
+    name: '员工检查记录',
     children: [
-      { code: 'module:safety-other-inspection:view', name: '安全他检-查看' },
-      { code: 'module:safety-other-inspection:edit', name: '安全他检-编辑' }
+      { code: 'module:safety-other-inspection:view', name: '员工检查记录-查看' },
+      { code: 'module:safety-other-inspection:edit', name: '员工检查记录-编辑' }
     ]
   },
   // 检查项目管理
@@ -134,15 +134,15 @@ export const modulePermissions = [
       { code: 'module:hygiene-self-inspection:staff:edit', name: '人员卫生自检-编辑' }
     ]
   },
-  // 卫生他检
+  // 员工检查记录
   {
     code: 'module:hygiene-other-inspection',
-    name: '卫生他检',
+    name: '员工检查记录',
     children: [
-      { code: 'module:hygiene-other-inspection:view', name: '卫生他检-查看' },
-      { code: 'module:hygiene-other-inspection:edit', name: '卫生他检-编辑' },
-      { code: 'module:hygiene-other-inspection:inspection:view', name: '卫生他检记录-查看' },
-      { code: 'module:hygiene-other-inspection:inspection:edit', name: '卫生他检记录-编辑' },
+      { code: 'module:hygiene-other-inspection:view', name: '员工检查记录-查看' },
+      { code: 'module:hygiene-other-inspection:edit', name: '员工检查记录-编辑' },
+      { code: 'module:hygiene-other-inspection:inspection:view', name: '员工检查记录记录-查看' },
+      { code: 'module:hygiene-other-inspection:inspection:edit', name: '员工检查记录记录-编辑' },
       { code: 'module:hygiene-other-inspection:management-areas:view', name: '卫生区域划分-查看' },
       { code: 'module:hygiene-other-inspection:management-areas:edit', name: '卫生区域划分-编辑' },
       { code: 'module:hygiene-other-inspection:management-assignments:view', name: '卫生任务分配-查看' },

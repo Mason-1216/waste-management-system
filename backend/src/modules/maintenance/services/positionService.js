@@ -206,7 +206,7 @@ const shouldExecuteToday = (plan) => {
  * GET /api/maintenance-position-plans
  */
 export const getMaintenancePositionPlans = async (ctx) => {
-  const { stationId, positionName } = ctx.query;
+  const { stationId, positionName, equipmentCode, equipmentName, installLocation, cycleType } = ctx.query;
   const user = ctx.state.user;
   const scopedStationId = resolveScopedStationId(user, ctx.headers['x-station-id']);
   const { page, pageSize, offset, limit } = getPagination(ctx.query);
@@ -221,16 +221,36 @@ export const getMaintenancePositionPlans = async (ctx) => {
     where.position_name = positionName;
   }
 
+  const planWhere = {};
+  if (equipmentCode) {
+    planWhere.equipment_code = { [Op.like]: `%${equipmentCode}%` };
+  }
+  if (equipmentName) {
+    planWhere.equipment_name = { [Op.like]: `%${equipmentName}%` };
+  }
+  if (installLocation) {
+    planWhere.install_location = { [Op.like]: `%${installLocation}%` };
+  }
+  if (cycleType) {
+    planWhere.cycle_type = cycleType;
+  }
+
+  const planInclude = {
+    model: MaintenancePlanLibrary,
+    as: 'plan',
+    attributes: ['id', 'equipment_code', 'equipment_name', 'install_location', 'cycle_type',
+                 'weekly_day', 'monthly_day', 'yearly_month', 'yearly_day', 'maintenance_standards']
+  };
+  if (Object.keys(planWhere).length > 0) {
+    planInclude.where = planWhere;
+    planInclude.required = true;
+  }
+
   const result = await MaintenancePositionPlan.findAndCountAll({
     where,
     include: [
       { model: Station, as: 'station', attributes: ['id', 'station_name'] },
-      {
-        model: MaintenancePlanLibrary,
-        as: 'plan',
-        attributes: ['id', 'equipment_code', 'equipment_name', 'install_location', 'cycle_type',
-                     'weekly_day', 'monthly_day', 'yearly_month', 'yearly_day', 'maintenance_standards']
-      }
+      planInclude
     ],
     offset,
     limit,
@@ -534,7 +554,7 @@ export const submitMaintenanceWorkRecord = async (ctx) => {
  */
 export const getMaintenanceWorkRecords = async (ctx) => {
   const { page, pageSize, offset, limit } = getPagination(ctx.query);
-  const { stationId, positionName, executorName, cycleType, startDate, endDate, status } = ctx.query;
+  const { stationId, positionName, executorName, cycleType, startDate, endDate, status, equipmentCode, equipmentName } = ctx.query;
   const dataFilter = ctx.state.dataFilter;
   const user = ctx.state.user;
   const scopedStationId = resolveScopedStationId(user, ctx.headers['x-station-id']);
@@ -556,6 +576,14 @@ export const getMaintenanceWorkRecords = async (ctx) => {
 
   if (executorName) {
     where.executor_name = { [Op.like]: `%${executorName}%` };
+  }
+
+  if (equipmentCode) {
+    where.equipment_code = { [Op.like]: `%${equipmentCode}%` };
+  }
+
+  if (equipmentName) {
+    where.equipment_name = { [Op.like]: `%${equipmentName}%` };
   }
 
   if (cycleType) {
@@ -613,6 +641,12 @@ export const getMaintenanceWorkRecords = async (ctx) => {
   const planWhere = {};
   if (cycleType) {
     planWhere.cycle_type = cycleType;
+  }
+  if (equipmentCode) {
+    planWhere.equipment_code = { [Op.like]: `%${equipmentCode}%` };
+  }
+  if (equipmentName) {
+    planWhere.equipment_name = { [Op.like]: `%${equipmentName}%` };
   }
 
   const positionPlans = await MaintenancePositionPlan.findAll({

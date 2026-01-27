@@ -277,6 +277,7 @@ export const startRepair = async ({ id, body, user }) => {
 export const completeRepair = async ({ id, body, user }) => {
   const {
     repairContent, repairTools,
+    workContents, repairTasks,
     consumablesList, consumablesTotal,
     partsList, partsTotal,
     repairResult, observeDays, unsolvedReason,
@@ -292,6 +293,8 @@ export const completeRepair = async ({ id, body, user }) => {
     status: 'repaired_submitted',
     repair_content: repairContent,
     repair_tools: repairTools,
+    work_contents: Array.isArray(workContents) ? workContents : [],
+    repair_tasks: Array.isArray(repairTasks) ? repairTasks : [],
     consumables_list: consumablesList || [],
     consumables_total: consumablesTotal || 0,
     parts_list: partsList || [],

@@ -1,8 +1,19 @@
 export const scheduleRoutes = [
   {
     path: '/schedule',
-    name: 'Schedule',
+    name: 'ScheduleRoot',
+    redirect: '/schedule/my'
+  },
+  {
+    path: '/schedule/my',
+    name: 'MySchedule',
     component: () => import('@/views/schedule/Index.vue'),
-    meta: { title: '排班表' }
+    meta: { title: '我的排班', scheduleView: 'my' }
+  },
+  {
+    path: '/schedule/manage',
+    name: 'ScheduleManagement',
+    component: () => import('@/views/schedule/Index.vue'),
+    meta: { title: '排班管理', scheduleView: 'manage', roles: ['admin', 'station_manager', 'department_manager', 'deputy_manager', 'dev_test'] }
   }
 ];

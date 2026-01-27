@@ -7,7 +7,7 @@ export const safetyInspectorMenus = [
     children: [
       { path: '/safety-check-management', name: '检查项目管理' },
       { path: '/safety-self-inspection', name: '安全自检' },
-      { path: '/safety-other-inspection', name: '安全他检' }
+      { path: '/safety-other-inspection', name: '员工检查记录' }
     ]
   },
   { path: '/safety-rectification', name: '安全隐患', icon: 'Warning' },
@@ -17,7 +17,7 @@ export const safetyInspectorMenus = [
     icon: 'Brush',
     children: [
       { path: '/hygiene-self-inspection', name: '卫生自检' },
-      { path: '/hygiene-other-inspection', name: '卫生他检' },
+      { path: '/hygiene-other-inspection', name: '员工检查记录' },
       { path: '/hygiene-work-arrangement', name: '卫生工作安排' }
     ]
   },

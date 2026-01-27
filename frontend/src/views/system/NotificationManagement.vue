@@ -62,8 +62,8 @@ const MAX_ITEMS = 10;
 
 const categories = [
   { key: 'hazard', title: '安全隐患', types: ['hazard_inspection', 'safety_rectification'] },
-  { key: 'safetyOther', title: '安全他检', types: ['safety_other_inspection'] },
-  { key: 'hygieneOther', title: '卫生他检', types: ['hygiene_other_inspection'] },
+  { key: 'safetyOther', title: '员工检查记录', types: ['safety_other_inspection'] },
+  { key: 'hygieneOther', title: '员工检查记录', types: ['hygiene_other_inspection'] },
   { key: 'tempTask', title: '临时任务', types: ['temporary_task'] },
   { key: 'deviceFault', title: '设备故障', types: ['repair_record', 'fault_report'] }
 ];

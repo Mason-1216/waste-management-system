@@ -1,60 +1,57 @@
 <template>
   <div class="device-fault-page">
-    <el-tabs v-model="activeTab" type="border-card">
-      <!-- Tab 1: 设备故障 -->
-      <el-tab-pane label="设备故障" name="faults">
-        <div class="page-header">
-          <h2>设备故障</h2>
-          <div class="actions">
-            <el-button v-if="canReport" type="primary" @click="addRow">新增报障</el-button>
-            <el-button @click="loadRecords">刷新</el-button>
-          </div>
-        </div>
+    <div class="page-header">
+      <h2>设备维修记录</h2>
+      <div class="actions">
+        <el-button v-if="canReport" type="primary" @click="addRow">新增报障</el-button>
+        <el-button @click="loadRecords">刷新</el-button>
+      </div>
+    </div>
 
-        <FilterBar>
-          <el-select v-model="filters.stationId" placeholder="场站" clearable style="width: 160px;" @change="loadRecords">
-            <el-option
-              v-for="station in stationFilterOptions"
-              :key="station.id"
-              :label="station.name"
-              :value="station.id"
-            />
-          </el-select>
-          <el-input
-            v-model="filters.equipmentName"
-            placeholder="设备名称"
-            clearable
-            style="width: 160px;"
-            @clear="loadRecords"
-            @keyup.enter="loadRecords"
-          />
-          <el-select v-model="filters.urgencyLevel" placeholder="紧急程度" clearable style="width: 140px;" @change="loadRecords">
-            <el-option
-              v-for="option in urgencyOptions"
-              :key="option.value"
-              :label="option.label"
-              :value="option.value"
-            />
-          </el-select>
-          <el-input
-            v-model="filters.repairPersonName"
-            placeholder="维修人员"
-            clearable
-            style="width: 160px;"
-            @clear="loadRecords"
-            @keyup.enter="loadRecords"
-          />
-          <el-select v-model="filters.status" placeholder="状态" clearable style="width: 140px;" @change="loadRecords">
-            <el-option label="草稿" value="draft_report" />
-            <el-option label="已上报" value="submitted_report" />
-            <el-option label="已派单" value="dispatched" />
-            <el-option label="维修中" value="repairing" />
-            <el-option label="退回重做" value="rework" />
-            <el-option label="待验收" value="repaired_submitted" />
-            <el-option label="已验收" value="accepted" />
-            <el-option label="已归档" value="archived" />
-          </el-select>
-        </FilterBar>
+    <FilterBar>
+      <el-select v-model="filters.stationId" placeholder="场站" clearable style="width: 160px;" @change="loadRecords">
+        <el-option
+          v-for="station in stationFilterOptions"
+          :key="station.id"
+          :label="station.name"
+          :value="station.id"
+        />
+      </el-select>
+      <el-input
+        v-model="filters.equipmentName"
+        placeholder="设备名称"
+        clearable
+        style="width: 160px;"
+        @clear="loadRecords"
+        @keyup.enter="loadRecords"
+      />
+      <el-select v-model="filters.urgencyLevel" placeholder="紧急程度" clearable style="width: 140px;" @change="loadRecords">
+        <el-option
+          v-for="option in urgencyOptions"
+          :key="option.value"
+          :label="option.label"
+          :value="option.value"
+        />
+      </el-select>
+      <el-input
+        v-model="filters.repairPersonName"
+        placeholder="维修人员"
+        clearable
+        style="width: 160px;"
+        @clear="loadRecords"
+        @keyup.enter="loadRecords"
+      />
+      <el-select v-model="filters.status" placeholder="状态" clearable style="width: 140px;" @change="loadRecords">
+        <el-option label="草稿" value="draft_report" />
+        <el-option label="已上报" value="submitted_report" />
+        <el-option label="已派单" value="dispatched" />
+        <el-option label="维修中" value="repairing" />
+        <el-option label="退回重做" value="rework" />
+        <el-option label="待验收" value="repaired_submitted" />
+        <el-option label="已验收" value="accepted" />
+        <el-option label="已归档" value="archived" />
+      </el-select>
+    </FilterBar>
 
     <TableWrapper>
       <el-table
@@ -108,6 +105,11 @@
         <el-table-column label="维修人员">
           <template #default="{ row }">
             <span>{{ formatRepairNames(row) }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="任务积分合计" width="120">
+          <template #default="{ row }">
+            <span>{{ formatRepairTaskPointsTotal(row) }}</span>
           </template>
         </el-table-column>
         <el-table-column label="验收人">
@@ -191,17 +193,6 @@
       :lock-part="lockPart"
       :unlock-part="unlockPart"
     />
-      </el-tab-pane>
-
-      <!-- Tab 2: 设备管理 -->
-      <el-tab-pane
-        label="设备管理"
-        name="equipment"
-        v-if="canManageEquipment"
-      >
-        <EquipmentManagement />
-      </el-tab-pane>
-    </el-tabs>
   </div>
 </template>
 
@@ -225,12 +216,8 @@ import {
 import request from '@/api/request';
 import { getEquipmentByCode, getEquipment } from '@/api/equipment';
 import { getStations } from '@/api/station';
-import EquipmentManagement from './EquipmentManagement.vue';
 
 const userStore = useUserStore();
-
-// Tab
-const activeTab = ref('faults');
 
 const records = ref([]);
 const loading = ref(false);
@@ -294,13 +281,11 @@ const formRules = {
   ]
 };
 
-const reportRoles = ['operator', 'station_manager', 'deputy_manager', 'department_manager'];
+const reportRoles = ['operator', 'station_manager', 'deputy_manager', 'department_manager', 'maintenance'];
 const dispatchRoles = ['station_manager', 'deputy_manager', 'department_manager'];
-const equipmentManageRoles = ['station_manager', 'department_manager', 'deputy_manager'];
 
-const canReport = computed(() => reportRoles.includes(userStore.roleCode));
+const canReport = computed(() => userStore.hasRole(reportRoles));
 const canDispatch = computed(() => dispatchRoles.includes(userStore.roleCode));
-const canManageEquipment = computed(() => equipmentManageRoles.includes(userStore.roleCode) || equipmentManageRoles.includes(userStore.baseRoleCode));
 const canVerify = computed(() => dispatchRoles.includes(userStore.roleCode));
 const canRepair = computed(() => userStore.roleCode === 'maintenance');
 const canDeleteAny = computed(() => ['admin', ...dispatchRoles].includes(userStore.roleCode));
@@ -455,13 +440,52 @@ const parseList = (value) => {
   }
 };
 
+const normalizeText = (value) => {
+  if (value === undefined || value === null) return '';
+  return String(value).trim();
+};
+
+const normalizeNumberValue = (value) => {
+  if (value === undefined || value === null || value === '') return null;
+  const parsed = Number(value);
+  if (Number.isNaN(parsed)) return null;
+  return parsed;
+};
+
+const normalizeQuantityValue = (value) => {
+  if (value === undefined || value === null || value === '') return 1;
+  const parsed = Number.parseInt(value, 10);
+  if (!Number.isInteger(parsed)) return 1;
+  if (parsed < 1) return 1;
+  return parsed;
+};
+
+const getRepairTaskPointsTotal = (row) => {
+  const tasks = Array.isArray(row?.repair_tasks) ? row.repair_tasks : parseList(row?.repair_tasks);
+  if (!Array.isArray(tasks) || tasks.length === 0) return null;
+  return tasks.reduce((sum, task) => {
+    const points = normalizeNumberValue(task?.points);
+    if (points === null) return sum;
+    const quantity = normalizeQuantityValue(task?.quantity);
+    return sum + points * quantity;
+  }, 0);
+};
+
+const formatRepairTaskPointsTotal = (row) => {
+  const total = getRepairTaskPointsTotal(row);
+  if (total === null) return '-';
+  return total;
+};
+
 const normalizeRecord = (item) => {
   const normalized = {
     ...item,
     repair_person_name: item.repair_person_name || item.repairPerson?.real_name,
     reporter_name: item.reporter_name || item.reporter?.real_name,
     consumables_list: parseList(item.consumables_list),
-    parts_list: parseList(item.parts_list)
+    parts_list: parseList(item.parts_list),
+    work_contents: parseList(item.work_contents),
+    repair_tasks: parseList(item.repair_tasks)
   };
   return ensurePlanRange(normalized);
 };
@@ -625,6 +649,8 @@ const addRow = () => {
     repair_content: '',
     repair_tools: '',
     work_hours: 0,
+    work_contents: [],
+    repair_tasks: [],
     consumables_list: [],
     parts_list: [],
     repair_result: 'normal',
@@ -649,6 +675,12 @@ const openDialog = async (row) => {
   }
   if (!Array.isArray(row.parts_list)) {
     row.parts_list = [];
+  }
+  if (!Array.isArray(row.work_contents)) {
+    row.work_contents = [];
+  }
+  if (!Array.isArray(row.repair_tasks)) {
+    row.repair_tasks = [];
   }
   currentRow.value = ensurePlanRange(row);
 
@@ -707,6 +739,33 @@ const buildConsumables = (row) => {
 
 const buildParts = (row) => {
   return normalizeItems(row.parts_list, ['name', 'model', 'spec', 'quantity', 'reason']);
+};
+
+const buildWorkContents = (row) => {
+  const list = Array.isArray(row.work_contents) ? row.work_contents : [];
+  return list
+    .map(item => normalizeText(item))
+    .filter(item => item.length > 0);
+};
+
+const buildRepairTasks = (row) => {
+  const list = Array.isArray(row.repair_tasks) ? row.repair_tasks : [];
+  return list
+    .map(item => {
+      const taskName = normalizeText(item?.task_name ?? item?.taskName ?? item?.job_name ?? item?.jobName);
+      return ({
+        task_id: item?.task_id ?? item?.job_id ?? item?.id ?? null,
+        task_name: taskName,
+        task_category: normalizeText(item?.task_category ?? item?.taskCategory),
+        score_method: normalizeText(item?.score_method ?? item?.scoreMethod),
+        points_rule: normalizeText(item?.points_rule ?? item?.pointsRule),
+        points: normalizeNumberValue(item?.points),
+        points_editable: Number(item?.points_editable) === 1 ? 1 : 0,
+        quantity: normalizeQuantityValue(item?.quantity),
+        quantity_editable: Number(item?.quantity_editable) === 1 ? 1 : 0
+      });
+    })
+    .filter(item => item.task_id || item.task_name);
 };
 
 const addConsumable = (row) => {
@@ -892,6 +951,8 @@ const submitRepairRow = async (row) => {
     const payload = {
       repairContent: row.repair_content,
       repairTools: row.repair_tools,
+      workContents: buildWorkContents(row),
+      repairTasks: buildRepairTasks(row),
       consumablesList: buildConsumables(row),
       partsList: buildParts(row),
       repairResult: row.repair_result || 'normal',
@@ -920,6 +981,8 @@ const saveRepairRow = async (row) => {
     const payload = {
       repair_content: row.repair_content,
       repair_tools: row.repair_tools,
+      work_contents: buildWorkContents(row),
+      repair_tasks: buildRepairTasks(row),
       consumables_list: buildConsumables(row),
       parts_list: buildParts(row),
       repair_result: row.repair_result,

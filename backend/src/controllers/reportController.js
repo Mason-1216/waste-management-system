@@ -8,6 +8,7 @@ export const getMaintenanceReport = reportService.getMaintenanceReport;
 export const getRepairReport = reportService.getRepairReport;
 export const getMaintenanceByMonth = reportService.getMaintenanceByMonth;
 export const getRepairByMonth = reportService.getRepairByMonth;
+export const getPointsSummaryReport = reportService.getPointsSummaryReport;
 
 export default {
   getWorkHoursReport,
@@ -17,5 +18,6 @@ export default {
   getMaintenanceReport,
   getRepairReport,
   getMaintenanceByMonth,
-  getRepairByMonth
+  getRepairByMonth,
+  getPointsSummaryReport
 };

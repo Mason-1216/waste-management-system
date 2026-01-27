@@ -17,7 +17,6 @@
           </div>
 
           <el-table
-            v-if="showScoring"
             v-loading="taskLoading"
             :data="todayTasks"
             stripe
@@ -95,57 +94,14 @@
             </el-table-column>
           </el-table>
 
-          <el-table
-            v-else
-            v-loading="taskLoading"
-            :data="todayTasks"
-            stripe
-            border
-            style="width: 100%"
-          >
-            <el-table-column prop="positionName" label="岗位" width="120" />
-            <el-table-column prop="stationName" label="场站" width="150" />
-            <el-table-column prop="workName" label="任务名称" min-width="200" />
-            <el-table-column label="完成状态" width="150" align="center">
-              <template #default="{ row }">
-                <el-radio-group v-model="row.isCompleted" size="small" :disabled="row.isSubmitted">
-                  <el-radio :label="1">完成</el-radio>
-                  <el-radio :label="0">未完成</el-radio>
-                </el-radio-group>
-              </template>
-            </el-table-column>
-            <el-table-column label="备注" min-width="200">
-              <template #default="{ row }">
-                <el-input
-                  v-model="row.remark"
-                  placeholder="填写备注"
-                  size="small"
-                  maxlength="200"
-                  :disabled="row.isSubmitted"
-                />
-              </template>
-            </el-table-column>
-            <el-table-column label="操作" width="100" fixed="right" align="center">
-              <template #default="{ row }">
-                <el-button
-                  type="primary"
-                  size="small"
-                  :loading="row.saving"
-                  :disabled="row.isSubmitted"
-                  @click="saveTask(row)"
-                >
-                  提交
-                </el-button>
-              </template>
-            </el-table-column>
-          </el-table>
+
 
           <el-empty v-if="!taskLoading && todayTasks.length === 0" description="暂无任务" />
     </div>
 
     <div v-if="showManagementView" class="tab-content">
           <div class="page-header">
-            <h2>岗位工作任务库</h2>
+            <h2>{{ managementTitle }}</h2>
             <div class="header-actions" v-if="canManageLibrary">
               <el-button type="primary" @click="openJobDialog()">
                 <el-icon><Plus /></el-icon>
@@ -169,11 +125,16 @@
                 <el-icon><Download /></el-icon>
                 下载模板
               </el-button>
+              <el-button :loading="exportingJobs" @click="exportPositionJobs" plain>
+                <el-icon><Upload /></el-icon>
+                导出
+              </el-button>
             </div>
           </div>
 
           <div class="filter-bar">
             <el-select
+              v-if="!hideStation"
               v-model="filters.stationId"
               placeholder="场站"
               clearable
@@ -188,6 +149,7 @@
               />
             </el-select>
             <el-input
+              v-if="!hidePosition"
               v-model="filters.positionName"
               placeholder="岗位"
               clearable
@@ -257,6 +219,15 @@
               <el-option label="否" :value="0" />
             </el-select>
             <el-select
+              v-model="filters.pointsEditable"
+              placeholder="积分是否可修改"
+              clearable
+              style="width: 150px"
+            >
+              <el-option label="是" :value="1" />
+              <el-option label="否" :value="0" />
+            </el-select>
+            <el-select
               v-model="filters.dispatchReviewRequired"
               placeholder="派发任务是否强制审核"
               clearable
@@ -269,19 +240,31 @@
             <el-button @click="resetFilters">重置</el-button>
           </div>
 
+          <div
+            v-if="canManageLibrary && selectedJobs.length > 0"
+            class="batch-actions"
+            style="margin: 10px 0;"
+          >
+            <el-button type="danger" @click="batchDeleteJobs">
+              批量删除 ({{ selectedJobs.length }})
+            </el-button>
+          </div>
+
           <el-table
             v-loading="jobLoading"
             :data="positionJobs"
             stripe
             border
             style="width: 100%"
+            @selection-change="handleJobSelectionChange"
           >
-            <el-table-column prop="station.station_name" label="场站" width="140">
+            <el-table-column v-if="canManageLibrary" type="selection" width="55" />
+            <el-table-column v-if="!hideStation" prop="station.station_name" label="场站" width="140">
               <template #default="{ row }">
                 {{ row.station?.station_name ?? '-' }}
               </template>
             </el-table-column>
-            <el-table-column prop="position_name" label="岗位" width="140" />
+            <el-table-column v-if="!hidePosition" prop="position_name" label="岗位" width="140" />
             <el-table-column prop="job_name" label="任务名称" min-width="160" />
             <el-table-column prop="task_category" label="任务类别" width="120">
               <template #default="{ row }">
@@ -319,6 +302,13 @@
               <template #default="{ row }">
                 <el-tag :type="row.quantity_editable === 1 ? 'success' : 'info'">
                   {{ row.quantity_editable === 1 ? '是' : '否' }}
+                </el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column prop="points_editable" label="积分是否可修改" width="140">
+              <template #default="{ row }">
+                <el-tag :type="row.points_editable === 1 ? 'success' : 'info'">
+                  {{ row.points_editable === 1 ? '是' : '否' }}
                 </el-tag>
               </template>
             </el-table-column>
@@ -441,6 +431,9 @@
         <el-form-item label="数量是否可修改">
           <el-switch v-model="jobForm.quantityEditable" :active-value="1" :inactive-value="0" />
         </el-form-item>
+        <el-form-item label="积分是否可修改">
+          <el-switch v-model="jobForm.pointsEditable" :active-value="1" :inactive-value="0" />
+        </el-form-item>
         <el-form-item label="派发任务是否强制审核">
           <el-switch v-model="jobForm.dispatchReviewRequired" :active-value="1" :inactive-value="0" />
         </el-form-item>
@@ -542,7 +535,7 @@
 <script setup>
 import { ref, reactive, computed, onMounted, watch } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
-import { Plus, Download } from '@element-plus/icons-vue';
+import { Plus, Download, Upload } from '@element-plus/icons-vue';
 import dayjs from 'dayjs';
 import * as positionWorkLogApi from '@/api/positionWorkLog';
 import * as positionJobApi from '@/api/positionJob';
@@ -555,19 +548,35 @@ const props = defineProps({
   defaultTab: {
     type: String,
     default: 'fixed'
+  },
+  managementTitle: {
+    type: String,
+    default: '岗位工作任务库'
+  },
+  forceManagement: {
+    type: Boolean,
+    default: false
+  },
+  hideStation: {
+    type: Boolean,
+    default: false
+  },
+  hidePosition: {
+    type: Boolean,
+    default: false
   }
 });
 
 const userStore = useUserStore();
 
 const isDevTest = computed(() => userStore.roleCode === 'dev_test' || userStore.baseRoleCode === 'dev_test');
-const showScoring = computed(() => isDevTest.value);
 const managerRoles = ['station_manager', 'department_manager', 'deputy_manager', 'senior_management'];
 const canManageLibrary = computed(() => userStore.hasRole(managerRoles));
-const allowManagement = computed(() => isDevTest.value);
+const allowManagement = computed(() => userStore.hasRole(['operator', 'station_manager', 'department_manager', 'deputy_manager', 'senior_management', 'dev_test']) || props.forceManagement);
 
 const showManagementView = computed(() => allowManagement.value && props.defaultTab === 'management');
-const showFixedView = computed(() => !showManagementView.value);
+const showFixedView = computed(() => !showManagementView.value && !props.forceManagement);
+const managementTitle = computed(() => props.managementTitle ?? '岗位工作任务库');
 
 const handleViewChange = () => {
   if (showManagementView.value) {
@@ -679,7 +688,9 @@ const saveTask = async (task) => {
 
 const stations = ref([]);
 const positionJobs = ref([]);
+const selectedJobs = ref([]);
 const jobLoading = ref(false);
+const exportingJobs = ref(false);
 const filters = reactive({
   stationId: null,
   positionName: '',
@@ -691,6 +702,7 @@ const filters = reactive({
   quantity: '',
   pointsRule: '',
   quantityEditable: null,
+  pointsEditable: null,
   dispatchReviewRequired: null
 });
 const pagination = reactive({
@@ -724,6 +736,7 @@ const resetFilters = () => {
   filters.quantity = '';
   filters.pointsRule = '';
   filters.quantityEditable = null;
+  filters.pointsEditable = null;
   filters.dispatchReviewRequired = null;
   pagination.page = 1;
   loadPositionJobs();
@@ -752,37 +765,114 @@ const loadStations = async () => {
   }
 };
 
+const buildJobQuery = () => {
+  const positionName = resolveTextFilter(filters.positionName);
+  const jobName = resolveTextFilter(filters.jobName);
+  const taskCategory = resolveTextFilter(filters.taskCategory);
+  const pointsRule = resolveTextFilter(filters.pointsRule);
+  const scoreMethod = resolveTextFilter(filters.scoreMethod);
+
+  return {
+    stationId: hasFilterValue(filters.stationId) ? filters.stationId : undefined,
+    positionName: positionName ? positionName : undefined,
+    jobName: jobName ? jobName : undefined,
+    taskCategory: taskCategory ? taskCategory : undefined,
+    scoreMethod: scoreMethod ? scoreMethod : undefined,
+    standardHours: hasFilterValue(filters.standardHours) ? filters.standardHours : undefined,
+    points: hasFilterValue(filters.points) ? filters.points : undefined,
+    quantity: hasFilterValue(filters.quantity) ? filters.quantity : undefined,
+    pointsRule: pointsRule ? pointsRule : undefined,
+    quantityEditable: hasFilterValue(filters.quantityEditable) ? filters.quantityEditable : undefined,
+    pointsEditable: hasFilterValue(filters.pointsEditable) ? filters.pointsEditable : undefined,
+    dispatchReviewRequired: hasFilterValue(filters.dispatchReviewRequired)
+      ? filters.dispatchReviewRequired
+      : undefined
+  };
+};
+
 const loadPositionJobs = async () => {
   jobLoading.value = true;
   try {
-    const positionName = resolveTextFilter(filters.positionName);
-    const jobName = resolveTextFilter(filters.jobName);
-    const taskCategory = resolveTextFilter(filters.taskCategory);
-    const pointsRule = resolveTextFilter(filters.pointsRule);
-    const scoreMethod = resolveTextFilter(filters.scoreMethod);
     const result = await positionJobApi.getPositionJobs({
       page: pagination.page,
       pageSize: pagination.pageSize,
-      stationId: hasFilterValue(filters.stationId) ? filters.stationId : undefined,
-      positionName: positionName ? positionName : undefined,
-      jobName: jobName ? jobName : undefined,
-      taskCategory: taskCategory ? taskCategory : undefined,
-      scoreMethod: scoreMethod ? scoreMethod : undefined,
-      standardHours: hasFilterValue(filters.standardHours) ? filters.standardHours : undefined,
-      points: hasFilterValue(filters.points) ? filters.points : undefined,
-      quantity: hasFilterValue(filters.quantity) ? filters.quantity : undefined,
-      pointsRule: pointsRule ? pointsRule : undefined,
-      quantityEditable: hasFilterValue(filters.quantityEditable) ? filters.quantityEditable : undefined,
-      dispatchReviewRequired: hasFilterValue(filters.dispatchReviewRequired)
-        ? filters.dispatchReviewRequired
-        : undefined
+      ...buildJobQuery()
     });
     positionJobs.value = result?.list ?? [];
     pagination.total = result?.total ?? 0;
+    selectedJobs.value = [];
   } catch (error) {
     ElMessage.error('加载岗位任务失败');
   } finally {
     jobLoading.value = false;
+  }
+};
+
+const handleJobSelectionChange = (rows) => {
+  selectedJobs.value = rows || [];
+};
+
+const exportPositionJobs = async () => {
+  if (!canManageLibrary.value) return;
+  exportingJobs.value = true;
+  try {
+    const result = await positionJobApi.getPositionJobs({
+      page: 1,
+      pageSize: 10000,
+      ...buildJobQuery()
+    });
+    const list = result?.list ?? [];
+    if (list.length === 0) {
+      ElMessage.warning('没有可导出的数据');
+      return;
+    }
+
+    const rows = list.map(row => ([
+      row.station?.station_name ?? '',
+      row.position_name ?? '',
+      row.job_name ?? '',
+      row.task_category ?? '',
+      row.score_method ?? '',
+      row.standard_hours ?? '',
+      row.points ?? '',
+      row.quantity ?? 1,
+      row.points_rule ?? '',
+      Number(row.quantity_editable) === 1 ? '是' : '否',
+      Number(row.points_editable) === 1 ? '是' : '否',
+      Number(row.dispatch_review_required) === 1 ? '是' : '否',
+      Number(row.is_active) === 1 ? '启用' : '停用'
+    ]));
+
+    const header = [
+      '场站',
+      '岗位',
+      '任务名称',
+      '任务类别',
+      '给分方式',
+      '标准工时(h/d)',
+      '单位积分',
+      '数量',
+      '积分规则',
+      '数量可修改',
+      '积分可修改',
+      '派发强制审核',
+      '状态'
+    ];
+
+    const XLSX = await import('xlsx');
+    const ws = XLSX.utils.aoa_to_sheet([header, ...rows]);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, '岗位工作任务库');
+    XLSX.writeFile(wb, `岗位工作任务库_${dayjs().format('YYYYMMDD_HHmmss')}.xlsx`);
+
+    const total = result?.total ?? list.length;
+    if (total > list.length) {
+      ElMessage.warning('导出已截断，请缩小筛选范围后再导出');
+    }
+  } catch (error) {
+    ElMessage.error(error.message ?? '导出失败');
+  } finally {
+    exportingJobs.value = false;
   }
 };
 
@@ -801,6 +891,7 @@ const jobForm = reactive({
   quantity: 1,
   pointsRule: '',
   quantityEditable: 0,
+  pointsEditable: 0,
   dispatchReviewRequired: 0,
   originalPositionName: ''
 });
@@ -819,6 +910,7 @@ const resetJobForm = () => {
   jobForm.quantity = 1;
   jobForm.pointsRule = '';
   jobForm.quantityEditable = 0;
+  jobForm.pointsEditable = 0;
   jobForm.dispatchReviewRequired = 0;
   jobForm.originalPositionName = '';
 };
@@ -836,6 +928,7 @@ const openJobDialog = (row = null) => {
     jobForm.quantity = row.quantity ?? 1;
     jobForm.pointsRule = row.points_rule ?? '';
     jobForm.quantityEditable = row.quantity_editable ?? 0;
+    jobForm.pointsEditable = row.points_editable ?? 0;
     jobForm.dispatchReviewRequired = row.dispatch_review_required ?? 0;
     jobForm.originalPositionName = row.position_name ?? '';
   } else {
@@ -872,6 +965,7 @@ const saveJob = async () => {
       quantity: quantityValue,
       pointsRule: jobForm.pointsRule,
       quantityEditable: jobForm.quantityEditable,
+      pointsEditable: jobForm.pointsEditable,
       dispatchReviewRequired: jobForm.dispatchReviewRequired
     };
     if (jobForm.id) {
@@ -900,7 +994,9 @@ const saveJob = async () => {
   }
 };
 
-const deleteJob = async (row, confirmed = false) => {
+const deleteJob = async (row, options = {}) => {
+  const confirmed = options.confirmed === true;
+  const suppressReload = options.suppressReload === true;
   try {
     const result = await positionJobApi.deletePositionJob(row.id, confirmed);
     if (result?.needConfirm) {
@@ -910,16 +1006,37 @@ const deleteJob = async (row, confirmed = false) => {
         '确认删除',
         { type: 'warning' }
       );
-      await deleteJob(row, true);
+      await deleteJob(row, { confirmed: true, suppressReload });
       return;
     }
     ElMessage.success('删除成功');
-    await loadPositionJobs();
+    if (!suppressReload) {
+      await loadPositionJobs();
+    }
   } catch (error) {
     if (error !== 'cancel') {
       ElMessage.error(error.message ?? '删除失败');
     }
   }
+};
+
+const batchDeleteJobs = async () => {
+  if (selectedJobs.value.length === 0) return;
+  try {
+    await ElMessageBox.confirm(
+      `确认删除已选择的 ${selectedJobs.value.length} 条岗位任务？`,
+      '批量删除',
+      { type: 'warning' }
+    );
+  } catch {
+    return;
+  }
+
+  for (const row of selectedJobs.value) {
+    await deleteJob(row, { suppressReload: true });
+  }
+
+  await loadPositionJobs();
 };
 
 const apiBaseUrl = computed(() => import.meta.env.VITE_API_BASE_URL ?? '/api');

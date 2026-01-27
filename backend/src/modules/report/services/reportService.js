@@ -1,6 +1,34 @@
 import { Op, fn, col, literal } from 'sequelize';
-import { DailyTask, MaintenanceRecord, RepairRecord, SafetySelfInspection, SafetyOtherInspection, Schedule, TemporaryTask, User, MaintenanceWorkRecord } from '../../../models/index.js';
+import { DailyTask, MaintenanceRecord, RepairRecord, SafetySelfInspection, SafetyOtherInspection, SafetyWorkType, HygieneArea, Schedule, TemporaryTask, User, MaintenanceWorkRecord, PositionWorkLog } from '../../../models/index.js';
 import dayjs from 'dayjs';
+
+const resolveText = (value) => (typeof value === 'string' ? value.trim() : '');
+
+const resolveDateRange = (startDate, endDate) => {
+  const startText = resolveText(startDate);
+  const endText = resolveText(endDate);
+
+  if (startText && endText) {
+    return { startDate: startText, endDate: endText };
+  }
+
+  if (startText && !endText) {
+    return { startDate: startText, endDate: startText };
+  }
+
+  if (!startText && endText) {
+    return { startDate: endText, endDate: endText };
+  }
+
+  const end = dayjs();
+  const start = end.subtract(6, 'day');
+  return { startDate: start.format('YYYY-MM-DD'), endDate: end.format('YYYY-MM-DD') };
+};
+
+const toNumber = (value, fallback) => {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
+};
 
 /**
  * 工时统计报表
@@ -270,6 +298,470 @@ export const getTemporaryTasksReport = async (ctx) => {
 };
 
 /**
+ * 绉垎缁熻鎶ヨ〃
+ * GET /api/reports/points-summary
+ */
+export const getPointsSummaryReport = async (ctx) => {
+  const { startDate, endDate, keyword } = ctx.query;
+  const dataFilter = ctx.state.dataFilter ?? {};
+  const range = resolveDateRange(startDate, endDate);
+
+  const where = {
+    work_date: { [Op.between]: [range.startDate, range.endDate] },
+    submit_time: { [Op.not]: null },
+    review_status: { [Op.in]: ['approved', 'auto_approved'] }
+  };
+
+  const keywordText = resolveText(keyword);
+  if (keywordText) {
+    where.user_name = { [Op.like]: `%${keywordText}%` };
+  }
+
+  if (!dataFilter.all) {
+    if (dataFilter.userId) {
+      where.user_id = dataFilter.userId;
+    }
+    if (dataFilter.stationIds?.length > 0) {
+      where.station_id = { [Op.in]: dataFilter.stationIds };
+    }
+  }
+
+  const logs = await PositionWorkLog.findAll({
+    where,
+    attributes: ['work_date', 'user_id', 'user_name', 'task_source', 'unit_points', 'quantity', 'deduction_points']
+  });
+
+  const summaryMap = new Map();
+
+  logs.forEach((log) => {
+    const date = log.work_date;
+    const userId = log.user_id;
+    const userName = log.user_name ?? '';
+    const key = `${date}::${userId}`;
+
+    if (!summaryMap.has(key)) {
+      summaryMap.set(key, {
+        date,
+        userId,
+        userName,
+        safety: 0,
+        hygiene: 0,
+        repair: 0,
+        maintenance: 0,
+        fixed: 0,
+        dispatch: 0,
+        selfApply: 0,
+        deduction: 0,
+        total: 0
+      });
+    }
+
+    const summary = summaryMap.get(key);
+    const unitPoints = toNumber(log.unit_points, 0);
+    const quantityValue = toNumber(log.quantity, 1);
+    const points = unitPoints * quantityValue;
+
+    if (log.task_source === 'fixed') {
+      summary.fixed += points;
+    } else if (log.task_source === 'dispatch') {
+      summary.dispatch += points;
+    } else if (log.task_source === 'self_apply') {
+      summary.selfApply += points;
+    }
+
+    const deductionValue = toNumber(log.deduction_points, 0);
+    if (deductionValue !== 0) {
+      summary.deduction += deductionValue;
+    }
+  });
+
+  // 集成安全自检积分
+  const safetySelfWhere = {
+    inspection_date: { [Op.between]: [range.startDate, range.endDate] },
+    inspection_type: 'safety',
+    submit_time: { [Op.not]: null }
+  };
+
+  if (keywordText) {
+    safetySelfWhere.filler_name = { [Op.like]: `%${keywordText}%` };
+  }
+
+  if (!dataFilter.all) {
+    if (dataFilter.userId) {
+      safetySelfWhere.filler_id = dataFilter.userId;
+    }
+    if (dataFilter.stationIds?.length > 0) {
+      safetySelfWhere.station_id = { [Op.in]: dataFilter.stationIds };
+    }
+  }
+
+  const safetySelfInspections = await SafetySelfInspection.findAll({
+    where: safetySelfWhere,
+    attributes: ['inspection_date', 'filler_id', 'filler_name', 'work_type_ids']
+  });
+
+  // 获取所有工作性质的积分
+  const workTypes = await SafetyWorkType.findAll({
+    attributes: ['id', 'points']
+  });
+  const workTypePointsMap = new Map();
+  workTypes.forEach(wt => {
+    workTypePointsMap.set(wt.id, toNumber(wt.points, 0));
+  });
+
+  // 汇总安全自检积分
+  safetySelfInspections.forEach((inspection) => {
+    const date = inspection.inspection_date;
+    const userId = inspection.filler_id;
+    const userName = inspection.filler_name ?? '';
+    const key = `${date}::${userId}`;
+
+    if (!summaryMap.has(key)) {
+      summaryMap.set(key, {
+        date,
+        userId,
+        userName,
+        safety: 0,
+        hygiene: 0,
+        repair: 0,
+        maintenance: 0,
+        fixed: 0,
+        dispatch: 0,
+        selfApply: 0,
+        deduction: 0,
+        total: 0
+      });
+    }
+
+    const summary = summaryMap.get(key);
+    const workTypeIds = Array.isArray(inspection.work_type_ids) ? inspection.work_type_ids : [];
+    workTypeIds.forEach(wtId => {
+      const points = workTypePointsMap.get(wtId) || 0;
+      summary.safety += points;
+    });
+  });
+
+  // 集成安全他检积分
+  const safetyOtherWhere = {
+    inspection_date: { [Op.between]: [range.startDate, range.endDate] },
+    inspection_type: 'safety'
+  };
+
+  if (keywordText) {
+    safetyOtherWhere.inspected_user_name = { [Op.like]: `%${keywordText}%` };
+  }
+
+  if (!dataFilter.all) {
+    if (dataFilter.userId) {
+      safetyOtherWhere.inspected_user_id = dataFilter.userId;
+    }
+    if (dataFilter.stationIds?.length > 0) {
+      safetyOtherWhere.station_id = { [Op.in]: dataFilter.stationIds };
+    }
+  }
+
+  const safetyOtherInspections = await SafetyOtherInspection.findAll({
+    where: safetyOtherWhere,
+    attributes: ['inspection_date', 'inspected_user_id', 'inspected_user_name', 'points']
+  });
+
+  // 汇总安全他检积分
+  safetyOtherInspections.forEach((inspection) => {
+    const date = inspection.inspection_date;
+    const userId = inspection.inspected_user_id;
+    const userName = inspection.inspected_user_name ?? '';
+    const key = `${date}::${userId}`;
+
+    if (!summaryMap.has(key)) {
+      summaryMap.set(key, {
+        date,
+        userId,
+        userName,
+        safety: 0,
+        hygiene: 0,
+        repair: 0,
+        maintenance: 0,
+        fixed: 0,
+        dispatch: 0,
+        selfApply: 0,
+        deduction: 0,
+        total: 0
+      });
+    }
+
+    const summary = summaryMap.get(key);
+    const points = toNumber(inspection.points, 0);
+    summary.safety += points;
+  });
+
+  // 集成卫生自检积分
+  const hygieneSelfWhere = {
+    inspection_date: { [Op.between]: [range.startDate, range.endDate] },
+    inspection_type: 'hygiene',
+    submit_time: { [Op.not]: null }
+  };
+
+  if (keywordText) {
+    hygieneSelfWhere.filler_name = { [Op.like]: `%${keywordText}%` };
+  }
+
+  if (!dataFilter.all) {
+    if (dataFilter.userId) {
+      hygieneSelfWhere.filler_id = dataFilter.userId;
+    }
+    if (dataFilter.stationIds?.length > 0) {
+      hygieneSelfWhere.station_id = { [Op.in]: dataFilter.stationIds };
+    }
+  }
+
+  const hygieneSelfInspections = await SafetySelfInspection.findAll({
+    where: hygieneSelfWhere,
+    attributes: ['inspection_date', 'filler_id', 'filler_name', 'inspection_items']
+  });
+
+  // 获取所有卫生责任区的积分
+  const hygieneAreas = await HygieneArea.findAll({
+    attributes: ['id', 'points']
+  });
+  const hygieneAreaPointsMap = new Map();
+  hygieneAreas.forEach(ha => {
+    hygieneAreaPointsMap.set(ha.id, toNumber(ha.points, 0));
+  });
+
+  // 汇总卫生自检积分
+  hygieneSelfInspections.forEach((inspection) => {
+    const date = inspection.inspection_date;
+    const userId = inspection.filler_id;
+    const userName = inspection.filler_name ?? '';
+    const key = `${date}::${userId}`;
+
+    if (!summaryMap.has(key)) {
+      summaryMap.set(key, {
+        date,
+        userId,
+        userName,
+        safety: 0,
+        hygiene: 0,
+        repair: 0,
+        maintenance: 0,
+        fixed: 0,
+        dispatch: 0,
+        selfApply: 0,
+        deduction: 0,
+        total: 0
+      });
+    }
+
+    const summary = summaryMap.get(key);
+    const inspectionItems = Array.isArray(inspection.inspection_items) ? inspection.inspection_items : [];
+    const areaIds = new Set();
+    inspectionItems.forEach(item => {
+      if (item.areaId) {
+        areaIds.add(item.areaId);
+      }
+    });
+    areaIds.forEach(areaId => {
+      const points = hygieneAreaPointsMap.get(areaId) || 0;
+      summary.hygiene += points;
+    });
+  });
+
+  // 集成卫生他检积分
+  const hygieneOtherWhere = {
+    inspection_date: { [Op.between]: [range.startDate, range.endDate] },
+    inspection_type: 'hygiene'
+  };
+
+  if (keywordText) {
+    hygieneOtherWhere.inspected_user_name = { [Op.like]: `%${keywordText}%` };
+  }
+
+  if (!dataFilter.all) {
+    if (dataFilter.userId) {
+      hygieneOtherWhere.inspected_user_id = dataFilter.userId;
+    }
+    if (dataFilter.stationIds?.length > 0) {
+      hygieneOtherWhere.station_id = { [Op.in]: dataFilter.stationIds };
+    }
+  }
+
+  const hygieneOtherInspections = await SafetyOtherInspection.findAll({
+    where: hygieneOtherWhere,
+    attributes: ['inspection_date', 'inspected_user_id', 'inspected_user_name', 'points']
+  });
+
+  // 汇总卫生他检积分
+  hygieneOtherInspections.forEach((inspection) => {
+    const date = inspection.inspection_date;
+    const userId = inspection.inspected_user_id;
+    const userName = inspection.inspected_user_name ?? '';
+    const key = `${date}::${userId}`;
+
+    if (!summaryMap.has(key)) {
+      summaryMap.set(key, {
+        date,
+        userId,
+        userName,
+        safety: 0,
+        hygiene: 0,
+        repair: 0,
+        maintenance: 0,
+        fixed: 0,
+        dispatch: 0,
+        selfApply: 0,
+        deduction: 0,
+        total: 0
+      });
+    }
+
+    const summary = summaryMap.get(key);
+    const points = toNumber(inspection.points, 0);
+    summary.hygiene += points;
+  });
+
+  // 集成维修积分
+  const repairWhere = {
+    status: { [Op.in]: ['accepted', 'archived'] }
+  };
+
+  if (!dataFilter.all && dataFilter.stationIds?.length > 0) {
+    repairWhere.station_id = { [Op.in]: dataFilter.stationIds };
+  }
+
+  // 使用 repair_end_date 或 verify_date 作为日期筛选
+  const repairRecords = await RepairRecord.findAll({
+    where: repairWhere,
+    attributes: ['repair_end_date', 'verify_date', 'repair_person_id', 'repair_person_name', 'repair_tasks']
+  });
+
+  // 汇总维修积分
+  repairRecords.forEach((record) => {
+    const date = record.verify_date || record.repair_end_date;
+    if (!date) return;
+
+    const dateStr = dayjs(date).format('YYYY-MM-DD');
+    if (dateStr < range.startDate || dateStr > range.endDate) return;
+
+    const userId = record.repair_person_id;
+    const userName = record.repair_person_name ?? '';
+
+    if (keywordText && !userName.includes(keywordText)) return;
+
+    if (!dataFilter.all) {
+      if (dataFilter.userId && userId !== dataFilter.userId) return;
+    }
+
+    const key = `${dateStr}::${userId}`;
+
+    if (!summaryMap.has(key)) {
+      summaryMap.set(key, {
+        date: dateStr,
+        userId,
+        userName,
+        safety: 0,
+        hygiene: 0,
+        repair: 0,
+        maintenance: 0,
+        fixed: 0,
+        dispatch: 0,
+        selfApply: 0,
+        deduction: 0,
+        total: 0
+      });
+    }
+
+    const summary = summaryMap.get(key);
+    const repairTasks = Array.isArray(record.repair_tasks) ? record.repair_tasks : [];
+    repairTasks.forEach(task => {
+      const taskPoints = toNumber(task.points, 0);
+      const taskQuantity = toNumber(task.quantity, 1);
+      summary.repair += taskPoints * taskQuantity;
+    });
+  });
+
+  // 集成保养积分
+  const maintenanceWhere = {
+    work_date: { [Op.between]: [range.startDate, range.endDate] },
+    status: { [Op.in]: ['completed', 'verified'] }
+  };
+
+  if (keywordText) {
+    maintenanceWhere.executor_name = { [Op.like]: `%${keywordText}%` };
+  }
+
+  if (!dataFilter.all) {
+    if (dataFilter.userId) {
+      maintenanceWhere.executor_id = dataFilter.userId;
+    }
+    if (dataFilter.stationIds?.length > 0) {
+      maintenanceWhere.station_id = { [Op.in]: dataFilter.stationIds };
+    }
+  }
+
+  const maintenanceRecords = await MaintenanceWorkRecord.findAll({
+    where: maintenanceWhere,
+    attributes: ['work_date', 'executor_id', 'executor_name', 'maintenance_items']
+  });
+
+  // 汇总保养积分（按合格项数量计算，每项1分）
+  maintenanceRecords.forEach((record) => {
+    const date = record.work_date;
+    const userId = record.executor_id;
+    const userName = record.executor_name ?? '';
+    const key = `${date}::${userId}`;
+
+    if (!summaryMap.has(key)) {
+      summaryMap.set(key, {
+        date,
+        userId,
+        userName,
+        safety: 0,
+        hygiene: 0,
+        repair: 0,
+        maintenance: 0,
+        fixed: 0,
+        dispatch: 0,
+        selfApply: 0,
+        deduction: 0,
+        total: 0
+      });
+    }
+
+    const summary = summaryMap.get(key);
+    const maintenanceItems = Array.isArray(record.maintenance_items) ? record.maintenance_items : [];
+    const qualifiedCount = maintenanceItems.filter(item => item.confirmed === true || item.confirmed === 1).length;
+    summary.maintenance += qualifiedCount;
+  });
+
+  const result = Array.from(summaryMap.values()).map((item) => {
+    const total = item.safety
+      + item.hygiene
+      + item.repair
+      + item.maintenance
+      + item.fixed
+      + item.dispatch
+      + item.selfApply
+      + item.deduction;
+    return { ...item, total };
+  });
+
+  result.sort((a, b) => {
+    if (a.date === b.date) {
+      const leftName = a.userName ?? '';
+      const rightName = b.userName ?? '';
+      return leftName.localeCompare(rightName);
+    }
+    return b.date.localeCompare(a.date);
+  });
+
+  ctx.body = {
+    code: 200,
+    message: 'success',
+    data: result
+  };
+};
+
+/**
  * 进料统计报表
  * GET /api/reports/inbound
  */
@@ -342,5 +834,6 @@ export default {
   getRepairByMonth,
   getSafetyReport,
   getScheduleReport,
-  getTemporaryTasksReport
+  getTemporaryTasksReport,
+  getPointsSummaryReport
 };

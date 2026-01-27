@@ -161,7 +161,7 @@ const allStats = {
   inspection: { key: 'inspectionCount', title: '今日自检', icon: 'Brush', color: '#409EFF', path: '/hygiene-self-inspection' },
   safetyCheck: { key: 'safetyCheckCount', title: '安全检查', icon: 'Shield', color: '#409EFF', path: '/safety-self-inspection' },
   hygieneCheck: { key: 'hygieneCheckCount', title: '卫生检查', icon: 'Brush', color: '#67C23A', path: '/hygiene-self-inspection' },
-  schedule: { key: 'scheduleCount', title: '排班表', icon: 'Calendar', color: '#909399', path: '/schedule' },
+  schedule: { key: 'scheduleCount', title: '排班表', icon: 'Calendar', color: '#909399', path: '/schedule/my' },
   task: { key: 'taskCount', title: '固定任务', icon: 'Briefcase', color: '#409EFF', path: '/position-work' },
   deviceFaults: { key: 'repairCount', title: '设备故障', icon: 'Warning', color: '#E6A23C', path: '/device-faults' },
   safetyRectification: { key: 'hazardCount', title: '安全隐患', icon: 'Warning', color: '#F56C6C', path: '/safety-rectification' },
@@ -282,14 +282,14 @@ const allowedActionMap = computed(() => {
 const defaultQuickActionPaths = computed(() => {
   const roleDefaults = {
     // 操作岗：排班表、安全自检、卫生自检、固定任务、设备故障
-    operator: ['/schedule', '/safety-self-inspection', '/hygiene-self-inspection', '/position-work', '/device-faults'],
+    operator: ['/schedule/my', '/safety-self-inspection', '/hygiene-self-inspection', '/position-work', '/device-faults'],
     // 维修岗：安全自检、设备故障
     maintenance: ['/safety-self-inspection', '/device-faults'],
     // 站长：排班表、安全自检、卫生自检、岗位工作、设备故障、安全隐患
-    station_manager: ['/schedule', '/safety-self-inspection', '/hygiene-self-inspection', '/position-work', '/device-faults', '/safety-rectification'],
+    station_manager: ['/schedule/my', '/safety-self-inspection', '/hygiene-self-inspection', '/position-work', '/device-faults', '/safety-rectification'],
     // 部门经理/副经理：排班表、安全自检、卫生自检、岗位工作、设备故障、安全隐患
-    deputy_manager: ['/schedule', '/safety-self-inspection', '/hygiene-self-inspection', '/position-work', '/device-faults', '/safety-rectification'],
-    department_manager: ['/schedule', '/safety-self-inspection', '/hygiene-self-inspection', '/position-work', '/device-faults', '/safety-rectification'],
+    deputy_manager: ['/schedule/my', '/safety-self-inspection', '/hygiene-self-inspection', '/position-work', '/device-faults', '/safety-rectification'],
+    department_manager: ['/schedule/my', '/safety-self-inspection', '/hygiene-self-inspection', '/position-work', '/device-faults', '/safety-rectification'],
     // 安全员：安全自检、卫生自检、安全隐患
     safety_inspector: ['/safety-self-inspection', '/hygiene-self-inspection', '/safety-rectification'],
     // 系统管理员：用户管理、组织架构
@@ -297,7 +297,7 @@ const defaultQuickActionPaths = computed(() => {
     // 甲方：设备保养、数据报表
     client: ['/reports'],
     // 高层：排班表、安全自检、卫生自检、岗位工作、设备故障、安全隐患
-    senior_management: ['/schedule', '/safety-self-inspection', '/hygiene-self-inspection', '/position-work', '/device-faults', '/safety-rectification']
+    senior_management: ['/schedule/my', '/safety-self-inspection', '/hygiene-self-inspection', '/position-work', '/device-faults', '/safety-rectification']
   };
   const roleKey = roleDefaults[userStore.roleCode]
     ? userStore.roleCode

@@ -2,6 +2,7 @@ import positionWorkLogController from '../../controllers/positionWorkLogControll
 import { checkRole } from '../../middlewares/permission.js';
 
 const managerRoles = ['station_manager', 'department_manager', 'deputy_manager', 'senior_management'];
+const recordViewerRoles = [...managerRoles, 'operator'];
 
 export const registerPositionWorkLogRoutes = (router) => {
   router.get('/position-work-logs/today-tasks', positionWorkLogController.getTodayTasks);
@@ -12,7 +13,7 @@ export const registerPositionWorkLogRoutes = (router) => {
   );
   router.get(
     '/position-work-logs/records',
-    checkRole(managerRoles),
+    checkRole(recordViewerRoles),
     positionWorkLogController.getWorkRecords
   );
   router.get('/position-work-logs', positionWorkLogController.getWorkLogs);

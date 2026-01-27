@@ -2,8 +2,26 @@ export const maintenanceRoutes = [
   {
     path: '/device-faults',
     name: 'DeviceFaults',
-    component: () => import('@/views/maintenance/DeviceFaults.vue'),
+    redirect: '/device-faults/records',
     meta: { title: '设备故障' }
+  },
+  {
+    path: '/device-faults/records',
+    name: 'DeviceFaultRecords',
+    component: () => import('@/views/maintenance/DeviceFaults.vue'),
+    meta: { title: '设备维修记录' }
+  },
+  {
+    path: '/device-faults/equipment',
+    name: 'DeviceFaultEquipment',
+    component: () => import('@/views/maintenance/EquipmentManagement.vue'),
+    meta: { title: '设备管理', roles: ['station_manager', 'department_manager', 'deputy_manager'] }
+  },
+  {
+    path: '/device-faults/task-library',
+    name: 'DeviceFaultTaskLibrary',
+    component: () => import('@/views/maintenance/RepairTaskLibrary.vue'),
+    meta: { title: '维修任务库' }
   },
   {
     path: '/fault-report',

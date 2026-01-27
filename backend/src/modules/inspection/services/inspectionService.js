@@ -1,5 +1,5 @@
 import { Op, literal } from 'sequelize';
-import { SafetySelfInspection, SafetyOtherInspection, SafetyHazardInspection, SafetyRectification, User, Role, Station, Notification, Schedule } from '../../../models/index.js';
+import { SafetySelfInspection, SafetyOtherInspection, SafetyHazardInspection, SafetyRectification, SafetyCheckItem, SafetyWorkType, HygieneArea, HygienePoint, User, Role, Station, Notification, Schedule } from '../../../models/index.js';
 import { createError } from '../../../middlewares/error.js';
 import { getPagination, formatPaginationResponse, generateRecordCode, calculateOverdueMinutes } from '../../../utils/helpers.js';
 import logger from '../../../config/logger.js';
@@ -23,6 +23,238 @@ const hasScheduleForDate = (schedulesData, dateKey, dayKey) => {
   const restValue = '\u4f11';
   const value = schedulesData[dateKey] ?? schedulesData[dayKey];
   return !!value && value !== restValue;
+};
+
+const parseInspectionItems = (items) => {
+  if (!items) return [];
+  if (Array.isArray(items)) return items;
+  if (typeof items === 'string') {
+    try {
+      const parsed = JSON.parse(items);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch (error) {
+      return [];
+    }
+  }
+  return [];
+};
+
+const isTextCorrupted = (value) => {
+  if (typeof value !== 'string') return true;
+  const trimmed = value.trim();
+  if (!trimmed) return true;
+  return /^[?\uFF1F]+$/.test(trimmed);
+};
+
+const normalizeSafetyInspectionItems = async (records) => {
+  if (!records || records.length === 0) return;
+
+  const itemIds = new Set();
+  const workTypeIds = new Set();
+
+  records.forEach(record => {
+    const items = parseInspectionItems(record.inspection_items ?? record.inspectionItems);
+    items.forEach(item => {
+      const itemId = item.itemId ?? item.item_id;
+      if (itemId !== undefined && itemId !== null) {
+        itemIds.add(Number(itemId));
+      }
+      const workTypeId = item.workTypeId ?? item.work_type_id;
+      if (workTypeId !== undefined && workTypeId !== null) {
+        workTypeIds.add(Number(workTypeId));
+      }
+    });
+
+    const workTypeList = record.work_type_ids ?? record.workTypeIds;
+    if (Array.isArray(workTypeList)) {
+      workTypeList.forEach(id => {
+        if (id !== undefined && id !== null) {
+          workTypeIds.add(Number(id));
+        }
+      });
+    }
+  });
+
+  const [checkItems, workTypes] = await Promise.all([
+    itemIds.size > 0
+      ? SafetyCheckItem.findAll({
+        where: { id: { [Op.in]: Array.from(itemIds) } },
+        attributes: ['id', 'item_name', 'item_standard', 'work_type_id']
+      })
+      : [],
+    workTypeIds.size > 0
+      ? SafetyWorkType.findAll({
+        where: { id: { [Op.in]: Array.from(workTypeIds) } },
+        attributes: ['id', 'work_type_name']
+      })
+      : []
+  ]);
+
+  const itemMap = new Map(checkItems.map(item => [item.id, item]));
+  const workTypeMap = new Map(workTypes.map(workType => [workType.id, workType.work_type_name]));
+
+  records.forEach(record => {
+    const items = parseInspectionItems(record.inspection_items ?? record.inspectionItems);
+    if (items.length === 0) return;
+
+    const nextItems = items.map(item => {
+      const itemId = item.itemId ?? item.item_id;
+      const refItem = itemId !== undefined && itemId !== null ? itemMap.get(Number(itemId)) : null;
+      const workTypeId = item.workTypeId ?? item.work_type_id ?? refItem?.work_type_id;
+      const workTypeName = workTypeId !== undefined && workTypeId !== null
+        ? workTypeMap.get(Number(workTypeId))
+        : null;
+
+      const itemName = item.itemName ?? item.item_name;
+      const itemStandard = item.itemStandard ?? item.item_standard;
+      const currentWorkTypeName = item.workTypeName ?? item.work_type_name;
+
+      return {
+        ...item,
+        itemId: itemId ?? item.itemId ?? item.item_id,
+        workTypeId: workTypeId ?? item.workTypeId ?? item.work_type_id,
+        itemName: isTextCorrupted(itemName) ? (refItem?.item_name ?? itemName) : itemName,
+        itemStandard: isTextCorrupted(itemStandard) ? (refItem?.item_standard ?? itemStandard) : itemStandard,
+        workTypeName: isTextCorrupted(currentWorkTypeName)
+          ? (workTypeName ?? currentWorkTypeName)
+          : currentWorkTypeName
+      };
+    });
+
+    if (typeof record.setDataValue === 'function') {
+      record.setDataValue('inspection_items', nextItems);
+    } else {
+      record.inspection_items = nextItems;
+    }
+  });
+};
+
+const normalizeHygieneInspectionItems = async (records) => {
+  if (!records || records.length === 0) return;
+
+  const stationIds = Array.from(new Set(records.map(record => record.station_id).filter(Boolean)));
+  const areas = stationIds.length > 0
+    ? await HygieneArea.findAll({
+      where: { station_id: { [Op.in]: stationIds } },
+      attributes: ['id', 'station_id', 'area_name', 'points']
+    })
+    : [];
+
+  const areaMap = new Map(areas.map(area => [area.id, area]));
+  const areaByStationName = new Map(areas.map(area => [`${area.station_id}:${area.area_name}`, area]));
+  const areaIds = Array.from(areaMap.keys());
+
+  const points = areaIds.length > 0
+    ? await HygienePoint.findAll({
+      where: { hygiene_area_id: { [Op.in]: areaIds } },
+      attributes: ['id', 'hygiene_area_id', 'point_name', 'work_requirements']
+    })
+    : [];
+
+  const pointMap = new Map(points.map(point => [point.id, point]));
+  const pointByAreaName = new Map(points.map(point => [`${point.hygiene_area_id}:${point.point_name}`, point]));
+
+  const updateTasks = [];
+
+  records.forEach(record => {
+    const items = parseInspectionItems(record.inspection_items ?? record.inspectionItems);
+    if (items.length === 0) return;
+
+    let shouldPersist = false;
+    const nextItems = items.map(item => {
+      const rawWorkTypeId = item.workTypeId ?? item.work_type_id;
+      const rawWorkTypeName = item.workTypeName ?? item.work_type_name ?? item.areaName ?? item.area_name;
+      const rawItemId = item.itemId ?? item.item_id;
+      const rawItemName = item.itemName ?? item.item_name ?? item.pointName ?? item.point_name;
+
+      let workTypeId = rawWorkTypeId;
+      if ((workTypeId === undefined || workTypeId === null || workTypeId === '') && rawWorkTypeName && record.station_id) {
+        const matchedArea = areaByStationName.get(`${record.station_id}:${rawWorkTypeName}`);
+        if (matchedArea) {
+          workTypeId = matchedArea.id;
+          shouldPersist = true;
+        }
+      }
+
+      let itemId = rawItemId;
+      if ((itemId === undefined || itemId === null || itemId === '') && workTypeId && rawItemName) {
+        const matchedPoint = pointByAreaName.get(`${workTypeId}:${rawItemName}`);
+        if (matchedPoint) {
+          itemId = matchedPoint.id;
+          shouldPersist = true;
+        }
+      }
+
+      const refPoint = itemId !== undefined && itemId !== null ? pointMap.get(Number(itemId)) : null;
+      const refArea = workTypeId !== undefined && workTypeId !== null ? areaMap.get(Number(workTypeId)) : null;
+
+      const itemName = item.itemName ?? item.item_name ?? rawItemName;
+      const itemStandard = item.itemStandard ?? item.item_standard ?? item.workRequirements ?? item.work_requirements;
+      const currentWorkTypeName = item.workTypeName ?? item.work_type_name ?? rawWorkTypeName;
+
+      const nextItem = {
+        ...item,
+        itemId: itemId ?? item.itemId ?? item.item_id,
+        workTypeId: workTypeId ?? item.workTypeId ?? item.work_type_id,
+        itemName: isTextCorrupted(itemName) ? (refPoint?.point_name ?? itemName) : itemName,
+        itemStandard: isTextCorrupted(itemStandard) ? (refPoint?.work_requirements ?? itemStandard) : itemStandard,
+        workTypeName: isTextCorrupted(currentWorkTypeName)
+          ? (refArea?.area_name ?? currentWorkTypeName)
+          : currentWorkTypeName
+      };
+
+      if ((rawWorkTypeId !== nextItem.workTypeId) || (rawItemId !== nextItem.itemId)) {
+        shouldPersist = true;
+      }
+
+      return nextItem;
+    });
+
+    const workTypeIds = Array.from(new Set(nextItems
+      .map(item => item.workTypeId)
+      .filter(id => id !== undefined && id !== null && id !== '')
+      .map(id => Number(id))
+      .filter(id => !Number.isNaN(id))
+    ));
+
+    const originalWorkTypeIds = Array.isArray(record.work_type_ids) ? record.work_type_ids : [];
+    if (workTypeIds.length > 0 && workTypeIds.join(',') !== originalWorkTypeIds.join(',')) {
+      shouldPersist = true;
+    }
+
+    if (typeof record.setDataValue === 'function') {
+      record.setDataValue('inspection_items', nextItems);
+      if (workTypeIds.length > 0) {
+        record.setDataValue('work_type_ids', workTypeIds);
+      }
+    } else {
+      record.inspection_items = nextItems;
+      if (workTypeIds.length > 0) {
+        record.work_type_ids = workTypeIds;
+      }
+    }
+
+    if (shouldPersist) {
+      updateTasks.push(record.update({
+        inspection_items: nextItems,
+        work_type_ids: workTypeIds
+      }));
+    }
+  });
+
+  if (updateTasks.length > 0) {
+    await Promise.all(updateTasks);
+  }
+};
+
+const normalizeInspectionItems = async (records) => {
+  if (!records || records.length === 0) return;
+  const safetyRecords = records.filter(record => record.inspection_type !== 'hygiene');
+  const hygieneRecords = records.filter(record => record.inspection_type === 'hygiene');
+  await Promise.all([
+    normalizeSafetyInspectionItems(safetyRecords),
+    normalizeHygieneInspectionItems(hygieneRecords)
+  ]);
 };
 
 // ============================================
@@ -379,6 +611,8 @@ export const getSelfInspections = async (ctx) => {
   }
 
   // 手动序列化数据，确保 positionName 字段包含在返回结果中
+  await normalizeInspectionItems(result.rows);
+
   const serializedRows = result.rows.map(row => {
     const rowData = row.toJSON();
     // 确保filler对象存在并添加positionName
@@ -478,6 +712,8 @@ export const getMySelfInspections = async (ctx) => {
     ],
     order: [['inspection_date', 'DESC']]
   });
+
+  await normalizeInspectionItems(inspections);
 
   ctx.body = {
     code: 200,
@@ -647,6 +883,8 @@ export const getOtherInspections = async (ctx) => {
     }
   }
 
+  await normalizeInspectionItems(result.rows);
+
   ctx.body = {
     code: 200,
     message: 'success',
@@ -659,7 +897,7 @@ export const getOtherInspections = async (ctx) => {
  * POST /api/other-inspections
  */
 export const createOtherInspection = async (ctx) => {
-  const { inspectionType, stationId, inspectionDate, inspectedUserId, inspectedUserName, violationDescription, isQualified, unqualifiedItems, photoUrls, projectId, workTypeIds, inspectionItems, remark } = ctx.request.body;
+  const { inspectionType, stationId, inspectionDate, inspectedUserId, inspectedUserName, violationDescription, isQualified, unqualifiedItems, photoUrls, projectId, workTypeIds, inspectionItems, remark, points } = ctx.request.body;
   const user = ctx.state.user;
 
   // 如果是安全他检，inspectionType 默认为 'safety'
@@ -688,6 +926,13 @@ export const createOtherInspection = async (ctx) => {
   // 解析 projectId，兼容移除项目后的场景
   const resolvedProjectId = projectId || user.lastProjectId || 0;
 
+  const parsedPoints = points !== undefined && points !== null && points !== ''
+    ? Number(points)
+    : 0;
+  if (!Number.isFinite(parsedPoints)) {
+    throw createError(400, '积分格式不正确');
+  }
+
   const inspection = await SafetyOtherInspection.create({
     record_code: generateRecordCode('OI'),
     inspection_type: resolvedInspectionType,
@@ -699,6 +944,7 @@ export const createOtherInspection = async (ctx) => {
     inspected_user_id: inspectedUserId,
     inspected_user_name: inspectedUserName,
     work_type_ids: workTypeIds || [],
+    points: parsedPoints,
     inspection_items: inspectionItems || [],
     violation_description: violationDescription,
     remark: remark,

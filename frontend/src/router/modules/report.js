@@ -4,5 +4,11 @@ export const reportRoutes = [
     name: 'Reports',
     component: () => import('@/views/reports/Index.vue'),
     meta: { title: '维保数据报表' }
+  },
+  {
+    path: '/points-summary',
+    name: 'PointsSummary',
+    component: () => import('@/views/reports/PointsSummary.vue'),
+    meta: { title: '积分统计', roles: ['dev_test'] }
   }
 ];

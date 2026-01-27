@@ -66,6 +66,18 @@ SET @stmt := (
   SELECT IF(
     EXISTS (
       SELECT 1 FROM information_schema.COLUMNS
+      WHERE TABLE_SCHEMA = @db AND TABLE_NAME = 'position_jobs' AND COLUMN_NAME = 'points_editable'
+    ),
+    'SELECT 1',
+    'ALTER TABLE position_jobs ADD COLUMN points_editable TINYINT NOT NULL DEFAULT 0 COMMENT ''积分是否可修改'' AFTER quantity_editable'
+  )
+);
+PREPARE s FROM @stmt; EXECUTE s; DEALLOCATE PREPARE s;
+
+SET @stmt := (
+  SELECT IF(
+    EXISTS (
+      SELECT 1 FROM information_schema.COLUMNS
       WHERE TABLE_SCHEMA = @db AND TABLE_NAME = 'position_jobs' AND COLUMN_NAME = 'dispatch_review_required'
     ),
     'SELECT 1',

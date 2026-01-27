@@ -268,10 +268,10 @@
               :max="0"
               :step="1"
               :precision="2"
-              placeholder="填写负数"
+              placeholder="填写0或负数"
               style="width: 180px"
             />
-            <span class="hint">必须为负数</span>
+            <span class="hint">可为0或负数</span>
           </el-form-item>
         </template>
       </el-form>
@@ -551,8 +551,8 @@ const submitReview = async () => {
       return;
     }
     const value = Number(reviewForm.deductionPoints);
-    if (Number.isNaN(value) || value >= 0) {
-      ElMessage.warning('扣分值必须为负数');
+    if (Number.isNaN(value) || value > 0) {
+      ElMessage.warning('扣分值必须为0或负数');
       return;
     }
   }

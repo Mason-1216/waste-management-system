@@ -4,216 +4,109 @@
       <h2>安全自检</h2>
     </div>
 
-    <el-tabs v-model="activeTab" class="inspection-tabs">
-      <!-- 我的自检 -->
-      <el-tab-pane label="我的安全自检" name="my">
-        <div class="header-controls">
-          <el-date-picker
-            v-model="dateRange"
-            type="daterange"
-            start-placeholder="开始日期"
-            end-placeholder="结束日期"
-            format="YYYY-MM-DD"
-            value-format="YYYY-MM-DD"
-            @change="loadRangeInspections"
-          />
-        </div>
+    <div class="header-controls">
+      <el-date-picker
+        v-model="dateRange"
+        type="daterange"
+        start-placeholder="开始日期"
+        end-placeholder="结束日期"
+        format="YYYY-MM-DD"
+        value-format="YYYY-MM-DD"
+        @change="loadRangeInspections"
+      />
+    </div>
 
-        <!-- 状态提示 -->
-        <div class="status-card" :class="{ completed: hasCompletedBasicWork }">
-          <div class="status-content">
-            <el-icon class="status-icon" :class="{ warning: !hasCompletedBasicWork }">
-              <CircleCheck v-if="hasCompletedBasicWork" />
-              <Warning v-else />
-            </el-icon>
-            <div class="status-info">
-              <div class="status-title">今日安全自检状态</div>
-              <div class="status-lines">
-                <div class="status-line">
-                  <span class="status-label">基本工作</span>
-                  <el-tag size="small" :type="hasCompletedBasicWork ? 'success' : 'warning'">
-                    {{ hasCompletedBasicWork ? '已完成' : '未完成' }}
-                  </el-tag>
-                </div>
-                <div class="status-line" v-if="operationCompleted">
-                  <span class="status-label">操作</span>
-                  <el-tag size="small" :type="operationWorkStatus.type">
-                    {{ operationWorkStatus.text }}
-                  </el-tag>
-                </div>
-                <div
-                  v-for="wt in extraCompletedWorkTypes"
-                  :key="wt.id"
-                  class="status-line"
-                >
-                  <span class="status-label">{{ wt.work_type_name }}</span>
-                  <el-tag size="small" type="success">已完成</el-tag>
-                </div>
-              </div>
-              <div class="status-time">已完成{{ todayInspections.length }} 次自检</div>
-            </div>
-            <el-button type="primary" @click="startInspection" v-if="!hasCompletedBasicWork || hasAvailableWorkTypes">
-              自检
-            </el-button>
-          </div>
-        </div>
-
-        <!-- 今日自检列表 -->
-        <div class="today-inspections" v-if="rangeInspections.length > 0">
-          <h3>自检记录</h3>
-          <div class="inspection-list">
-            <div
-              v-for="inspection in rangeInspections"
-              :key="inspection.id"
-              class="inspection-item"
-            >
-              <div class="inspection-item-info">
-                <span class="work-types">{{ getWorkTypeNames(inspection.work_type_ids) }}</span>
-                <span class="submit-time">{{ formatDateTime(inspection.submit_time) }}</span>
-              </div>
-              <el-button link type="primary" @click="viewDetail(inspection)">查看详情</el-button>
-            </div>
-          </div>
-        </div>
-
-        <!-- 历史记录 -->
-        <div class="history-section">
-          <h3>历史记录</h3>
-          <el-table :data="historyList" stripe border v-loading="loadingHistory">
-            <el-table-column prop="inspection_date" label="日期" width="120" />
-            <el-table-column label="工作性质" min-width="150">
-              <template #default="{ row }">
-                {{ getWorkTypeNames(row.work_type_ids) }}
-              </template>
-            </el-table-column>
-            <el-table-column label="检查结果" width="100">
-              <template #default="{ row }">
-                <el-tag :type="getInspectionResult(row).type">
-                  {{ getInspectionResult(row).text }}
-                </el-tag>
-              </template>
-            </el-table-column>
-            <el-table-column prop="submit_time" label="提交时间" width="160">
-              <template #default="{ row }">
-                {{ formatDateTime(row.submit_time) }}
-              </template>
-            </el-table-column>
-            <el-table-column label="操作" width="100">
-              <template #default="{ row }">
-                <el-button link type="primary" @click="viewDetail(row)">详情</el-button>
-              </template>
-            </el-table-column>
-          </el-table>
-        </div>
-      </el-tab-pane>
-
-      <!-- 人员安全自检 -->
-      <el-tab-pane label="人员安全自检" name="staff" v-if="canViewStaff">
-        <FilterBar>
-          <el-date-picker
-            v-model="staffFilters.dateRange"
-            type="daterange"
-            start-placeholder="开始日期"
-            end-placeholder="结束日期"
-            value-format="YYYY-MM-DD"
-            style="width: 240px"
-          />
-          <el-select
-            v-model="staffFilters.stationId"
-            placeholder="场站"
-            clearable
-            filterable
-            style="width: 150px"
-          >
-            <el-option
-              v-for="station in stationList"
-              :key="station.id"
-              :label="station.stationName"
-              :value="station.id"
-            />
-          </el-select>
-          <el-input
-            v-model="staffFilters.fillerName"
-            placeholder="姓名"
-            clearable
-            style="width: 120px"
-          />
-          <el-select
-            v-model="staffFilters.workTypeIds"
-            placeholder="工作性质"
-            clearable
-            filterable
-            multiple
-            collapse-tags
-            collapse-tags-tooltip
-            style="width: 200px"
-          >
-            <el-option
-              v-for="wt in workTypes"
-              :key="wt.id"
-              :label="wt.work_type_name"
-              :value="wt.id"
-            />
-          </el-select>
-          <el-select
-            v-model="staffFilters.result"
-            placeholder="检查结果"
-            clearable
-            style="width: 120px"
-          >
-            <el-option label="全部合格" value="all_yes" />
-            <el-option label="有异常" value="has_no" />
-          </el-select>
-          <el-button @click="resetStaffFilters">重置</el-button>
-        </FilterBar>
-
-        <el-table :data="staffInspectionList" stripe border v-loading="loadingStaff">
-          <el-table-column prop="inspection_date" label="日期" width="120" />
-          <el-table-column label="场站" width="150">
-            <template #default="{ row }">
-              {{ row.station?.station_name || '-' }}
-            </template>
-          </el-table-column>
-          <el-table-column label="姓名" width="100">
-            <template #default="{ row }">
-              {{ row.filler?.real_name || row.filler_name || '-' }}
-            </template>
-          </el-table-column>
-          <el-table-column label="工作性质" min-width="150">
-            <template #default="{ row }">
-              {{ getWorkTypeNames(row.work_type_ids) }}
-            </template>
-          </el-table-column>
-          <el-table-column label="检查结果" width="100">
-            <template #default="{ row }">
-              <el-tag :type="getInspectionResult(row).type">
-                {{ getInspectionResult(row).text }}
+    <!-- 状态提示 -->
+    <div class="status-card" :class="{ completed: hasCompletedBasicWork }">
+      <div class="status-content">
+        <el-icon class="status-icon" :class="{ warning: !hasCompletedBasicWork }">
+          <CircleCheck v-if="hasCompletedBasicWork" />
+          <Warning v-else />
+        </el-icon>
+        <div class="status-info">
+          <div class="status-title">今日安全自检状态</div>
+          <div class="status-lines">
+            <div class="status-line">
+              <span class="status-label">基本工作</span>
+              <el-tag size="small" :type="hasCompletedBasicWork ? 'success' : 'warning'">
+                {{ hasCompletedBasicWork ? '已完成' : '未完成' }}
               </el-tag>
-            </template>
-          </el-table-column>
-            <el-table-column prop="submit_time" label="提交时间" width="160">
-            <template #default="{ row }">
-              {{ formatDateTime(row.submit_time) }}
-            </template>
-          </el-table-column>
-          <el-table-column label="操作" width="100">
-            <template #default="{ row }">
-              <el-button link type="primary" @click="viewDetail(row)">详情</el-button>
-            </template>
-          </el-table-column>
-        </el-table>
-
-        <div class="pagination-wrapper">
-          <el-pagination
-            v-model:current-page="staffPagination.page"
-            v-model:page-size="staffPagination.pageSize"
-            :total="staffPagination.total"
-            layout="total, prev, pager, next"
-            @current-change="loadStaffInspections"
-          />
+            </div>
+            <div class="status-line" v-if="operationCompleted">
+              <span class="status-label">操作</span>
+              <el-tag size="small" :type="operationWorkStatus.type">
+                {{ operationWorkStatus.text }}
+              </el-tag>
+            </div>
+            <div
+              v-for="wt in extraCompletedWorkTypes"
+              :key="wt.id"
+              class="status-line"
+            >
+              <span class="status-label">{{ wt.work_type_name }}</span>
+              <el-tag size="small" type="success">已完成</el-tag>
+            </div>
+          </div>
+          <div class="status-time">已完成{{ todayInspections.length }} 次自检</div>
         </div>
-      </el-tab-pane>
-    </el-tabs>
+        <el-button type="primary" @click="startInspection" v-if="!hasCompletedBasicWork || hasAvailableWorkTypes">
+          自检
+        </el-button>
+      </div>
+    </div>
+
+    <!-- 今日自检列表 -->
+    <div class="today-inspections" v-if="rangeInspections.length > 0">
+      <h3>自检记录</h3>
+      <div class="inspection-list">
+        <div
+          v-for="inspection in rangeInspections"
+          :key="inspection.id"
+          class="inspection-item"
+        >
+          <div class="inspection-item-info">
+            <span class="work-types">{{ getWorkTypeNames(inspection.work_type_ids) }}</span>
+            <span class="submit-time">{{ formatDateTime(inspection.submit_time) }}</span>
+          </div>
+          <el-button link type="primary" @click="viewDetail(inspection)">查看详情</el-button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 历史记录 -->
+    <div class="history-section">
+      <h3>历史记录</h3>
+      <el-table :data="historyList" stripe border v-loading="loadingHistory">
+        <el-table-column prop="inspection_date" label="日期" width="120" />
+        <el-table-column label="工作性质" min-width="150">
+          <template #default="{ row }">
+            {{ getWorkTypeNames(row.work_type_ids) }}
+          </template>
+        </el-table-column>
+        <el-table-column label="积分" width="90">
+          <template #default="{ row }">
+            {{ getInspectionPoints(row) }}
+          </template>
+        </el-table-column>
+        <el-table-column label="检查结果" width="100">
+          <template #default="{ row }">
+            <el-tag :type="getInspectionResult(row).type">
+              {{ getInspectionResult(row).text }}
+            </el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column prop="submit_time" label="提交时间" width="160">
+          <template #default="{ row }">
+            {{ formatDateTime(row.submit_time) }}
+          </template>
+        </el-table-column>
+        <el-table-column label="操作" width="100">
+          <template #default="{ row }">
+            <el-button link type="primary" @click="viewDetail(row)">详情</el-button>
+          </template>
+        </el-table-column>
+      </el-table>
+    </div>
 
     <!-- 自检对话框 -->
     <FormDialog
@@ -359,9 +252,9 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted, watch } from 'vue';
+import { ref, reactive, computed, onMounted } from 'vue';
 import { ElMessage } from 'element-plus';
-import { CircleCheck, Warning, Plus } from '@element-plus/icons-vue';
+import { CircleCheck, Warning } from '@element-plus/icons-vue';
 import { useUserStore } from '@/store/modules/user';
 import { useUpload } from '@/composables/useUpload';
 import request from '@/api/request';
@@ -373,9 +266,6 @@ const userStore = useUserStore();
 
 const { uploadUrl, uploadHeaders } = useUpload();
 
-// 标签页
-const activeTab = ref('my');
-
 // 当前日期
 const dateRange = ref([]);
 
@@ -383,8 +273,6 @@ const dateRange = ref([]);
 const todayInspections = ref([]);
 // 日期范围自检列表（用于记录展示）
 const rangeInspections = ref([]);
-// 兼容旧逻辑：第一条记录
-const todayInspection = computed(() => todayInspections.value.length > 0 ? todayInspections.value[0] : null);
 // 今日已完成的工作性质ID列表
 const completedWorkTypeIds = computed(() => {
   const ids = new Set();
@@ -462,53 +350,6 @@ const workTypesMap = ref({});
 const isActiveStatus = (status) => status === undefined || status === null || status === '' || status === 'active' || status === 1 || status === '1' || status === true;
 
 // 上传配置
-
-// 权限控制
-const canViewStaff = computed(() => {
-  const privilegedRoles = ['station_manager', 'deputy_manager', 'department_manager', 'senior_management', 'admin', 'safety_inspector'];
-  return privilegedRoles.includes(userStore.userInfo?.roleCode);
-});
-
-// 筛选显示控制
-const showStationFilter = computed(() => {
-  const user = userStore.userInfo;
-  if (user?.roleCode === 'station_manager' && user?.stations?.length > 1) {
-    return true;
-  }
-  return ['deputy_manager', 'department_manager', 'senior_management', 'admin'].includes(user?.roleCode);
-});
-
-// 场站列表
-const stationList = ref([]);
-
-// 人员自检
-const staffInspectionList = ref([]);
-const loadingStaff = ref(false);
-const staffFilters = reactive({
-  dateRange: [],
-  stationId: null,
-  fillerName: '',
-  workTypeIds: [],
-  result: ''
-});
-const staffPagination = reactive({
-  page: 1,
-  pageSize: 10,
-  total: 0
-});
-
-const handleStaffFilterChange = () => {
-  staffPagination.page = 1;
-  loadStaffInspections();
-};
-
-const resetStaffFilters = () => {
-  staffFilters.dateRange = [];
-  staffFilters.stationId = null;
-  staffFilters.fillerName = '';
-  staffFilters.workTypeIds = [];
-  staffFilters.result = '';
-};
 
 // 自检对话框
 const inspectionDialogVisible = ref(false);
@@ -739,32 +580,6 @@ const loadHistory = async () => {
   }
 };
 
-// 场站列表
-const loadStations = async () => {
-  try {
-    const user = userStore.userInfo;
-    if (user?.roleCode === 'station_manager' && Array.isArray(user?.stations)) {
-      stationList.value = [
-        { id: '', stationName: '全部场站' },
-        ...user.stations.map(s => ({
-          id: s.id,
-          stationName: s.station_name || s.stationName || s.name
-        }))
-      ];
-      return;
-    }
-
-    const res = await request.get('/stations', { params: { pageSize: 200 } });
-    const list = Array.isArray(res) ? res : (res?.list || []);
-    stationList.value = list.map(s => ({
-      id: s.id,
-      stationName: s.station_name
-    }));
-  } catch (error) {
-    
-  }
-};
-
 const normalizeWorkTypeIds = (row) => {
   if (!row) return [];
   const raw =
@@ -814,80 +629,6 @@ const mergeInspectionRecords = (list) => {
   });
 
   return Array.from(merged.values());
-};
-
-// 人员自检列表
-const loadStaffInspections = async () => {
-  loadingStaff.value = true;
-  try {
-    const params = {
-      inspectionType: 'safety',
-      page: staffPagination.page,
-      // 每页取 3 倍，避免分页偏小
-      pageSize: staffPagination.pageSize * 3
-    };
-
-    if (staffFilters.dateRange && staffFilters.dateRange.length === 2) {
-      params.startDate = staffFilters.dateRange[0];
-      params.endDate = staffFilters.dateRange[1];
-    }
-    if (staffFilters.stationId) {
-      params.stationId = staffFilters.stationId;
-    }
-    if (staffFilters.fillerName) {
-      params.fillerName = staffFilters.fillerName;
-    }
-    const workTypeIds = Array.isArray(staffFilters.workTypeIds)
-      ? staffFilters.workTypeIds.filter(id => id !== '' && id !== null && id !== undefined)
-      : [];
-    if (workTypeIds.length === 1) {
-      params.workTypeId = workTypeIds[0];
-    }
-
-    const res = await request.get('/self-inspections', { params });
-    let list = res?.list || [];
-
-// 合并同一人同一天的记录
-    list = mergeInspectionRecords(list);
-
-    if (workTypeIds.length > 0) {
-      const targetIds = new Set(workTypeIds.map(id => String(id)));
-      list = list.filter(item => {
-        const idSet = new Set(normalizeWorkTypeIds(item));
-        (item.inspection_items || []).forEach(detail => {
-          const detailId = detail.workTypeId ?? detail.work_type_id;
-          if (detailId !== undefined && detailId !== null) {
-            idSet.add(detailId);
-          }
-        });
-        const itemIds = new Set(Array.from(idSet).map(id => String(id)));
-        for (const targetId of targetIds) {
-          if (!itemIds.has(targetId)) return false;
-        }
-        return true;
-      });
-    }
-
-// 前端过滤检查结果
-    if (staffFilters.result) {
-      list = list.filter(item => {
-        const result = getInspectionResult(item);
-        if (staffFilters.result === 'all_yes') {
-          return result.type === 'success';
-        } else if (staffFilters.result === 'has_no') {
-          return result.type === 'warning';
-        }
-        return true;
-      });
-    }
-
-    staffInspectionList.value = list;
-    staffPagination.total = list.length;
-  } catch (error) {
-
-  } finally {
-    loadingStaff.value = false;
-  }
 };
 
 const resolveTodaySchedule = async () => {
@@ -979,10 +720,6 @@ const submitInspection = async () => {
     loadTodayInspection();
     loadRangeInspections();
     loadHistory();
-// 如果有人员自检查看权限，同步刷新人员安全自检列表
-    if (canViewStaff.value) {
-      loadStaffInspections();
-    }
   } catch (error) {
     ElMessage.error(error.message || '提交失败');
   } finally {
@@ -1003,6 +740,21 @@ const getWorkTypeNames = (workTypeIds) => {
   return ids
     .map(id => workTypesMap.value[id]?.work_type_name || `ID:${id}`)
     .join('、');
+};
+
+const getInspectionPoints = (row) => {
+  const ids = normalizeWorkTypeIds(row);
+  let total = 0;
+  ids.forEach(id => {
+    const workType = workTypesMap.value[id] ?? workTypesMap.value[Number(id)];
+    const points = workType?.points;
+    if (points === undefined || points === null) return;
+    const value = Number(points);
+    if (!Number.isNaN(value)) {
+      total += value;
+    }
+  });
+  return total;
 };
 
 const getItemStatusValue = (row) => {
@@ -1040,29 +792,7 @@ onMounted(async () => {
   await loadTodayInspection();
   await loadHistory();
   await loadRangeInspections();
-
-  if (canViewStaff.value) {
-    await loadStations();
-
-// 如果是场站管理员，自动选中当前场站
-    const user = userStore.userInfo;
-    if (user?.roleCode === 'station_manager') {
-// 优先使用当前选中的场站，否则使用第一个场站
-      staffFilters.stationId = userStore.currentStationId || user?.stations?.[0]?.id || null;
-    }
-
-    // 人员自检
-    await loadStaffInspections();
-  }
 });
-
-watch(
-  () => [staffFilters.dateRange, staffFilters.stationId, staffFilters.fillerName, staffFilters.workTypeIds, staffFilters.result],
-  () => {
-    handleStaffFilterChange();
-  },
-  { deep: true }
-);
 </script>
 
 <style lang="scss" scoped>

@@ -4,22 +4,20 @@
       <h2>卫生自检</h2>
     </div>
 
-    <el-tabs v-model="activeTab" class="inspection-tabs">
-      <!-- 我的卫生自检 -->
-      <el-tab-pane label="我的卫生自检" name="my">
-        <div class="header-controls">
-          <el-date-picker
-            v-model="dateRange"
-            type="daterange"
-            start-placeholder="开始日期"
-            end-placeholder="结束日期"
-            format="YYYY-MM-DD"
-            value-format="YYYY-MM-DD"
-            @change="loadHistory"
-            @clear="loadHistory"
-            style="width: 240px"
-          />
-        </div>
+    <!-- 我的卫生自检 -->
+    <div class="header-controls">
+      <el-date-picker
+        v-model="dateRange"
+        type="daterange"
+        start-placeholder="开始日期"
+        end-placeholder="结束日期"
+        format="YYYY-MM-DD"
+        value-format="YYYY-MM-DD"
+        @change="loadHistory"
+        @clear="loadHistory"
+        style="width: 240px"
+      />
+    </div>
 
         <!-- 今日自检状态 -->
         <div class="status-card" :class="{ completed: todayInspection }">
@@ -97,14 +95,23 @@
                 {{ formatDate(row.inspectionDate) }}
               </template>
             </el-table-column>
+            <el-table-column label="工作性质" min-width="160">
+              <template #default="{ row }">
+                {{ getWorkTypeNames(row) }}
+              </template>
+            </el-table-column>
+            <el-table-column label="积分" width="90">
+              <template #default="{ row }">
+                {{ getInspectionPoints(row) }}
+              </template>
+            </el-table-column>
             <el-table-column label="检查结果" width="100">
               <template #default="{ row }">
-                <el-tag :type="row.hasUnqualified ? 'danger' : 'success'">
-                  {{ row.hasUnqualified ? '有不合格' : '全部合格' }}
+                <el-tag :type="getInspectionResult(row).type">
+                  {{ getInspectionResult(row).text }}
                 </el-tag>
               </template>
             </el-table-column>
-            <el-table-column prop="unqualifiedDescription" label="不合格说明" show-overflow-tooltip />
             <el-table-column prop="submitTime" label="提交时间" width="160">
               <template #default="{ row }">
                 {{ formatDateTime(row.submitTime) }}
@@ -127,120 +134,6 @@
             />
           </div>
         </div>
-      </el-tab-pane>
-
-      <!-- 人员卫生自检 -->
-      <el-tab-pane label="人员卫生自检" name="staff" v-if="canViewStaff">
-        <FilterBar>
-          <el-date-picker
-            v-model="staffFilters.dateRange"
-            type="daterange"
-            start-placeholder="开始日期"
-            end-placeholder="结束日期"
-            value-format="YYYY-MM-DD"
-            style="width: 240px"
-          />
-          <el-select
-            v-model="staffFilters.stationId"
-            placeholder="场站"
-            clearable
-            filterable
-            style="width: 180px"
-            v-if="showStationFilter"
-          >
-            <el-option
-              v-for="station in stationList"
-              :key="station.id"
-              :label="station.stationName"
-              :value="station.id"
-            />
-          </el-select>
-          <el-select
-            v-model="staffFilters.positionName"
-            placeholder="岗位"
-            clearable
-            filterable
-            style="width: 150px"
-            @change="handlePositionChange"
-          >
-            <el-option
-              v-for="position in positionList"
-              :key="position"
-              :label="position"
-              :value="position"
-            />
-          </el-select>
-          <el-select
-            v-model="staffFilters.fillerName"
-            placeholder="姓名"
-            clearable
-            filterable
-            allow-create
-            default-first-option
-            style="width: 150px"
-          >
-            <el-option
-              v-for="user in staffUserList"
-              :key="user.id"
-              :label="user.realName"
-              :value="user.realName"
-            />
-          </el-select>
-          <el-select
-            v-model="staffFilters.hasUnqualified"
-            placeholder="自检情况"
-            clearable
-            style="width: 150px"
-          >
-            <el-option label="全部合格" :value="0" />
-            <el-option label="有不合格" :value="1" />
-            <el-option label="未填写" :value="2" />
-          </el-select>
-          <el-button @click="resetStaffFilters">重置</el-button>
-        </FilterBar>
-
-        <el-table :data="staffInspectionList" stripe border>
-          <el-table-column prop="inspectionDate" label="日期" width="120">
-            <template #default="{ row }">
-              {{ formatDate(row.inspectionDate) }}
-            </template>
-          </el-table-column>
-          <el-table-column prop="station.stationName" label="场站" width="150" />
-          <el-table-column prop="filler.positionName" label="岗位" width="120" />
-          <el-table-column prop="filler.realName" label="姓名" width="100" />
-          <el-table-column label="自检情况" width="120">
-            <template #default="{ row }">
-              <el-tag :type="row.hasUnqualified ? 'danger' : 'success'">
-                {{ row.hasUnqualified ? '有不合格' : '全部合格' }}
-              </el-tag>
-            </template>
-          </el-table-column>
-          <el-table-column prop="unqualifiedDescription" label="异常说明" show-overflow-tooltip />
-          <el-table-column prop="submitTime" label="提交时间" width="160">
-            <template #default="{ row }">
-              {{ formatDateTime(row.submitTime) }}
-            </template>
-          </el-table-column>
-          <el-table-column label="操作" width="100">
-            <template #default="{ row }">
-              <el-button link type="primary" @click="viewDetail(row)">详情</el-button>
-            </template>
-          </el-table-column>
-        </el-table>
-
-        <div class="pagination-wrapper">
-          <el-pagination
-            v-model:current-page="staffPagination.page"
-            v-model:page-size="staffPagination.pageSize"
-            :total="staffPagination.total"
-            :page-sizes="[10, 20, 50]"
-            layout="total, sizes, prev, pager, next"
-            @current-change="loadStaffInspections"
-            @size-change="loadStaffInspections"
-          />
-        </div>
-      </el-tab-pane>
-    </el-tabs>
 
     <!-- 详情对话框 -->
     <FormDialog
@@ -262,20 +155,20 @@
 
       <div v-if="currentRecord?.inspectionItems" class="detail-items">
         <h4>检查项目</h4>
-        <el-table :data="currentRecord.inspectionItems.filter(i => i.itemId !== 'remark')" border>
+        <el-table :data="getDetailItems(currentRecord)" border>
           <el-table-column label="责任区" min-width="140">
             <template #default="{ row }">
-              {{ row.areaName || '-' }}
+              {{ row.workTypeName || row.areaName || '-' }}
             </template>
           </el-table-column>
-          <el-table-column label="卫生点" min-width="140">
+          <el-table-column label="检查项" min-width="160">
             <template #default="{ row }">
-              {{ row.pointName || row.itemName || '-' }}
+              {{ row.itemName || row.pointName || '-' }}
             </template>
           </el-table-column>
-          <el-table-column label="工作要求及标准" min-width="200">
+          <el-table-column label="标准" min-width="200">
             <template #default="{ row }">
-              {{ row.workRequirements || '-' }}
+              {{ row.itemStandard || row.workRequirements || '-' }}
             </template>
           </el-table-column>
           <el-table-column label="照片" width="120">
@@ -306,15 +199,14 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, watch } from 'vue';
+import { ref, onMounted } from 'vue';
 import { useUserStore } from '@/store/modules/user';
 import { useUpload } from '@/composables/useUpload';
 import { ElMessage } from 'element-plus';
-import { Plus, CircleCheck, Warning } from '@element-plus/icons-vue';
+import { CircleCheck, Warning } from '@element-plus/icons-vue';
 import dayjs from 'dayjs';
 import request from '@/api/request';
 import { getHygieneAreasByPosition } from '@/api/hygieneManagement';
-import { getPositionNames } from '@/api/positionJob';
 import HygieneAreaChecklist from '@/components/inspection/HygieneAreaChecklist.vue';
 import FormDialog from '@/components/system/FormDialog.vue';
 
@@ -323,12 +215,10 @@ const userStore = useUserStore();
 const { uploadUrl, uploadHeaders } = useUpload();
 const formRef = ref(null);
 
-const activeTab = ref('my');
 const currentDate = ref(dayjs().format('YYYY-MM-DD'));
 const dateRange = ref([]);
 const todayInspection = ref(null);
 const historyList = ref([]);
-const staffInspectionList = ref([]);
 const currentRecord = ref(null);
 const inspectionDialogVisible = ref(false);
 const detailVisible = ref(false);
@@ -340,80 +230,111 @@ const pagination = ref({
   total: 0
 });
 
-const staffPagination = ref({
-  page: 1,
-  pageSize: 10,
-  total: 0
-});
-
-const staffFilters = ref({
-  dateRange: [],
-  stationId: null,
-  positionName: '',
-  fillerName: '',
-  hasUnqualified: null
-});
-
-const resetStaffFilters = () => {
-  staffFilters.value = {
-    dateRange: [],
-    stationId: null,
-    positionName: '',
-    fillerName: '',
-    hasUnqualified: null
-  };
-};
-
-const stationList = ref([]);
-const positionList = ref([]);
-const staffUserList = ref([]);
-
 const inspectionForm = ref({
   areas: [], // 责任区列表，包含卫生点
   unqualifiedDescription: ''
 });
 
-const canViewStaff = computed(() => {
-  return ['station_manager', 'department_manager', 'deputy_manager', 'admin', 'safety_inspector'].includes(userStore.roleCode);
-});
-
-// 是否显示场站筛选器（非站长，或站长绑定多个场站时显示）
-const showStationFilter = computed(() => {
-  if (userStore.roleCode !== 'station_manager') {
-    return true;
-  }
-  // 站长绑定多个场站时也显示
-  return (userStore.stations?.length || 0) > 1;
-});
+const areaPointsMap = ref({});
+const areaNameMap = ref({});
 
 
 const formatDate = (date) => date ? dayjs(date).format('YYYY-MM-DD') : '-';
 const formatDateTime = (date) => date ? dayjs(date).format('YYYY-MM-DD HH:mm') : '-';
 
+const isRemarkItem = (item) => item?.itemId === 'remark' || item?.itemName === '不合格说明';
+const isAreaPhotoItem = (item) => item?.itemType === 'area_photo' || item?.itemName === '责任区照片';
+const isMetaItem = (item) => isRemarkItem(item) || isAreaPhotoItem(item);
+
+const getItemStatusValue = (item) => {
+  if (item?.status === 0 || item?.status === 1) return item.status;
+  if (item?.checkStatus === 0 || item?.checkStatus === 1) return item.checkStatus;
+  if (item?.result === 'fail') return 0;
+  if (item?.result === 'pass') return 1;
+  return null;
+};
+
+const getDetailItems = (record) => {
+  const items = record?.inspectionItems || [];
+  return items.filter(item => !isMetaItem(item));
+};
+
+const getInspectionResult = (record) => {
+  const items = record?.inspectionItems || [];
+  if (!items.length) {
+    return { type: 'info', text: '未检查' };
+  }
+  const statuses = items
+    .filter(item => !isMetaItem(item))
+    .map(item => getItemStatusValue(item));
+  if (!statuses.length) {
+    return { type: 'info', text: '未检查' };
+  }
+  const unselectedCount = statuses.filter(value => value === null).length;
+  const failCount = statuses.filter(value => value === 0).length;
+  if (unselectedCount > 0) {
+    return { type: 'info', text: '未完成' };
+  }
+  if (failCount === 0) {
+    return { type: 'success', text: '全部合格' };
+  }
+  return { type: 'warning', text: `有${failCount}项异常` };
+};
+
+const getInspectionPoints = (record) => {
+  const ids = record?.workTypeIds || [];
+  let total = 0;
+  ids.forEach(id => {
+    const points = areaPointsMap.value[id];
+    if (points === undefined || points === null) return;
+    const value = Number(points);
+    if (!Number.isNaN(value)) {
+      total += value;
+    }
+  });
+  return total;
+};
+
 const normalizeRecord = (record) => {
   const rawItems = record?.inspectionItems || record?.inspection_items || [];
   const items = Array.isArray(rawItems) ? rawItems : [];
-  const remarkItem = items.find(i => i.itemId === 'remark' || i.itemName === '不合格说明');
-  const hasUnqualified = items.some(i => i.status === 0);
+  const normalizedItems = items.map(item => ({
+    ...item,
+    workTypeId: item.workTypeId ?? item.work_type_id ?? item.areaId ?? item.area_id ?? null,
+    workTypeName: item.workTypeName ?? item.work_type_name ?? item.areaName ?? item.area_name ?? '',
+    itemId: item.itemId ?? item.item_id ?? item.id ?? null,
+    itemName: item.itemName ?? item.item_name ?? item.pointName ?? item.point_name ?? '',
+    itemStandard: item.itemStandard ?? item.item_standard ?? item.workRequirements ?? item.work_requirements ?? '',
+    status: item.status ?? item.checkStatus ?? item.result ?? null
+  }));
+
+  const remarkItem = normalizedItems.find(item => isRemarkItem(item));
+  const workTypeIds = Array.from(new Set(normalizedItems.map(item => item.workTypeId).filter(Boolean)));
+  const workTypeNames = Array.from(new Set(normalizedItems.map(item => item.workTypeName).filter(Boolean)));
+  const hasUnqualified = normalizedItems.some(item => getItemStatusValue(item) === 0);
 
   // 统一字段名映射
   const station = record.station ? {
     id: record.station.id,
-    stationName: record.station.station_name || record.station.stationName
+    stationName: record.station.station_name ?? record.station.stationName
   } : null;
 
   const filler = record.filler ? {
     id: record.filler.id,
-    realName: record.filler.real_name || record.filler.realName,
-    positionName: record.filler.positionName || record.filler.position_name ||
-                  record.filler.dataValues?.positionName || '-'
+    realName: record.filler.real_name ?? record.filler.realName,
+    positionName: record.filler.positionName ??
+      record.filler.position_name ??
+      record.filler.dataValues?.positionName ??
+      '-'
   } : null;
 
   return {
     ...record,
-    submitTime: record.submit_time || record.submitTime,
-    inspectionDate: record.inspection_date || record.inspectionDate,
-    inspectionItems: items,
+    submitTime: record.submit_time ?? record.submitTime,
+    inspectionDate: record.inspection_date ?? record.inspectionDate,
+    inspectionItems: normalizedItems,
+    workTypeIds,
+    workTypeNames,
     unqualifiedDescription: remarkItem?.remark || '',
     hasUnqualified,
     station,
@@ -421,91 +342,50 @@ const normalizeRecord = (record) => {
   };
 };
 
+const getWorkTypeNames = (record) => {
+  const names = record?.workTypeNames;
+  if (Array.isArray(names) && names.length > 0) return names.join('、');
+  const ids = record?.workTypeIds || [];
+  if (!Array.isArray(ids) || ids.length === 0) return '-';
+  const mapped = ids.map(id => areaNameMap.value[id]).filter(Boolean);
+  if (mapped.length === 0) return '-';
+  return mapped.join('、');
+};
+
 const loadInspection = async () => {
   try {
-    const res = await request.get('/self-inspections', {
+    const res = await request.get('/self-inspections/my', {
       params: {
-        page: 1,
-        pageSize: 1,
         inspectionType: 'hygiene',
-        fillerId: userStore.userId,
-        stationId: userStore.currentStationId || undefined,
         startDate: currentDate.value,
         endDate: currentDate.value
       }
     });
-    const list = (res.list || []).map(normalizeRecord);
+    const list = (res || []).map(normalizeRecord);
     todayInspection.value = list[0] || null;
   } catch (e) {
-    
+
   }
 };
 
 const loadHistory = async () => {
   try {
     const params = {
-      page: pagination.value.page,
-      pageSize: pagination.value.pageSize,
       inspectionType: 'hygiene',
-      fillerId: userStore.userId
+      startDate: undefined,
+      endDate: undefined
     };
     if (dateRange.value && dateRange.value.length === 2) {
       params.startDate = dateRange.value[0];
       params.endDate = dateRange.value[1];
     }
-    const res = await request.get('/self-inspections', { params });
-    historyList.value = (res.list || []).map(normalizeRecord);
-    pagination.value.total = res.total || 0;
+    const res = await request.get('/self-inspections/my', { params });
+    const normalized = (res || []).map(normalizeRecord);
+    pagination.value.total = normalized.length;
+    const startIndex = (pagination.value.page - 1) * pagination.value.pageSize;
+    historyList.value = normalized.slice(startIndex, startIndex + pagination.value.pageSize);
   } catch (e) {
-    
-  }
-};
 
-const loadStaffInspections = async () => {
-  if (!canViewStaff.value) return;
-
-  try {
-    const params = {
-      page: staffPagination.value.page,
-      pageSize: staffPagination.value.pageSize,
-      inspectionType: 'hygiene'
-    };
-
-    // 日期范围
-    if (staffFilters.value.dateRange && staffFilters.value.dateRange.length === 2) {
-      params.startDate = staffFilters.value.dateRange[0];
-      params.endDate = staffFilters.value.dateRange[1];
-    }
-
-    // 场站筛选
-    if (staffFilters.value.stationId) {
-      // 用户选择了场站
-      params.stationId = staffFilters.value.stationId;
-    } else if (userStore.roleCode === 'station_manager' && userStore.currentStationId) {
-      // 站长默认使用当前场站
-      params.stationId = userStore.currentStationId;
-    }
-
-    // 岗位筛选
-    if (staffFilters.value.positionName) {
-      params.positionName = staffFilters.value.positionName;
-    }
-
-    // 姓名筛选
-    if (staffFilters.value.fillerName) {
-      params.fillerName = staffFilters.value.fillerName;
-    }
-
-    // 自检情况筛选
-    if (staffFilters.value.hasUnqualified !== null && staffFilters.value.hasUnqualified !== '') {
-      params.hasUnqualified = staffFilters.value.hasUnqualified;
-    }
-
-    const res = await request.get('/self-inspections', { params });
-    staffInspectionList.value = (res.list || []).map(normalizeRecord);
-    staffPagination.value.total = res.total || 0;
-  } catch (e) {
-    
   }
 };
 
@@ -522,6 +402,30 @@ const resolveTodaySchedule = async () => {
   });
   const schedules = scheduleRes.schedules || scheduleRes.list || scheduleRes || [];
   return schedules.find(s => s.user_id === userStore.userId && s.schedules && s.schedules[today]) || null;
+};
+
+const loadAssignedAreas = async () => {
+  try {
+    const userSchedule = await resolveTodaySchedule();
+    if (!userSchedule) return;
+    const positionName = userSchedule.position_name || userSchedule.positionName;
+    const stationId = userSchedule.station_id || userSchedule.stationId;
+    if (!positionName || !stationId) return;
+    const areas = await getHygieneAreasByPosition({
+      stationId,
+      positionName
+    });
+    const pointsMap = {};
+    const nameMap = {};
+    (areas || []).forEach(area => {
+      pointsMap[area.id] = area.areaPoints ?? area.points ?? 0;
+      nameMap[area.id] = area.areaName ?? area.area_name ?? '';
+    });
+    areaPointsMap.value = pointsMap;
+    areaNameMap.value = nameMap;
+  } catch (e) {
+    
+  }
 };
 
 const startInspection = async () => {
@@ -578,6 +482,15 @@ const startInspection = async () => {
         points
       };
     });
+
+    const pointsMap = {};
+    const nameMap = {};
+    normalizedAreas.forEach(area => {
+      pointsMap[area.id] = area.areaPoints ?? area.points ?? 0;
+      nameMap[area.id] = area.areaName ?? '';
+    });
+    areaPointsMap.value = pointsMap;
+    areaNameMap.value = nameMap;
 
     inspectionForm.value = {
       stationId: stationId,
@@ -659,16 +572,15 @@ const submitInspection = async () => {
   try {
 
     // 构建检查项目数据
-    let itemIndex = 1;
     const payloadItems = inspectionForm.value.areas.flatMap(area =>
       (area.points || []).map(point => ({
-        itemId: itemIndex++,
-        areaName: area.areaName ?? area.area_name ?? '',
-        pointName: point.pointName ?? point.point_name ?? '',
-        workRequirements: point.workRequirements ?? point.work_requirements ?? '',
-        status: point.checkStatus,
+        workTypeId: area.id,
+        workTypeName: area.areaName ?? area.area_name ?? '',
+        itemId: point.id,
         itemName: point.pointName ?? point.point_name ?? '',
-        remark: '',
+        itemStandard: point.workRequirements ?? point.work_requirements ?? '',
+        status: point.checkStatus,
+        remark: point.remark || '',
         photoUrls: point.photoUrls ?? []
       }))
     );
@@ -677,12 +589,13 @@ const submitInspection = async () => {
       const areaPhotoUrls = area.photoUrls ?? [];
       if (!areaPhotoUrls.length) return [];
       return [{
-        itemId: itemIndex++,
-        areaName: area.areaName ?? area.area_name ?? '',
-        pointName: '责任区照片',
-        workRequirements: '',
-        status: 1,
+        workTypeId: area.id,
+        workTypeName: area.areaName ?? area.area_name ?? '',
+        itemId: `area_photo_${area.id}`,
         itemName: '责任区照片',
+        itemStandard: '',
+        status: 1,
+        itemType: 'area_photo',
         remark: '',
         photoUrls: areaPhotoUrls
       }];
@@ -696,16 +609,19 @@ const submitInspection = async () => {
         itemId: 'remark',
         itemName: '不合格说明',
         status: 1,
+        itemType: 'remark',
         remark: inspectionForm.value.unqualifiedDescription
       });
     }
 
     const photoUrls = payloadItems.flatMap(item => item.photoUrls ?? []);
+    const workTypeIds = inspectionForm.value.areas.map(area => area.id);
 
     await request.post('/self-inspections', {
       inspectionType: 'hygiene',
       inspectionDate: currentDate.value,
       stationId: inspectionForm.value.stationId,
+      workTypeIds,
       inspectionItems: payloadItems,
       photoUrls,
       hasUnqualified
@@ -722,113 +638,16 @@ const submitInspection = async () => {
   }
 };
 
-// 加载场站列表
-const loadStations = async () => {
-  try {
-    const res = await request.get('/stations', {
-      params: { pageSize: 200 }
-    });
-    const list = res.list || res || [];
-    stationList.value = list.map(station => ({
-      ...station,
-      stationName: station.stationName || station.station_name
-    }));
-  } catch (e) {
-    
-  }
-};
-
-// 加载岗位列表
-const loadPositions = async () => {
-  try {
-    const res = await getPositionNames();
-    const positions = res || [];
-    // 添加"站长"到岗位列表
-    const allPositions = new Set(['站长', ...positions]);
-    positionList.value = Array.from(allPositions).sort();
-  } catch (e) {
-    
-    positionList.value = ['站长', '操作岗']; // 失败时使用默认值
-  }
-};
-
-// 加载今日排班人员
-const loadStaffUsers = async (positionName) => {
-  if (!positionName) {
-    staffUserList.value = [];
-    return;
-  }
-
-  try {
-    // 获取今日排班人员
-    const schedules = [];
-    const stationsToQuery = userStore.roleCode === 'station_manager'
-      ? [{ id: userStore.currentStationId }]
-      : stationList.value;
-
-    for (const station of stationsToQuery) {
-      try {
-        const res = await request.get('/schedules/today', {
-          params: { stationId: station.id }
-        });
-        const todaySchedules = (res || []).filter(s => s.positionName === positionName);
-        schedules.push(...todaySchedules);
-      } catch (e) {
-        
-      }
-    }
-
-    // 去重并提取用户信息
-    const userMap = new Map();
-    schedules.forEach(schedule => {
-      if (schedule.userId && schedule.realName) {
-        userMap.set(schedule.userId, {
-          id: schedule.userId,
-          realName: schedule.realName
-        });
-      }
-    });
-
-    staffUserList.value = Array.from(userMap.values());
-  } catch (e) {
-    
-    staffUserList.value = [];
-  }
-};
-
-// 岗位改变时加载对应人员
-const handlePositionChange = (positionName) => {
-  staffFilters.value.fillerName = ''; // 清空姓名选择
-  loadStaffUsers(positionName);
-};
-
 const viewDetail = (row) => {
   currentRecord.value = row;
   detailVisible.value = true;
 };
 
 onMounted(() => {
+  loadAssignedAreas();
   loadInspection();
   loadHistory();
-  if (canViewStaff.value) {
-    loadStations();
-    loadPositions();
-    // 站长默认选中当前场站
-    if (userStore.roleCode === 'station_manager' && userStore.currentStationId) {
-      staffFilters.value.stationId = userStore.currentStationId;
-    }
-    loadStaffInspections();
-  }
 });
-
-watch(
-  () => staffFilters.value,
-  () => {
-    staffPagination.value.page = 1;
-    loadStaffInspections();
-  },
-  { deep: true }
-);
 </script>
 
 <style lang="scss" scoped>
@@ -845,22 +664,9 @@ watch(
     }
   }
 
-  .inspection-tabs {
-    background: #fff;
-    border-radius: 8px;
-    padding: 20px;
-    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.1);
-  }
-
   .header-controls {
     display: flex;
     align-items: center;
-    margin-bottom: 20px;
-  }
-
-  .filter-bar {
-    display: flex;
-    gap: 12px;
     margin-bottom: 20px;
   }
 

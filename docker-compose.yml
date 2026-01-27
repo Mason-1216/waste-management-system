@@ -27,7 +27,6 @@ services:
     build:
       context: ./plc-service
       dockerfile: Dockerfile
-    container_name: wms-plc-service
     restart: always
     environment:
       FLASK_HOST: 0.0.0.0

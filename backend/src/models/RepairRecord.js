@@ -123,6 +123,14 @@ const RepairRecord = sequelize.define('RepairRecord', {
     type: DataTypes.TEXT,
     comment: '维修工具'
   },
+  work_contents: {
+    type: DataTypes.JSON,
+    comment: '维修工作内容'
+  },
+  repair_tasks: {
+    type: DataTypes.JSON,
+    comment: '维修任务库选择'
+  },
   // 耗材明细 JSON [{name, model, unit, quantity, unitPrice, amount}]
   consumables_list: {
     type: DataTypes.JSON,

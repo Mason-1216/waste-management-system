@@ -62,69 +62,69 @@
           </div>
         </div>
 
-        <div
-          v-for="child in entry.children"
-          v-if="isChildVisible(child)"
-          :key="child.id"
-          class="check-item child"
-        >
-          <div class="check-item-header">
-            <div class="check-item-title">
-              <el-tag size="small" type="info">{{ childLabel }}</el-tag>
-              <span>{{ child.item_name }}</span>
+        <template v-for="child in entry.children" :key="child.id">
+          <div
+            v-if="isChildVisible(child)"
+            class="check-item child"
+          >
+            <div class="check-item-header">
+              <div class="check-item-title">
+                <el-tag size="small" type="info">{{ childLabel }}</el-tag>
+                <span>{{ child.item_name }}</span>
+              </div>
+              <el-radio-group
+                v-model="child[statusField]"
+                :size="radioGroupSize"
+                @change="onStatusChange(child)"
+              >
+                <template v-if="useButtonRadio">
+                  <el-radio-button :label="passValue">{{ passLabel }}</el-radio-button>
+                  <el-radio-button :label="failValue">{{ failLabel }}</el-radio-button>
+                </template>
+                <template v-else>
+                  <el-radio :label="passValue">{{ passLabel }}</el-radio>
+                  <el-radio :label="failValue">{{ failLabel }}</el-radio>
+                </template>
+              </el-radio-group>
             </div>
-            <el-radio-group
-              v-model="child[statusField]"
-              :size="radioGroupSize"
-              @change="onStatusChange(child)"
-            >
-              <template v-if="useButtonRadio">
-                <el-radio-button :label="passValue">{{ passLabel }}</el-radio-button>
-                <el-radio-button :label="failValue">{{ failLabel }}</el-radio-button>
-              </template>
-              <template v-else>
-                <el-radio :label="passValue">{{ passLabel }}</el-radio>
-                <el-radio :label="failValue">{{ failLabel }}</el-radio>
-              </template>
-            </el-radio-group>
+            <div class="check-item-standard" v-if="child.item_standard">
+              {{ standardLabel }}{{ child.item_standard }}
+            </div>
+            <div class="check-item-remark" v-if="showRemark && isFail(child) && remarkPosition === 'before'">
+              <el-input
+                v-model="child[remarkField]"
+                :placeholder="remarkPlaceholder"
+                size="small"
+                style="margin-top: 8px"
+              />
+            </div>
+            <div class="check-item-photo" v-if="isFail(child)">
+              <div v-if="photoLabel" class="photo-label">{{ photoLabel }}</div>
+              <BaseUpload
+                :action="uploadUrl"
+                :headers="uploadHeaders"
+                list-type="picture-card"
+                accept="image/*"
+                :limit="photoLimit"
+                :file-list="child[photoListField] || []"
+                @change="(file, fileList) => onPhotoChange(child, fileList)"
+                @success="(response, file, fileList) => onPhotoChange(child, fileList)"
+                @remove="(file, fileList) => onPhotoChange(child, fileList)"
+                @error="handleUploadError"
+              >
+                <el-icon><Plus /></el-icon>
+              </BaseUpload>
+              <el-input
+                v-if="showRemark && remarkPosition === 'after'"
+                v-model="child[remarkField]"
+                type="textarea"
+                :rows="2"
+                :placeholder="remarkPlaceholder"
+                style="margin-top: 8px"
+              />
+            </div>
           </div>
-          <div class="check-item-standard" v-if="child.item_standard">
-            {{ standardLabel }}{{ child.item_standard }}
-          </div>
-          <div class="check-item-remark" v-if="showRemark && isFail(child) && remarkPosition === 'before'">
-            <el-input
-              v-model="child[remarkField]"
-              :placeholder="remarkPlaceholder"
-              size="small"
-              style="margin-top: 8px"
-            />
-          </div>
-          <div class="check-item-photo" v-if="isFail(child)">
-            <div v-if="photoLabel" class="photo-label">{{ photoLabel }}</div>
-            <BaseUpload
-              :action="uploadUrl"
-              :headers="uploadHeaders"
-              list-type="picture-card"
-              accept="image/*"
-              :limit="photoLimit"
-              :file-list="child[photoListField] || []"
-              @change="(file, fileList) => onPhotoChange(child, fileList)"
-              @success="(response, file, fileList) => onPhotoChange(child, fileList)"
-              @remove="(file, fileList) => onPhotoChange(child, fileList)"
-              @error="handleUploadError"
-            >
-              <el-icon><Plus /></el-icon>
-            </BaseUpload>
-            <el-input
-              v-if="showRemark && remarkPosition === 'after'"
-              v-model="child[remarkField]"
-              type="textarea"
-              :rows="2"
-              :placeholder="remarkPlaceholder"
-              style="margin-top: 8px"
-            />
-          </div>
-        </div>
+        </template>
       </div>
     </div>
   </div>

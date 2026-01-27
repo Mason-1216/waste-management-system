@@ -232,14 +232,17 @@ export const saveWorkLog = async (ctx) => {
   const normalizedDate = resolveWorkDate(workDate);
   const quantityEditable = Number(positionJob.quantity_editable) === 1;
   const defaultQuantity = positionJob.quantity ?? 1;
-  const normalizedQuantity = quantityEditable
-    ? normalizeQuantity(quantity, defaultQuantity)
-    : defaultQuantity;
+  const resolveSubmitQuantity = (inputQuantity, fallbackQuantity) => {
+    const normalized = quantityEditable
+      ? normalizeQuantity(inputQuantity, fallbackQuantity)
+      : fallbackQuantity;
+    if (normalized === null) {
+      throw createError(400, '数量必须为整数');
+    }
+    validateQuantity(normalized);
+    return normalized;
+  };
 
-  if (normalizedQuantity === null) {
-    throw createError(400, '数量必须为整数');
-  }
-  validateQuantity(normalizedQuantity);
 
   const completedValue = Number(isCompleted) === 1 ? 1 : 0;
   const actualHoursValue = actualHours ?? 0;
@@ -262,6 +265,7 @@ export const saveWorkLog = async (ctx) => {
       throw createError(400, '仅派发任务支持此提交方式');
     }
 
+    const normalizedQuantity = resolveSubmitQuantity(quantity, workLog.quantity ?? defaultQuantity);
     await workLog.update({
       actual_hours: actualHoursValue,
       is_completed: completedValue,
@@ -304,6 +308,7 @@ export const saveWorkLog = async (ctx) => {
     throw createError(400, '任务已提交');
   }
 
+  const normalizedQuantity = resolveSubmitQuantity(quantity, defaultQuantity);
   const resolvedStation = await resolveStationInfo(stationId ?? positionJob.station_id, stationName);
 
   const workLog = await PositionWorkLog.create({
@@ -850,8 +855,8 @@ export const reviewWorkLog = async (ctx) => {
       throw createError(400, '请填写扣分值');
     }
     const parsed = Number(deductionPoints);
-    if (Number.isNaN(parsed) || parsed >= 0) {
-      throw createError(400, '扣分值必须为负数');
+    if (Number.isNaN(parsed) || parsed > 0) {
+      throw createError(400, '扣分值必须为0或负数');
     }
     updateData.deduction_reason = deductionReason;
     updateData.deduction_points = parsed;

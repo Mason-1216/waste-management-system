@@ -46,6 +46,11 @@ const SafetyOtherInspection = sequelize.define('SafetyOtherInspection', {
     type: DataTypes.JSON,
     comment: '选中的工作性质ID数组'
   },
+  points: {
+    type: DataTypes.INTEGER,
+    defaultValue: 0,
+    comment: '奖励/扣除积分'
+  },
   inspection_items: {
     type: DataTypes.JSON,
     comment: '检查项 [{workTypeId,workTypeName,itemId,itemName,itemStandard,result,remark}]'

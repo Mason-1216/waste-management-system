@@ -11,7 +11,7 @@
       <el-tab-pane v-if="!hideTabs || activeTab === 'plan'" label="保养计划" name="plan">
         <div class="page-header">
           <h2>设备保养计划</h2>
-          <div class="actions">
+          <div class="header-actions">
             <el-input
               v-model="planFilters.keyword"
               placeholder="请输入关键词"
@@ -41,17 +41,19 @@
           </div>
         </div>
 
-        <FilterBar>
-          <el-select v-model="planFilters.stationId" placeholder="场站" clearable style="width: 150px;" @change="loadPlanList">
-            <el-option v-for="s in stationList" :key="s.id" :label="s.stationName" :value="s.id" />
-          </el-select>
-          <el-select v-model="planFilters.cycleType" placeholder="保养周期" clearable style="width: 120px;" @change="loadPlanList">
-            <el-option label="日保养" value="daily" />
-            <el-option label="周保养" value="weekly" />
-            <el-option label="月保养" value="monthly" />
-            <el-option label="年保养" value="yearly" />
-          </el-select>
-        </FilterBar>
+        <el-card class="filter-card">
+          <FilterBar>
+            <el-select v-model="planFilters.stationId" placeholder="场站" clearable style="width: 150px;" @change="loadPlanList">
+              <el-option v-for="s in stationList" :key="s.id" :label="s.stationName" :value="s.id" />
+            </el-select>
+            <el-select v-model="planFilters.cycleType" placeholder="保养周期" clearable style="width: 120px;" @change="loadPlanList">
+              <el-option label="日保养" value="daily" />
+              <el-option label="周保养" value="weekly" />
+              <el-option label="月保养" value="monthly" />
+              <el-option label="年保养" value="yearly" />
+            </el-select>
+          </FilterBar>
+        </el-card>
 
         <TableWrapper v-loading="planLoading">
           <el-table
@@ -110,7 +112,7 @@
             v-model:current-page="planPagination.page"
             v-model:page-size="planPagination.pageSize"
             :total="planPagination.total"
-            :page-sizes="[10, 20, 50]"
+            :page-sizes="[5, 10, 20, 50]"
             layout="total, sizes, prev, pager, next"
             @current-change="loadPlanList"
             @size-change="loadPlanList"
@@ -122,7 +124,7 @@
       <el-tab-pane v-if="!hideTabs || activeTab === 'position'" label="保养计划岗位分配" name="position">
         <div class="page-header">
           <h2>保养计划岗位分配</h2>
-          <div class="actions">
+          <div class="header-actions">
             <el-button type="primary" @click="showPositionAssignDialog">
               <el-icon><Plus /></el-icon>分配岗位计划
             </el-button>
@@ -130,14 +132,46 @@
           </div>
         </div>
 
-        <FilterBar>
-          <el-select v-model="positionFilters.stationId" placeholder="场站" clearable style="width: 150px;" @change="loadPositionPlans">
-            <el-option v-for="s in stationList" :key="s.id" :label="s.stationName" :value="s.id" />
-          </el-select>
-          <el-select v-model="positionFilters.positionName" placeholder="岗位" clearable style="width: 150px;" @change="loadPositionPlans">
-            <el-option v-for="p in allPositions" :key="p" :label="p" :value="p" />
-          </el-select>
-        </FilterBar>
+        <el-card class="filter-card">
+          <FilterBar>
+            <el-select v-model="positionFilters.stationId" placeholder="场站" clearable style="width: 150px;" @change="loadPositionPlans">
+              <el-option v-for="s in stationList" :key="s.id" :label="s.stationName" :value="s.id" />
+            </el-select>
+            <el-select v-model="positionFilters.positionName" placeholder="岗位" clearable style="width: 150px;" @change="loadPositionPlans">
+              <el-option v-for="p in allPositions" :key="p" :label="p" :value="p" />
+            </el-select>
+            <el-input
+              v-model="positionFilters.equipmentCode"
+              placeholder="设备编号"
+              clearable
+              style="width: 150px;"
+              @clear="loadPositionPlans"
+              @keyup.enter="loadPositionPlans"
+            />
+            <el-input
+              v-model="positionFilters.equipmentName"
+              placeholder="设备名称"
+              clearable
+              style="width: 160px;"
+              @clear="loadPositionPlans"
+              @keyup.enter="loadPositionPlans"
+            />
+            <el-input
+              v-model="positionFilters.installLocation"
+              placeholder="安装位置"
+              clearable
+              style="width: 160px;"
+              @clear="loadPositionPlans"
+              @keyup.enter="loadPositionPlans"
+            />
+            <el-select v-model="positionFilters.cycleType" placeholder="保养周期" clearable style="width: 120px;" @change="loadPositionPlans">
+              <el-option label="日保养" value="daily" />
+              <el-option label="周保养" value="weekly" />
+              <el-option label="月保养" value="monthly" />
+              <el-option label="年保养" value="yearly" />
+            </el-select>
+          </FilterBar>
+        </el-card>
 
         <TableWrapper v-loading="positionLoading">
           <el-table :data="positionPlanList" stripe border>
@@ -181,52 +215,91 @@
       <el-tab-pane v-if="!hideTabs || activeTab === 'records'" label="保养工作记录" name="records">
         <div class="page-header">
           <h2>保养工作记录</h2>
-          <div class="actions">
+          <div class="header-actions">
             <el-button @click="loadWorkRecords">刷新</el-button>
           </div>
         </div>
 
-        <FilterBar>
-          <el-select v-model="recordFilters.stationId" placeholder="场站" clearable style="width: 150px;" @change="loadWorkRecords">
-            <el-option v-for="s in stationList" :key="s.id" :label="s.stationName" :value="s.id" />
-          </el-select>
-          <el-select v-model="recordFilters.cycleType" placeholder="保养周期" clearable style="width: 120px;" @change="loadWorkRecords">
-            <el-option label="日保养" value="daily" />
-            <el-option label="周保养" value="weekly" />
-            <el-option label="月保养" value="monthly" />
-            <el-option label="年保养" value="yearly" />
-          </el-select>
-          <el-select v-model="recordFilters.status" placeholder="状态" clearable style="width: 120px;" @change="loadWorkRecords">
-            <el-option label="待完成" value="pending" />
-            <el-option label="已完成" value="completed" />
-            <el-option label="已验收" value="verified" />
-            <el-option label="未完成" value="missed" />
-          </el-select>
-          <el-date-picker
-            v-model="recordFilters.dateRange"
-            type="daterange"
-            start-placeholder="开始日期"
-            end-placeholder="结束日期"
-            value-format="YYYY-MM-DD"
-            style="width: 240px;"
-            @change="loadWorkRecords"
-          />
-        </FilterBar>
+        <el-card class="filter-card">
+          <FilterBar>
+            <el-select v-model="recordFilters.stationId" placeholder="场站" clearable style="width: 150px;" @change="loadWorkRecords">
+              <el-option v-for="s in stationList" :key="s.id" :label="s.stationName" :value="s.id" />
+            </el-select>
+            <el-input
+              v-model="recordFilters.positionName"
+              placeholder="岗位"
+              clearable
+              style="width: 130px;"
+              @clear="loadWorkRecords"
+              @keyup.enter="loadWorkRecords"
+            />
+            <el-input
+              v-model="recordFilters.equipmentCode"
+              placeholder="设备编号"
+              clearable
+              style="width: 140px;"
+              @clear="loadWorkRecords"
+              @keyup.enter="loadWorkRecords"
+            />
+            <el-input
+              v-model="recordFilters.equipmentName"
+              placeholder="设备名称"
+              clearable
+              style="width: 160px;"
+              @clear="loadWorkRecords"
+              @keyup.enter="loadWorkRecords"
+            />
+            <el-select v-model="recordFilters.cycleType" placeholder="保养周期" clearable style="width: 120px;" @change="loadWorkRecords">
+              <el-option label="日保养" value="daily" />
+              <el-option label="周保养" value="weekly" />
+              <el-option label="月保养" value="monthly" />
+              <el-option label="年保养" value="yearly" />
+            </el-select>
+            <el-input
+              v-model="recordFilters.executorName"
+              placeholder="执行人"
+              clearable
+              style="width: 130px;"
+              @clear="loadWorkRecords"
+              @keyup.enter="loadWorkRecords"
+            />
+            <el-select v-model="recordFilters.status" placeholder="状态" clearable style="width: 120px;" @change="loadWorkRecords">
+              <el-option label="待完成" value="pending" />
+              <el-option label="已完成" value="completed" />
+              <el-option label="已验收" value="verified" />
+              <el-option label="未完成" value="missed" />
+            </el-select>
+            <el-date-picker
+              v-model="recordFilters.dateRange"
+              type="daterange"
+              start-placeholder="开始日期"
+              end-placeholder="结束日期"
+              value-format="YYYY-MM-DD"
+              style="width: 240px;"
+              @change="loadWorkRecords"
+            />
+          </FilterBar>
+        </el-card>
 
         <TableWrapper v-loading="recordLoading">
           <el-table :data="workRecordList" stripe border>
-            <el-table-column prop="stationName" label="场站" width="100" />
-            <el-table-column prop="positionName" label="岗位" width="100" />
-            <el-table-column prop="equipmentCode" label="设备编号" width="110" />
-            <el-table-column prop="equipmentName" label="设备名称" min-width="130" />
-            <el-table-column label="保养周期" width="90">
+            <el-table-column prop="stationName" label="场站" width="110" />
+            <el-table-column prop="positionName" label="岗位" width="110" />
+            <el-table-column prop="equipmentCode" label="设备编号" width="120" />
+            <el-table-column prop="equipmentName" label="设备名称" width="140" show-overflow-tooltip />
+            <el-table-column label="保养周期" width="110">
               <template #default="{ row }">
                 {{ getCycleLabel(row.cycleType) }}
               </template>
             </el-table-column>
-            <el-table-column prop="workDate" label="工作日期" width="110" />
-            <el-table-column prop="executorName" label="执行人" width="90" />
-            <el-table-column label="状态" width="90">
+            <el-table-column label="积分" width="110">
+              <template #default="{ row }">
+                {{ getRecordPoints(row) }}
+              </template>
+            </el-table-column>
+            <el-table-column prop="workDate" label="工作日期" width="120" />
+            <el-table-column prop="executorName" label="执行人" width="110" />
+            <el-table-column label="状态" width="110">
               <template #default="{ row }">
                 <el-tag :type="getRecordStatusType(row)" size="small">
                   {{ getRecordStatusText(row) }}
@@ -407,21 +480,6 @@ watch(
   (tab) => {
     if (tab && activeTab.value !== tab) {
       activeTab.value = tab;
-    }
-  },
-  { immediate: true }
-);
-
-watch(
-  activeTab,
-  (tab) => {
-    if (!canManage.value) return;
-    if (tab === 'plan') {
-      loadPlanList();
-    } else if (tab === 'position') {
-      loadPositionPlans();
-    } else if (tab === 'records') {
-      loadWorkRecords();
     }
   },
   { immediate: true }
@@ -688,12 +746,8 @@ const MaintenanceWorkContent = defineComponent({
 
     return () => h('div', { class: 'maintenance-work-content' }, [
       // 页面头部
-      h('div', { class: 'work-page-header' }, [
-        h('h2', '设备保养工作'),
-        h('div', { class: 'header-right' }, [
-          h('span', { class: 'current-date' }, currentDate.value),
-          h(resolveComponent('el-button'), { onClick: loadTodayTasks, loading: workLoading.value, size: 'small' }, () => '刷新')
-        ])
+      h('div', { class: 'page-header' }, [
+        h('h2', '设备保养工作')
       ]),
 
       overdueCount.value > 0 && !overdueNoticeClosed.value
@@ -718,11 +772,14 @@ const MaintenanceWorkContent = defineComponent({
           const pendingCount = tasks.filter(t => t.status === 'pending').length;
           const cycleOverdueCount = tasks.filter(t => t.isOverdue).length;
 
-          return h('div', {
-            key: cycleType,
+          const cardProps = {
             class: ['cycle-card', { 'has-tasks': hasTasks, 'no-tasks': !hasTasks }],
             onClick: () => hasTasks && openCycleDetail(cycleType)
-          }, [
+          };
+          if (cycleType !== 'daily') {
+            cardProps.key = cycleType;
+          }
+          const cardNode = h('div', cardProps, [
             // 卡片左侧颜色条
             h('div', { class: 'card-color-bar', style: { background: config.bgColor } }),
             // 卡片主体
@@ -769,6 +826,12 @@ const MaintenanceWorkContent = defineComponent({
               ])
             ])
           ]);
+          return cycleType === 'daily'
+            ? h('div', { class: 'cycle-card-wrapper', key: cycleType }, [
+              h('div', { class: 'cycle-card-date' }, currentDate.value),
+              cardNode
+            ])
+            : cardNode;
         })
       ),
 
@@ -999,8 +1062,10 @@ const planGroupMap = computed(() => {
 const planTableRows = computed(() => {
   const rows = [];
   const groups = Array.from(planGroupMap.value.values());
+  const start = (planPagination.value.page - 1) * planPagination.value.pageSize;
+  const pagedGroups = groups.slice(start, start + planPagination.value.pageSize);
 
-  groups.forEach((group) => {
+  pagedGroups.forEach((group) => {
     const cycleEntries = planCycleOrder
       .map((cycle) => group.cycles[cycle])
       .filter(Boolean);
@@ -1060,7 +1125,7 @@ const planFilters = ref({
 });
 const planPagination = ref({
   page: 1,
-  pageSize: 10,
+  pageSize: 5,
   total: 0
 });
 const planDialogVisible = ref(false);
@@ -1094,7 +1159,11 @@ const positionPlanList = ref([]);
 const positionLoading = ref(false);
 const positionFilters = ref({
   stationId: null,
-  positionName: ''
+  positionName: '',
+  equipmentCode: '',
+  equipmentName: '',
+  installLocation: '',
+  cycleType: ''
 });
 const positionPagination = ref({
   page: 1,
@@ -1129,7 +1198,11 @@ const workRecordList = ref([]);
 const recordLoading = ref(false);
 const recordFilters = ref({
   stationId: null,
+  positionName: '',
+  equipmentCode: '',
+  equipmentName: '',
   cycleType: '',
+  executorName: '',
   status: '',
   dateRange: []
 });
@@ -1231,6 +1304,21 @@ const getRecordStatusText = (row) => {
   return texts[row?.status] || row?.status || '';
 };
 
+const isQualifiedValue = (value) => value === true || value === 'yes' || value === 1 || value === 'true';
+
+const getRecordPoints = (row) => {
+  if (!row || row.isMissing) return '-';
+  if (row.status !== 'completed' && row.status !== 'verified') return '-';
+  const items = Array.isArray(row.maintenanceItems) ? row.maintenanceItems : [];
+  if (items.length === 0) return 0;
+  return items.reduce((sum, item) => {
+    if (!item || typeof item === 'string') return sum;
+    const points = normalizePointsValue(item?.points);
+    const flag = item?.qualified ?? item?.confirmed;
+    return isQualifiedValue(flag) ? sum + points : sum;
+  }, 0);
+};
+
 // ========== 数据加载 ==========
 const loadStations = async () => {
   try {
@@ -1249,8 +1337,8 @@ const loadPlanList = async () => {
   planLoading.value = true;
   try {
     const params = {
-      page: planPagination.value.page,
-      pageSize: planPagination.value.pageSize,
+      page: 1,
+      pageSize: 10000,
       stationId: planFilters.value.stationId || undefined,
       cycleType: planFilters.value.cycleType || undefined,
       keyword: planFilters.value.keyword || undefined
@@ -1271,7 +1359,11 @@ const loadPlanList = async () => {
       yearlyDay: item.yearly_day,
       maintenanceStandards: normalizeStandards(item.maintenance_standards || [])
     }));
-    planPagination.value.total = res.total || 0;
+    planPagination.value.total = planGroupMap.value.size;
+    const maxPage = Math.max(1, Math.ceil(planPagination.value.total / planPagination.value.pageSize));
+    if (planPagination.value.page > maxPage) {
+      planPagination.value.page = 1;
+    }
     selectedPlanRows.value = [];
     planTableRef.value?.clearSelection();
   } catch (e) {
@@ -1834,10 +1926,29 @@ const loadPositionPlans = async () => {
   try {
     const params = {
       page: positionPagination.value.page,
-      pageSize: positionPagination.value.pageSize,
-      stationId: positionFilters.value.stationId || undefined,
-      positionName: positionFilters.value.positionName || undefined
+      pageSize: positionPagination.value.pageSize
     };
+    if (positionFilters.value.stationId) {
+      params.stationId = positionFilters.value.stationId;
+    }
+    if (positionFilters.value.positionName) {
+      params.positionName = positionFilters.value.positionName;
+    }
+    const equipmentCode = String(positionFilters.value.equipmentCode ?? '').trim();
+    if (equipmentCode) {
+      params.equipmentCode = equipmentCode;
+    }
+    const equipmentName = String(positionFilters.value.equipmentName ?? '').trim();
+    if (equipmentName) {
+      params.equipmentName = equipmentName;
+    }
+    const installLocation = String(positionFilters.value.installLocation ?? '').trim();
+    if (installLocation) {
+      params.installLocation = installLocation;
+    }
+    if (positionFilters.value.cycleType) {
+      params.cycleType = positionFilters.value.cycleType;
+    }
     const res = await request.get('/maintenance-position-plans', { params });
     positionPlanList.value = (res.list || []).map(item => ({
       id: item.id,
@@ -1865,15 +1976,42 @@ const loadWorkRecords = async () => {
   try {
     const params = {
       page: recordPagination.value.page,
-      pageSize: recordPagination.value.pageSize,
-      stationId: recordFilters.value.stationId || undefined,
-      cycleType: recordFilters.value.cycleType || undefined,
-      status: recordFilters.value.status || undefined,
-      startDate: recordFilters.value.dateRange?.[0],
-      endDate: recordFilters.value.dateRange?.[1]
+      pageSize: recordPagination.value.pageSize
     };
+    if (recordFilters.value.stationId) {
+      params.stationId = recordFilters.value.stationId;
+    }
+    const positionName = String(recordFilters.value.positionName ?? '').trim();
+    if (positionName) {
+      params.positionName = positionName;
+    }
+    const equipmentCode = String(recordFilters.value.equipmentCode ?? '').trim();
+    if (equipmentCode) {
+      params.equipmentCode = equipmentCode;
+    }
+    const equipmentName = String(recordFilters.value.equipmentName ?? '').trim();
+    if (equipmentName) {
+      params.equipmentName = equipmentName;
+    }
+    if (recordFilters.value.cycleType) {
+      params.cycleType = recordFilters.value.cycleType;
+    }
+    const executorName = String(recordFilters.value.executorName ?? '').trim();
+    if (executorName) {
+      params.executorName = executorName;
+    }
+    if (recordFilters.value.status) {
+      params.status = recordFilters.value.status;
+    }
+    if (Array.isArray(recordFilters.value.dateRange) && recordFilters.value.dateRange[0]) {
+      params.startDate = recordFilters.value.dateRange[0];
+    }
+    if (Array.isArray(recordFilters.value.dateRange) && recordFilters.value.dateRange[1]) {
+      params.endDate = recordFilters.value.dateRange[1];
+    }
     const res = await request.get('/maintenance-work-records', { params });
-    workRecordList.value = (res.list || []).map(item => ({
+    const records = Array.isArray(res.list) ? res.list.filter(Boolean) : [];
+    workRecordList.value = records.map(item => ({
       id: item.id,
       recordCode: item.record_code,
       stationId: item.station_id,
@@ -2065,6 +2203,21 @@ const submitVerify = async () => {
   }
 };
 
+watch(
+  activeTab,
+  (tab) => {
+    if (!canManage.value) return;
+    if (tab === 'plan') {
+      loadPlanList();
+    } else if (tab === 'position') {
+      loadPositionPlans();
+    } else if (tab === 'records') {
+      loadWorkRecords();
+    }
+  },
+  { immediate: true }
+);
+
 // ========== 初始化 ==========
 onMounted(() => {
   if (canManage.value) {
@@ -2085,6 +2238,16 @@ onMounted(() => {
     .el-tabs__content {
       padding: 0;
     }
+
+    &.el-tabs--border-card {
+      border: none;
+      background: transparent;
+      box-shadow: none;
+    }
+
+    &.el-tabs--border-card > .el-tabs__content {
+      background: transparent;
+    }
   }
 
   .page-header {
@@ -2098,6 +2261,9 @@ onMounted(() => {
       font-size: 20px;
     }
 
+
+
+
     .header-info {
       display: flex;
       align-items: center;
@@ -2106,11 +2272,20 @@ onMounted(() => {
       font-size: 14px;
     }
 
-    .actions {
+    .actions,
+    .header-actions {
       display: flex;
       align-items: center;
       gap: 12px;
     }
+  }
+
+  .filter-card {
+    background: #fff;
+    border-radius: 8px;
+    padding: 16px;
+    margin-bottom: 16px;
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.1);
   }
 
   .overdue-banner {
@@ -2187,36 +2362,22 @@ onMounted(() => {
 
 // 保养工作内容样式
 :deep(.maintenance-work-content) {
-  .work-page-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 20px;
-    padding: 0 4px;
-
-    h2 {
-      margin: 0;
-      font-size: 22px;
-      font-weight: 600;
-      color: #303133;
-    }
-
-    .header-right {
-      display: flex;
-      align-items: center;
-      gap: 16px;
-
-      .current-date {
-        font-size: 14px;
-        color: #909399;
-      }
-    }
-  }
-
   .cycle-cards-container {
     display: flex;
     flex-direction: column;
     gap: 16px;
+  }
+
+  .cycle-card-wrapper {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .cycle-card-date {
+    align-self: flex-end;
+    font-size: 14px;
+    color: #606266;
   }
 
   .cycle-card {
@@ -2425,7 +2586,8 @@ onMounted(() => {
         flex-wrap: wrap;
       }
 
-      .actions {
+      .actions,
+      .header-actions {
         flex-wrap: wrap;
         width: 100%;
         gap: 8px;
