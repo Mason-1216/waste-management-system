@@ -1,4 +1,4 @@
-import dayjs from 'dayjs';
+﻿import dayjs from 'dayjs';
 import { v4 as uuidv4 } from 'uuid';
 
 /**
@@ -27,7 +27,7 @@ export const generateUUID = () => {
  */
 export const getPagination = (query) => {
   const page = parseInt(query.page) || 1;
-  const pageSize = parseInt(query.pageSize) || 20;
+  const pageSize = parseInt(query.pageSize) || 5;
   const offset = (page - 1) * pageSize;
   const limit = pageSize;
 

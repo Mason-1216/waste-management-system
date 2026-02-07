@@ -1,45 +1,63 @@
-<template>
-  <div class="plc-data-report" data-scrollbar="ignore">
+﻿<template>
+  <div class="plc-data-report">
+    <div class="page-header">
+      <h2>PLC 数据报表</h2>
+      <div class="header-actions">
+        <el-button type="primary" @click="handleExport(activeTab)">
+          <el-icon><Upload /></el-icon>批量导出
+        </el-button>
+      </div>
+    </div>
     <el-card class="filter-card">
-      <el-form :inline="true" :model="filters" class="filter-form">
-        <el-form-item label="日期范围">
+      <FilterBar>
+        <div class="filter-item">
+          <span class="filter-label">开始日期</span>
           <el-date-picker
-            v-model="dateRange"
-            type="daterange"
-            range-separator="至"
-            start-placeholder="开始日期"
-            end-placeholder="结束日期"
+            v-model="startDate"
+            type="date"
+            placeholder="全部"
             value-format="YYYY-MM-DD"
+            @change="handleQuery"
           />
-        </el-form-item>
-        <el-form-item label="场站">
-          <el-select v-model="filters.stationId" placeholder="请选择场站" clearable>
+        </div>
+        <div class="filter-item">
+          <span class="filter-label">结束日期</span>
+          <el-date-picker
+            v-model="endDate"
+            type="date"
+            placeholder="全部"
+            value-format="YYYY-MM-DD"
+            @change="handleQuery"
+          />
+        </div>
+        <div class="filter-item">
+          <span class="filter-label">场站</span>
+          <FilterSelect v-model="filters.stationId" placeholder="全部" filterable clearable @change="handleQuery" @clear="handleQuery">
+            <el-option label="全部" value="all" />
             <el-option
               v-for="station in stations"
               :key="station.id"
               :label="station.station_name"
               :value="station.id"
             />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="分类">
-          <el-select v-model="filters.categoryId" placeholder="请选择分类" clearable>
+          </FilterSelect>
+        </div>
+        <div class="filter-item">
+          <span class="filter-label">分类</span>
+          <FilterSelect v-model="filters.categoryId" placeholder="全部" filterable clearable @change="handleQuery" @clear="handleQuery">
+            <el-option label="全部" value="all" />
             <el-option
               v-for="category in categories"
               :key="category.id"
               :label="category.category_name"
               :value="category.id"
             />
-          </el-select>
-        </el-form-item>
-        <el-form-item>
-          <el-button type="primary" @click="handleQuery">查询</el-button>
-          <el-button @click="handleReset">重置</el-button>
-        </el-form-item>
-      </el-form>
+          </FilterSelect>
+        </div>
+      </FilterBar>
     </el-card>
 
-    <el-card class="content-card">
+    <div class="content-section">
       <el-tabs v-model="activeTab" @tab-change="handleTabChange">
         <el-tab-pane label="计量型报表" name="cumulative">
           <div class="table-header">
@@ -52,7 +70,6 @@
                   <el-option label="月" value="month" />
                   <el-option label="年" value="year" />
                 </el-select>
-                <el-button type="success" @click="handleExport('cumulative')">导出Excel</el-button>
               </div>
             </div>
           </div>
@@ -71,52 +88,58 @@
             </el-row>
           </div>
 
-          <el-table :data="cumulativeData.data" border stripe>
-            <el-table-column prop="date" label="日期" width="120" />
-            <el-table-column prop="station_name" label="场站" width="150" />
-            <el-table-column prop="config_name" label="监控点" min-width="180" />
-            <el-table-column prop="address" label="地址" width="120" />
-            <el-table-column prop="start_value" label="起始值" width="100" align="right">
-              <template #default="{ row }">
-                {{ formatNumber(row.start_value) }}
-              </template>
-            </el-table-column>
-            <el-table-column prop="end_value" label="结束值" width="100" align="right">
-              <template #default="{ row }">
-                {{ formatNumber(row.end_value) }}
-              </template>
-            </el-table-column>
-            <el-table-column prop="usage" label="用量" width="100" align="right">
-              <template #default="{ row }">
-                <span style="font-weight: bold; color: #409eff">{{ formatNumber(row.usage) }}</span>
-              </template>
-            </el-table-column>
-            <el-table-column prop="unit" label="单位" width="80" />
-          </el-table>
-
-          <el-pagination
-            v-model:current-page="cumulativePagination.page"
-            v-model:page-size="cumulativePagination.pageSize"
-            :total="cumulativePagination.total"
-            :page-sizes="[10, 20, 50, 100]"
-            layout="total, sizes, prev, pager, next, jumper"
-            @size-change="handleCumulativeSizeChange"
-            @current-change="handleCumulativePageChange"
-          />
-
-          <div v-if="cumulativeData.topRankings?.list?.length" class="ranking-section">
-            <h3>用量排名 Top 10</h3>
-            <el-table :data="cumulativeData.topRankings.list" border>
-              <el-table-column type="index" label="排名" width="80" />
+          <TableWrapper>
+            <el-table :data="cumulativeData.data" border stripe>
               <el-table-column prop="date" label="日期" width="120" />
+              <el-table-column prop="station_name" label="场站" width="150" />
               <el-table-column prop="config_name" label="监控点" min-width="180" />
-              <el-table-column prop="usage" label="用量" width="120" align="right">
+              <el-table-column prop="address" label="地址" width="120" />
+              <el-table-column prop="start_value" label="起始值" width="100" align="right">
                 <template #default="{ row }">
-                  <span style="font-weight: bold; color: #f56c6c">{{ formatNumber(row.usage) }}</span>
+                  {{ formatNumber(row.start_value) }}
+                </template>
+              </el-table-column>
+              <el-table-column prop="end_value" label="结束值" width="100" align="right">
+                <template #default="{ row }">
+                  {{ formatNumber(row.end_value) }}
+                </template>
+              </el-table-column>
+              <el-table-column prop="usage" label="用量" width="100" align="right">
+                <template #default="{ row }">
+                  <span style="font-weight: bold; color: #409eff">{{ formatNumber(row.usage) }}</span>
                 </template>
               </el-table-column>
               <el-table-column prop="unit" label="单位" width="80" />
             </el-table>
+          </TableWrapper>
+
+          <div class="pagination-wrapper">
+            <el-pagination
+              v-model:current-page="cumulativePagination.page"
+              v-model:page-size="cumulativePagination.pageSize"
+              :total="cumulativePagination.total"
+              :page-sizes="[5, 10, 20, 50, 100]"
+              layout="total, sizes, prev, pager, next, jumper"
+              @size-change="handleCumulativeSizeChange"
+              @current-change="handleCumulativePageChange"
+            />
+          </div>
+
+          <div v-if="cumulativeData.topRankings?.list?.length" class="ranking-section">
+            <h3>用量排名 Top 10</h3>
+            <TableWrapper>
+              <el-table :data="cumulativeData.topRankings.list" border>
+                <el-table-column type="index" label="排名" width="80" />
+                <el-table-column prop="date" label="日期" width="120" />
+                <el-table-column prop="config_name" label="监控点" min-width="180" />
+                <el-table-column prop="usage" label="用量" width="120" align="right">
+                  <template #default="{ row }">
+                    <span style="font-weight: bold; color: #f56c6c">{{ formatNumber(row.usage) }}</span>
+                  </template>
+                </el-table-column>
+                <el-table-column prop="unit" label="单位" width="80" />
+              </el-table>
+            </TableWrapper>
           </div>
         </el-tab-pane>
 
@@ -131,64 +154,69 @@
                   <el-option label="月" value="month" />
                   <el-option label="年" value="year" />
                 </el-select>
-                <el-button type="success" @click="handleExport('fluctuating')">导出Excel</el-button>
               </div>
             </div>
           </div>
 
-          <el-table :data="fluctuatingData.data" border stripe>
-            <el-table-column prop="date" label="日期" width="120" />
-            <el-table-column prop="station_name" label="场站" width="150" />
-            <el-table-column prop="config_name" label="监控点" min-width="180" />
-            <el-table-column prop="address" label="地址" width="120" />
-            <el-table-column prop="min_value" label="最小值" width="100" align="right">
-              <template #default="{ row }">
-                {{ row.min_value?.toFixed(2) }}
-              </template>
-            </el-table-column>
-            <el-table-column prop="avg_value" label="平均值" width="100" align="right">
-              <template #default="{ row }">
-                <span style="font-weight: bold">{{ row.avg_value?.toFixed(2) }}</span>
-              </template>
-            </el-table-column>
-            <el-table-column prop="max_value" label="最大值" width="100" align="right">
-              <template #default="{ row }">
-                {{ row.max_value?.toFixed(2) }}
-              </template>
-            </el-table-column>
-            <el-table-column prop="sample_count" label="样本数" width="100" align="right" />
-            <el-table-column prop="unit" label="单位" width="80" />
-          </el-table>
+          <TableWrapper>
+            <el-table :data="fluctuatingData.data" border stripe>
+              <el-table-column prop="date" label="日期" width="120" />
+              <el-table-column prop="station_name" label="场站" width="150" />
+              <el-table-column prop="config_name" label="监控点" min-width="180" />
+              <el-table-column prop="address" label="地址" width="120" />
+              <el-table-column prop="min_value" label="最小值" width="100" align="right">
+                <template #default="{ row }">
+                  {{ row.min_value?.toFixed(2) }}
+                </template>
+              </el-table-column>
+              <el-table-column prop="avg_value" label="平均值" width="100" align="right">
+                <template #default="{ row }">
+                  <span style="font-weight: bold">{{ row.avg_value?.toFixed(2) }}</span>
+                </template>
+              </el-table-column>
+              <el-table-column prop="max_value" label="最大值" width="100" align="right">
+                <template #default="{ row }">
+                  {{ row.max_value?.toFixed(2) }}
+                </template>
+              </el-table-column>
+              <el-table-column prop="sample_count" label="样本数" width="100" align="right" />
+              <el-table-column prop="unit" label="单位" width="80" />
+            </el-table>
+          </TableWrapper>
 
-          <el-pagination
-            v-model:current-page="fluctuatingPagination.page"
-            v-model:page-size="fluctuatingPagination.pageSize"
-            :total="fluctuatingPagination.total"
-            :page-sizes="[10, 20, 50, 100]"
-            layout="total, sizes, prev, pager, next, jumper"
-            @size-change="handleFluctuatingSizeChange"
-            @current-change="handleFluctuatingPageChange"
-          />
+          <div class="pagination-wrapper">
+            <el-pagination
+              v-model:current-page="fluctuatingPagination.page"
+              v-model:page-size="fluctuatingPagination.pageSize"
+              :total="fluctuatingPagination.total"
+              :page-sizes="[5, 10, 20, 50, 100]"
+              layout="total, sizes, prev, pager, next, jumper"
+              @size-change="handleFluctuatingSizeChange"
+              @current-change="handleFluctuatingPageChange"
+            />
+          </div>
         </el-tab-pane>
       </el-tabs>
-    </el-card>
+    </div>
   </div>
 </template>
 
 <script setup>
-import { ref, reactive, onMounted, computed } from 'vue'
+import { ref, reactive, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
+import dayjs from 'dayjs'
 import { getCumulativeReport, getFluctuatingReport, getCategories } from '@/api/plcMonitor'
 import { getAllStations } from '@/api/station'
 const activeTab = ref('cumulative')
-const dateRange = ref([])
+const startDate = ref(dayjs().subtract(5, 'day').format('YYYY-MM-DD'))
+const endDate = ref(dayjs().format('YYYY-MM-DD'))
 const timeGranularity = ref('day')
 const stations = ref([])
 const categories = ref([])
 
 const filters = reactive({
-  stationId: null,
-  categoryId: null
+  stationId: 'all',
+  categoryId: 'all'
 })
 
 const cumulativeData = reactive({
@@ -203,18 +231,16 @@ const fluctuatingData = reactive({
 
 const cumulativePagination = reactive({
   page: 1,
-  pageSize: 10,
+  pageSize: 5,
   total: 0
 })
 
 const fluctuatingPagination = reactive({
   page: 1,
-  pageSize: 10,
+  pageSize: 5,
   total: 0
 })
 
-const startDate = computed(() => dateRange.value?.[0] || '')
-const endDate = computed(() => dateRange.value?.[1] || '')
 
 onMounted(async () => {
   await loadStations()
@@ -251,8 +277,8 @@ const loadData = async () => {
 const loadCumulativeData = async () => {
   try {
     const params = {
-      stationId: filters.stationId,
-      categoryId: filters.categoryId,
+      stationId: filters.stationId === 'all' ? undefined : filters.stationId,
+      categoryId: filters.categoryId === 'all' ? undefined : filters.categoryId,
       startDate: startDate.value,
       endDate: endDate.value,
       page: cumulativePagination.page,
@@ -283,8 +309,8 @@ const loadCumulativeData = async () => {
 const loadFluctuatingData = async () => {
   try {
     const params = {
-      stationId: filters.stationId,
-      categoryId: filters.categoryId,
+      stationId: filters.stationId === 'all' ? undefined : filters.stationId,
+      categoryId: filters.categoryId === 'all' ? undefined : filters.categoryId,
       startDate: startDate.value,
       endDate: endDate.value,
       page: fluctuatingPagination.page,
@@ -321,9 +347,10 @@ const handleQuery = () => {
 }
 
 const handleReset = () => {
-  dateRange.value = []
-  filters.stationId = null
-  filters.categoryId = null
+  startDate.value = dayjs().subtract(5, 'day').format('YYYY-MM-DD')
+  endDate.value = dayjs().format('YYYY-MM-DD')
+  filters.stationId = 'all'
+  filters.categoryId = 'all'
   handleQuery()
 }
 
@@ -362,15 +389,29 @@ const handleExport = (type) => {
 .plc-data-report {
   padding: 20px;
 
+  .page-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+
+    h2 {
+      margin: 0;
+      font-size: 20px;
+      color: #303133;
+    }
+
+    .header-actions {
+      display: flex;
+      gap: 12px;
+    }
+  }
+
   .filter-card {
     margin-bottom: 20px;
   }
 
-  .filter-form :deep(.el-button) {
-    min-width: 96px;
-  }
-
-  .content-card {
+  .content-section {
     .summary-cards {
       margin-bottom: 20px;
       padding: 20px;
@@ -404,11 +445,6 @@ const handleExport = (type) => {
           }
         }
       }
-    }
-
-    .el-pagination {
-      margin-top: 20px;
-      justify-content: flex-end;
     }
 
     .ranking-section {

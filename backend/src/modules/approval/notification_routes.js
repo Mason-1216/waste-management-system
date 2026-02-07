@@ -5,5 +5,6 @@ export const registerNotificationRoutes = (router) => {
   router.get('/notifications/unread-count', notificationController.getUnreadCount);
   router.put('/notifications/:id/read', notificationController.markAsRead);
   router.put('/notifications/read-all', notificationController.markAllAsRead);
+  router.put('/notifications/read-by-filter', notificationController.markByFilterAsRead);
   router.delete('/notifications/:id', notificationController.deleteNotification);
 };

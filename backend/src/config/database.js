@@ -14,7 +14,21 @@ const sequelize = new Sequelize(
     logging: false,
     timezone: '+08:00',
     dialectOptions: {
-      charset: 'utf8mb4'
+      charset: 'utf8mb4',
+      collate: 'utf8mb4_unicode_ci'
+    },
+    hooks: {
+      afterConnect: async (connection) => {
+        await new Promise((resolve, reject) => {
+          connection.query('SET NAMES utf8mb4', (err) => {
+            if (err) {
+              reject(err);
+              return;
+            }
+            resolve();
+          });
+        });
+      }
     },
     define: {
       timestamps: true,

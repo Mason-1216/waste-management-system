@@ -3,6 +3,7 @@ import { Role, RolePermission, Permission, User } from '../../../models/index.js
 import { createError } from '../../../middlewares/error.js';
 import { ensureRolePermissions, copyRolePermissions } from '../../../services/permissionService.js';
 import { systemRoleCodes } from '../../../config/permissionSeeds.js';
+import { DEV_TEST_ROLE_CODE } from '../../../config/dev_test.js';
 
 const normalizeRole = (role, baseRoleName) => ({
   id: role.id,
@@ -16,8 +17,29 @@ const normalizeRole = (role, baseRoleName) => ({
 
 export const getRoles = async (ctx) => {
   await ensureRolePermissions();
-  const roles = await Role.findAll({ order: [['id', 'ASC']] });
-  const roleMap = new Map(roles.map(role => [role.role_code, role.role_name]));
+  const keywordRaw = ctx.query?.keyword;
+  const keyword = typeof keywordRaw === 'string' ? keywordRaw.trim() : '';
+
+  const where = {};
+  if (keyword) {
+    where.role_name = { [Op.like]: `%${keyword}%` };
+  }
+
+  let roleMap = null;
+  let roles = [];
+
+  if (keyword) {
+    // baseRoleName needs to be resolved from the full role list, not the filtered list.
+    const roleMapRoles = await Role.findAll({
+      attributes: ['role_code', 'role_name'],
+      order: [['id', 'ASC']]
+    });
+    roleMap = new Map(roleMapRoles.map(role => [role.role_code, role.role_name]));
+    roles = await Role.findAll({ where, order: [['id', 'ASC']] });
+  } else {
+    roles = await Role.findAll({ order: [['id', 'ASC']] });
+    roleMap = new Map(roles.map(role => [role.role_code, role.role_name]));
+  }
 
   ctx.body = {
     code: 200,
@@ -36,6 +58,9 @@ export const getRolePermissions = async (ctx) => {
   }
 
   const role = await Role.findByPk(roleId);
+  if (role && role.role_code === DEV_TEST_ROLE_CODE) {
+    throw createError(400, '开发测试角色不允许修改');
+  }
   if (!role) {
     throw createError(404, '角色不存在');
   }

@@ -1,5 +1,6 @@
 import { createRouter, createWebHistory } from 'vue-router';
 import { useUserStore } from '@/store/modules/user';
+import { usePermissionCatalogStore } from '@/store/modules/permissionCatalog';
 import { routes } from './modules';
 
 const router = createRouter({
@@ -39,13 +40,14 @@ router.onError((error) => {
 });
 
 // 路由守卫
-router.beforeEach((to, from, next) => {
+router.beforeEach(async (to, from, next) => {
   pushRouteLog({ type: 'beforeEach', to: to.fullPath, from: from.fullPath });
   // 设置页面标题
   document.title = to.meta.title ? `${to.meta.title} - 运行项目管理系统` : '运行项目管理系统';
 
   try {
     const userStore = useUserStore();
+    const permissionCatalogStore = usePermissionCatalogStore();
     const requiresAuth = to.meta.requiresAuth !== false;
 
     // 如果用户未登录且需要认证，跳转到登录页
@@ -60,7 +62,33 @@ router.beforeEach((to, from, next) => {
       return;
     }
 
-    // 检查角色权限
+    // Load the permission catalog (best-effort). It lets us:
+    // - enforce deny overrides for routes under a menu path (prefix match)
+    // - allow user-granted menu permissions to override hard-coded role guards.
+    if (userStore.isLoggedIn) {
+      await permissionCatalogStore.ensureLoaded();
+    }
+
+    const requiredMenuCode = permissionCatalogStore.loaded
+      ? permissionCatalogStore.resolveMenuCodeForPath(to.path)
+      : null;
+    const hasRequiredMenu = requiredMenuCode
+      ? (userStore.menuCodes || []).includes(requiredMenuCode)
+      : false;
+
+    // If this route belongs to a known menu node, treat menu permissions as the primary gate.
+    // This makes "add a menu permission for a single user" actually work, regardless of base role.
+    if (requiredMenuCode) {
+      if (!hasRequiredMenu && to.path !== '/home') {
+        next('/home');
+        return;
+      }
+      // Has menu permission -> allow, even if meta.roles doesn't include the base role.
+      next();
+      return;
+    }
+
+    // Fallback: role-based guard for non-menu routes.
     if (to.meta.roles && !userStore.hasRole(to.meta.roles)) {
       next('/home');
       return;

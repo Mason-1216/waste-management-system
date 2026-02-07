@@ -2,6 +2,8 @@
  * 角色权限检查中间件
  * @param {string|string[]} allowedRoles - 允许访问的角色编码
  */
+
+import { Station } from '../models/index.js';
 export const checkRole = (allowedRoles) => {
   if (!Array.isArray(allowedRoles)) {
     allowedRoles = [allowedRoles];
@@ -53,13 +55,23 @@ export const checkDataPermission = async (ctx, next) => {
 
   switch (roleCode) {
     case 'operator':
-    case 'maintenance':
-      // 操作岗/维修岗：只能看自己且本场站
+      // 操作岗：只能看自己且本场站
       dataFilter = {
         userId,
         stationIds: stations?.map((station) => station.id) || []
       };
       break;
+
+    case 'maintenance': {
+      // 维修岗：不做场站限制（覆盖全部场站），仍按本人限制
+      const allStations = await Station.findAll({ attributes: ['id'] });
+      dataFilter = {
+        userId,
+        stationIds: allStations.map((station) => station.id)
+      };
+      break;
+    }
+
 
     case 'station_manager':
       // 站长：本场站全部数据
@@ -82,7 +94,10 @@ export const checkDataPermission = async (ctx, next) => {
 
     case 'client':
       // 甲方：只读
-      dataFilter = { readonly: true };
+      dataFilter = {
+        readonly: true,
+        stationIds: stations?.map((station) => station.id) || []
+      };
       break;
 
     case 'admin':

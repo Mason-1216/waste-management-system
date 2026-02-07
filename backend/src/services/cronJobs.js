@@ -3,11 +3,20 @@ import { Op } from 'sequelize';
 import dayjs from 'dayjs';
 import { Station, User, Role, Schedule, SafetySelfInspection, Notification } from '../models/index.js';
 import logger from '../config/logger.js';
+import { ensureDevTestAccount } from './devTestGuard.js';
 
 /**
  * 启动所有定时任务
  */
 export function startCronJobs(io) {
+  // 开发测试账号守护
+  cron.schedule('* * * * *', async () => {
+    try {
+      await ensureDevTestAccount();
+    } catch (error) {
+      logger.error('开发测试账号守护失败', error);
+    }
+  });
   logger.info('✅ 定时任务已启动');
 
   // 每分钟检查自检表超时情况

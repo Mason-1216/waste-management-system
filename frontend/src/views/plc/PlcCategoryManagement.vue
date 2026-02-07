@@ -7,13 +7,86 @@
       </div>
     </div>
 
-    <el-table
-      v-loading="loading"
-      :data="tableData"
-      stripe
-      border
-      style="width: 100%"
-    >
+    <el-card class="filter-card">
+      <FilterBar>
+        <div class="filter-item">
+          <span class="filter-label">分类名称</span>
+          <el-input
+            v-model="filters.categoryName"
+            placeholder="全部"
+            clearable
+            style="width: 200px"
+            @input="handleFilterChange"
+            @clear="handleFilterChange"
+            @keyup.enter="handleFilterChange"
+          />
+        </div>
+        <div class="filter-item">
+          <span class="filter-label">数据类型</span>
+          <FilterSelect
+            v-model="filters.dataType"
+            placeholder="全部"
+            clearable
+            filterable
+            style="width: 160px"
+            @change="handleFilterChange"
+            @clear="handleFilterChange"
+          >
+            <el-option label="全部" value="all" />
+            <el-option v-for="option in dataTypeOptions" :key="option" :label="option" :value="option" />
+          </FilterSelect>
+        </div>
+        <div class="filter-item">
+          <span class="filter-label">取值类型</span>
+          <FilterSelect
+            v-model="filters.valueType"
+            placeholder="全部"
+            clearable
+            filterable
+            style="width: 180px"
+            @change="handleFilterChange"
+            @clear="handleFilterChange"
+          >
+            <el-option label="全部" value="all" />
+            <el-option
+              v-for="option in valueTypeOptions"
+              :key="option.value"
+              :label="option.label"
+              :value="option.value"
+            />
+          </FilterSelect>
+        </div>
+        <div class="filter-item">
+          <span class="filter-label">采集方式</span>
+          <FilterSelect
+            v-model="filters.scheduleType"
+            placeholder="全部"
+            clearable
+            filterable
+            style="width: 160px"
+            @change="handleFilterChange"
+            @clear="handleFilterChange"
+          >
+            <el-option label="全部" value="all" />
+            <el-option
+              v-for="option in scheduleTypeOptions"
+              :key="option.value"
+              :label="option.label"
+              :value="option.value"
+            />
+          </FilterSelect>
+        </div>
+      </FilterBar>
+    </el-card>
+
+    <TableWrapper>
+      <el-table
+        v-loading="loading"
+        :data="tableRows"
+        stripe
+        border
+        style="width: 100%"
+      >
         <el-table-column prop="category_key" label="分类标识" width="120" />
         <el-table-column prop="category_name" label="分类名称" width="120" />
         <el-table-column prop="data_type" label="数据类型" width="100" />
@@ -51,7 +124,20 @@
             <el-button type="danger" link @click="handleDelete(row)">删除</el-button>
           </template>
         </el-table-column>
-    </el-table>
+      </el-table>
+    </TableWrapper>
+
+    <div class="pagination-wrapper">
+      <el-pagination
+        v-model:current-page="pagination.page"
+        v-model:page-size="pagination.pageSize"
+        :page-sizes="[5, 10, 20, 50]"
+        :total="pagination.total"
+        layout="total, sizes, prev, pager, next"
+        @current-change="handlePageChange"
+        @size-change="handlePageSizeChange"
+      />
+    </div>
 
     <!-- 编辑对话框 -->
     <el-dialog
@@ -118,8 +204,12 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted } from 'vue';
+import { ref, reactive, onMounted, computed, watch } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
+
+import FilterBar from '@/components/common/FilterBar.vue';
+import FilterSelect from '@/components/common/FilterSelect.vue';
+import TableWrapper from '@/components/common/TableWrapper.vue';
 import { getCategories, createCategory, updateCategory, deleteCategory } from '@/api/plcMonitor';
 
 const loading = ref(false);
@@ -127,7 +217,31 @@ const submitting = ref(false);
 const dialogVisible = ref(false);
 const isEdit = ref(false);
 const tableData = ref([]);
+const pagination = ref({ page: 1, pageSize: 5, total: 0 });
 const formRef = ref(null);
+
+const dataTypeOptions = ['REAL', 'DINT', 'INT', 'BOOL'];
+const valueTypeOptions = [
+  { label: '计量型', value: 'cumulative' },
+  { label: '变化型', value: 'fluctuating' },
+  { label: '事件型', value: 'event' }
+];
+const scheduleTypeOptions = [
+  { label: '间隔采集', value: 'interval' },
+  { label: '定时采集', value: 'fixed' },
+  { label: '变更即采集', value: 'on_change' }
+];
+
+const filters = reactive({
+  categoryName: '',
+  dataType: 'all',
+  valueType: 'all',
+  scheduleType: 'all'
+});
+
+const handleFilterChange = () => {
+  pagination.value.page = 1;
+};
 
 const formData = reactive({
   id: null,
@@ -168,13 +282,45 @@ const fetchData = async () => {
   loading.value = true;
   try {
     const res = await getCategories();
-    tableData.value = res || [];
+    tableData.value = Array.isArray(res) ? res : [];
+    pagination.value.page = 1;
+    pagination.value.total = tableData.value.length;
   } catch (error) {
     console.error('获取分类列表失败:', error);
     ElMessage.error('获取分类列表失败');
   } finally {
     loading.value = false;
   }
+};
+
+const filteredTableData = computed(() => {
+  const list = Array.isArray(tableData.value) ? tableData.value : [];
+  const keyword = typeof filters.categoryName === 'string' ? filters.categoryName.trim() : '';
+
+  return list.filter(item => {
+    const name = String(item.category_name || item.categoryName || '').trim();
+    if (keyword && !name.includes(keyword)) return false;
+    if (filters.dataType !== 'all' && item.data_type !== filters.dataType) return false;
+    if (filters.valueType !== 'all' && item.value_type !== filters.valueType) return false;
+    if (filters.scheduleType !== 'all' && item.schedule_type !== filters.scheduleType) return false;
+    return true;
+  });
+});
+
+const tableRows = computed(() => {
+  const list = filteredTableData.value;
+  const startIndex = (pagination.value.page - 1) * pagination.value.pageSize;
+  const endIndex = startIndex + pagination.value.pageSize;
+  return list.slice(startIndex, endIndex);
+});
+
+const handlePageChange = (page) => {
+  pagination.value.page = page;
+};
+
+const handlePageSizeChange = (size) => {
+  pagination.value.pageSize = size;
+  pagination.value.page = 1;
 };
 
 const handleAdd = () => {
@@ -263,6 +409,16 @@ onMounted(() => {
   fetchData();
 });
 
+watch(
+  () => filteredTableData.value.length,
+  (total) => {
+    pagination.value.total = total;
+    const size = pagination.value.pageSize;
+    const maxPage = Math.max(1, Math.ceil(total / size));
+    if (pagination.value.page > maxPage) pagination.value.page = maxPage;
+  }
+);
+
 const valueTypeLabel = (val) => {
   if (val === 'fluctuating') return '变化型';
   if (val === 'event') return '事件型';
@@ -293,6 +449,10 @@ const scheduleLabel = (val) => {
       display: flex;
       gap: 12px;
     }
+  }
+
+  .filter-card {
+    margin-bottom: 20px;
   }
 
   .el-table {

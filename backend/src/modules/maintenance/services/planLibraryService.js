@@ -1,6 +1,6 @@
 ﻿import { Op } from 'sequelize';
 import dayjs from 'dayjs';
-import { MaintenancePlanLibrary, MaintenanceAssignment, Station, User } from '../../../models/index.js';
+import { MaintenancePlanLibrary, MaintenanceAssignment, MaintenancePositionPlan, MaintenanceWorkRecord, Station, User } from '../../../models/index.js';
 import { createError } from '../../../middlewares/error.js';
 import { getPagination, formatPaginationResponse, getOrderBy, generateRecordCode } from '../../../utils/helpers.js';
 
@@ -110,13 +110,48 @@ export const getMaintenancePlanLibrary = async (ctx) => {
   const order = getOrderBy(ctx.query);
   const { stationId, cycleType, keyword } = ctx.query;
   const user = ctx.state.user;
+  const dataFilter = ctx.state.dataFilter ?? {};
   const scopedStationId = resolveScopedStationId(user, ctx.headers['x-station-id']);
+  const requestedStationId = parseOptionalInt(stationId);
+  const allowedStationIds = Array.isArray(dataFilter.stationIds) ? dataFilter.stationIds : [];
 
-  const where = {};
+  const emptyData = () => formatPaginationResponse({ rows: [], count: 0 }, page, pageSize);
+
+  if (dataFilter.none) {
+    ctx.body = {
+      code: 200,
+      message: 'success',
+      data: emptyData()
+    };
+    return;
+  }
+
+  if (!dataFilter.all) {
+    if (allowedStationIds.length === 0) {
+      ctx.body = {
+        code: 200,
+        message: 'success',
+        data: emptyData()
+      };
+      return;
+    }
+    if (requestedStationId && !allowedStationIds.includes(requestedStationId)) {
+      ctx.body = {
+        code: 200,
+        message: 'success',
+        data: emptyData()
+      };
+      return;
+    }
+  }
+
+  const where = { is_deleted: false };
   if (scopedStationId) {
     where.station_id = scopedStationId;
-  } else if (stationId) {
-    where.station_id = stationId;
+  } else if (requestedStationId) {
+    where.station_id = requestedStationId;
+  } else if (!dataFilter.all && allowedStationIds.length > 0) {
+    where.station_id = { [Op.in]: allowedStationIds };
   }
 
   if (cycleType) {
@@ -154,7 +189,6 @@ export const getMaintenancePlanLibrary = async (ctx) => {
     data: formatPaginationResponse(result, page, pageSize)
   };
 };
-
 /**
  * 鏂板缓淇濆吇璁″垝
  * POST /api/maintenance-plan-library
@@ -202,7 +236,7 @@ export const updateMaintenancePlanLibrary = async (ctx) => {
   const { stationId, equipmentCode, equipmentName, installLocation, cycleType, maintenanceStandards, weeklyDay, monthlyDay, yearlyMonth, yearlyDay } = ctx.request.body;
 
   const record = await MaintenancePlanLibrary.findByPk(id);
-  if (!record) {
+  if (!record || record.is_deleted) {
     throw createError(404, 'Not found');
   }
 
@@ -238,7 +272,22 @@ export const deleteMaintenancePlanLibrary = async (ctx) => {
     throw createError(404, 'Not found');
   }
 
-  await record.destroy();
+  const hasWorkRecord = await MaintenanceWorkRecord.findOne({
+    where: { plan_id: record.id },
+    attributes: ['id']
+  });
+  const hasAssignment = await MaintenanceAssignment.findOne({
+    where: { plan_id: record.id },
+    attributes: ['id']
+  });
+
+  await MaintenancePositionPlan.destroy({ where: { plan_id: record.id } });
+
+  if (!hasWorkRecord && !hasAssignment) {
+    await record.destroy();
+  } else if (!record.is_deleted) {
+    await record.update({ is_deleted: true });
+  }
 
   ctx.body = {
     code: 200,
@@ -309,7 +358,7 @@ export const batchImportMaintenancePlanLibrary = async (ctx) => {
       }
       if (!stationId) {
         results.failed++;
-        results.errors.push(`Row ${rowNum}: station not found or not bound`);
+        results.errors.push(`第${rowNum}行 场站不存在或未绑定`);
         continue;
       }
 

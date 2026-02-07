@@ -1,50 +1,62 @@
 <template>
   <div class="plc-visual-report">
     <el-card class="filter-card">
-      <el-form :inline="true" :model="filters" class="filter-form">
-        <el-form-item label="日期范围">
+      <FilterBar>
+        <div class="filter-item">
+          <span class="filter-label">开始日期</span>
           <el-date-picker
-            v-model="dateRange"
-            type="daterange"
-            range-separator="至"
-            start-placeholder="开始日期"
-            end-placeholder="结束日期"
+            v-model="startDate"
+            type="date"
+            placeholder="全部"
             value-format="YYYY-MM-DD"
+            @change="handleQuery"
           />
-        </el-form-item>
-        <el-form-item label="场站">
-          <el-select v-model="filters.stationId" placeholder="请选择场站" clearable>
+        </div>
+        <div class="filter-item">
+          <span class="filter-label">结束日期</span>
+          <el-date-picker
+            v-model="endDate"
+            type="date"
+            placeholder="全部"
+            value-format="YYYY-MM-DD"
+            @change="handleQuery"
+          />
+        </div>
+        <div class="filter-item">
+          <span class="filter-label">场站</span>
+          <FilterSelect v-model="filters.stationId" placeholder="全部" filterable clearable @change="handleQuery" @clear="handleQuery">
+            <el-option label="全部" value="all" />
             <el-option
               v-for="station in stations"
               :key="station.id"
               :label="station.station_name"
               :value="station.id"
             />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="分类">
-          <el-select v-model="filters.categoryId" placeholder="请选择分类" clearable>
+          </FilterSelect>
+        </div>
+        <div class="filter-item">
+          <span class="filter-label">分类</span>
+          <FilterSelect v-model="filters.categoryId" placeholder="全部" filterable clearable @change="handleQuery" @clear="handleQuery">
+            <el-option label="全部" value="all" />
             <el-option
               v-for="category in categories"
               :key="category.id"
               :label="category.category_name"
               :value="category.id"
             />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="周期">
-          <el-select v-model="timeGranularity" style="width: 140px" @change="handleGranularityChange">
+          </FilterSelect>
+        </div>
+        <div class="filter-item">
+          <span class="filter-label">周期</span>
+          <FilterSelect v-model="timeGranularity" placeholder="全部" filterable style="width: 140px" @change="handleGranularityChange">
+            <el-option label="全部" value="all" />
             <el-option label="日" value="day" />
             <el-option label="周" value="week" />
             <el-option label="月" value="month" />
             <el-option label="年" value="year" />
-          </el-select>
-        </el-form-item>
-        <el-form-item>
-          <el-button type="primary" @click="handleQuery">查询</el-button>
-          <el-button @click="handleReset">重置</el-button>
-        </el-form-item>
-      </el-form>
+          </FilterSelect>
+        </div>
+      </FilterBar>
     </el-card>
 
     <el-card class="content-card">
@@ -78,21 +90,22 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted, computed, nextTick } from 'vue'
+import { ref, reactive, onMounted, nextTick } from 'vue'
 import dayjs from 'dayjs'
 import { ElMessage } from 'element-plus'
 import * as echarts from 'echarts'
 import { getCumulativeReport, getFluctuatingReport, getCategories } from '@/api/plcMonitor'
 import { getAllStations } from '@/api/station'
 const activeTab = ref('cumulative')
-const dateRange = ref([])
+const startDate = ref(dayjs().subtract(5, 'day').format('YYYY-MM-DD'))
+const endDate = ref(dayjs().format('YYYY-MM-DD'))
 const timeGranularity = ref('day')
 const stations = ref([])
 const categories = ref([])
 
 const filters = reactive({
-  stationId: null,
-  categoryId: null
+  stationId: 'all',
+  categoryId: 'all'
 })
 
 const cumulativeTrendChart = ref(null)
@@ -106,39 +119,6 @@ let fluctuatingExtremeChartInstance = null
 let fluctuatingBoxChartInstance = null
 
 const isMobileScreen = () => window.innerWidth <= 768
-
-const getDefaultRange = (granularity) => {
-  const today = dayjs()
-  switch (granularity) {
-    case 'day': {
-      const end = today
-      const start = today.subtract(29, 'day')
-      return [start.format('YYYY-MM-DD'), end.format('YYYY-MM-DD')]
-    }
-    case 'week': {
-      const end = today.endOf('week')
-      const start = today.startOf('week').subtract(4, 'week')
-      return [start.format('YYYY-MM-DD'), end.format('YYYY-MM-DD')]
-    }
-    case 'month':
-      return [today.startOf('year').format('YYYY-MM-DD'), today.endOf('year').format('YYYY-MM-DD')]
-    case 'year':
-      return ['', '']
-    default:
-      return ['', '']
-  }
-}
-
-const defaultRange = computed(() => getDefaultRange(timeGranularity.value))
-const getQueryRange = () => {
-  if (Array.isArray(dateRange.value) && dateRange.value.length === 2) {
-    const [start, end] = dateRange.value
-    if (start && end) {
-      return [start, end]
-    }
-  }
-  return defaultRange.value
-}
 
 const toChineseNumber = (value) => {
   const digits = ['零', '一', '二', '三', '四', '五', '六', '七', '八', '九']
@@ -224,7 +204,8 @@ const loadData = async () => {
 
 const loadCumulativeData = async () => {
   try {
-    const [rangeStart, rangeEnd] = getQueryRange()
+    const rangeStart = startDate.value
+    const rangeEnd = endDate.value
     const params = {
       stationId: filters.stationId,
       categoryId: filters.categoryId,
@@ -253,7 +234,8 @@ const loadCumulativeData = async () => {
 
 const loadFluctuatingData = async () => {
   try {
-    const [rangeStart, rangeEnd] = getQueryRange()
+    const rangeStart = startDate.value
+    const rangeEnd = endDate.value
     const params = {
       stationId: filters.stationId,
       categoryId: filters.categoryId,
@@ -480,9 +462,10 @@ const handleQuery = () => {
 }
 
 const handleReset = () => {
-  dateRange.value = []
-  filters.stationId = null
-  filters.categoryId = null
+  startDate.value = dayjs().subtract(5, 'day').format('YYYY-MM-DD')
+  endDate.value = dayjs().format('YYYY-MM-DD')
+  filters.stationId = 'all'
+  filters.categoryId = 'all'
   handleQuery()
 }
 
@@ -497,23 +480,6 @@ const handleTabChange = () => {
 
   .filter-card {
     margin-bottom: 20px;
-  }
-
-  .filter-form :deep(.el-form-item) {
-    margin-bottom: 12px;
-  }
-
-  .filter-form :deep(.el-input),
-  .filter-form :deep(.el-select),
-  .filter-form :deep(.el-date-picker),
-  .filter-form :deep(.el-date-editor) {
-    width: auto !important;
-    min-width: 220px;
-    flex: 1 1 240px;
-  }
-
-  .filter-form :deep(.el-button) {
-    min-width: 96px;
   }
 
   .content-card {
@@ -534,18 +500,6 @@ const handleTabChange = () => {
   }
 
   @media screen and (max-width: 768px) {
-    .filter-form :deep(.el-input),
-    .filter-form :deep(.el-select),
-    .filter-form :deep(.el-date-picker),
-    .filter-form :deep(.el-date-editor) {
-      min-width: 140px;
-      flex: 1 1 160px;
-    }
-
-    .filter-form :deep(.el-button) {
-      min-width: 88px;
-    }
-
     .content-card {
       .chart-container {
         .chart {

@@ -1,6 +1,6 @@
 import request from './request';
 
-export const getRoles = () => request.get('/roles');
+export const getRoles = (params) => request.get('/roles', { params });
 
 export const getRolePermissions = (id) => request.get(`/roles/${id}/permissions`);
 

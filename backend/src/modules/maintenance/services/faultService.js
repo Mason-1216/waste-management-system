@@ -4,16 +4,22 @@ import { FaultReport, RepairRecord, User } from '../../../models/index.js';
 import { createError } from '../../../middlewares/error.js';
 import { formatPaginationResponse, generateRecordCode, getOrderBy, getPagination } from '../../../utils/helpers.js';
 
-export const getFaultReports = async ({ query, dataFilter }) => {
+export const getFaultReports = async ({ query, dataFilter, user }) => {
   const { page, pageSize, offset, limit } = getPagination(query);
   const order = getOrderBy(query);
-  const { stationId, status } = query;
+  const { stationId, status, reporterId } = query;
+  const roleCode = user?.baseRoleCode || user?.roleCode;
 
   const where = {};
   if (stationId) where.station_id = stationId;
   if (status) where.status = status;
+  if (reporterId) where.reporter_id = reporterId;
 
-  if (!dataFilter.all && dataFilter.stationIds?.length > 0) {
+  if (roleCode === 'operator') {
+    where.reporter_id = user.id;
+  }
+
+  if (!dataFilter?.all && Array.isArray(dataFilter?.stationIds)) {
     where.station_id = { [Op.in]: dataFilter.stationIds };
   }
 

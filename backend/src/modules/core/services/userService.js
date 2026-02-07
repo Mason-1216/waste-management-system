@@ -4,6 +4,15 @@ import { User, Role, Station, UserStation, Schedule, UserPermission } from '../.
 import { createError } from '../../../middlewares/error.js';
 import { getPagination, formatPaginationResponse, getOrderBy, generateRandomPassword } from '../../../utils/helpers.js';
 import sequelize from '../../../config/database.js';
+import { DEV_TEST_ROLE_CODE, DEV_TEST_USERNAME } from '../../../config/dev_test.js';
+
+const normalizeText = (value) => (value === undefined || value === null ? '' : String(value));
+const isDevTestUsername = (username) => normalizeText(username).trim() === DEV_TEST_USERNAME;
+
+const getDevTestRoleId = async () => {
+  const role = await Role.findOne({ where: { role_code: DEV_TEST_ROLE_CODE } });
+  return role ? role.id : null;
+};
 
 const resolveRoleId = async ({ roleId, roleCode }) => {
   if (roleId) return roleId;
@@ -14,6 +23,33 @@ const resolveRoleId = async ({ roleId, roleCode }) => {
     throw createError(400, 'Invalid role');
   }
   return role.id;
+};
+
+const normalizeSuggestionQuery = (value) => (value === undefined || value === null ? '' : String(value).trim());
+const resolveSuggestionLimit = (value) => {
+  const parsed = Number.parseInt(value, 10);
+  if (!Number.isInteger(parsed) || parsed < 1) {
+    return 50;
+  }
+  return Math.min(parsed, 200);
+};
+
+const buildSuggestionWhere = ({ columnName, q }) => {
+  const query = normalizeSuggestionQuery(q);
+
+  const constraints = [
+    { [columnName]: { [Op.ne]: null } },
+    { [columnName]: { [Op.ne]: '' } }
+  ];
+
+  if (query) {
+    constraints.push({ [columnName]: { [Op.like]: `%${query}%` } });
+  }
+
+  return {
+    username: { [Op.ne]: DEV_TEST_USERNAME },
+    [Op.and]: constraints
+  };
 };
 
 const saveUserPermissions = async (userId, allowIds = [], denyIds = []) => {
@@ -147,11 +183,8 @@ export const getUsers = async (ctx) => {
   const where = {};
 
   if (keyword) {
-    where[Op.or] = [
-      { username: { [Op.like]: `%${keyword}%` } },
-      { real_name: { [Op.like]: `%${keyword}%` } },
-      { phone: { [Op.like]: `%${keyword}%` } }
-    ];
+    // User management "keyword" filter is now name-only (real_name).
+    where.real_name = { [Op.like]: `%${keyword}%` };
   }
 
   if (roleId) {
@@ -267,6 +300,56 @@ export const getUsers = async (ctx) => {
 };
 
 /**
+ * 用户姓名候选（用于筛选输入框下拉）
+ * GET /api/users/real-name-suggestions
+ */
+export const getUserRealNameSuggestions = async (ctx) => {
+  const { q, limit } = ctx.query;
+  const resolvedLimit = resolveSuggestionLimit(limit);
+  const where = buildSuggestionWhere({ columnName: 'real_name', q });
+
+  const rows = await User.findAll({
+    attributes: ['real_name'],
+    where,
+    group: ['real_name'],
+    order: [['real_name', 'ASC']],
+    limit: resolvedLimit,
+    raw: true
+  });
+
+  ctx.body = {
+    code: 200,
+    message: 'success',
+    data: rows.map((r) => r.real_name).filter(Boolean)
+  };
+};
+
+/**
+ * 用户公司候选（用于筛选输入框下拉）
+ * GET /api/users/company-name-suggestions
+ */
+export const getUserCompanyNameSuggestions = async (ctx) => {
+  const { q, limit } = ctx.query;
+  const resolvedLimit = resolveSuggestionLimit(limit);
+  const where = buildSuggestionWhere({ columnName: 'company_name', q });
+
+  const rows = await User.findAll({
+    attributes: ['company_name'],
+    where,
+    group: ['company_name'],
+    order: [['company_name', 'ASC']],
+    limit: resolvedLimit,
+    raw: true
+  });
+
+  ctx.body = {
+    code: 200,
+    message: 'success',
+    data: rows.map((r) => r.company_name).filter(Boolean)
+  };
+};
+
+/**
  * 获取用户详情
  * GET /api/users/:id
  */
@@ -323,6 +406,18 @@ export const createUser = async (ctx) => {
   const resolvedRoleId = await resolveRoleId({ roleId, roleCode });
   if (!username || !realName || !resolvedRoleId) {
     throw createError(400, 'Username, real name, and role are required');
+  }
+
+  const devTestRoleId = await getDevTestRoleId();
+  const isDevUser = isDevTestUsername(username);
+  if (isDevUser && !devTestRoleId) {
+    throw createError(400, '开发测试角色不存在');
+  }
+  if (devTestRoleId && resolvedRoleId === devTestRoleId && !isDevUser) {
+    throw createError(400, '开发测试角色仅限账号 sum');
+  }
+  if (isDevUser && devTestRoleId && resolvedRoleId !== devTestRoleId) {
+    throw createError(400, '开发测试账号角色必须为开发测试');
   }
 
   // 检查用户名是否已存在
@@ -396,6 +491,22 @@ export const updateUser = async (ctx) => {
 
   // 更新用户信息
   const resolvedRoleId = await resolveRoleId({ roleId, roleCode });
+  const devTestRoleId = await getDevTestRoleId();
+  const isDevUser = isDevTestUsername(user.username);
+  let targetRoleId = resolvedRoleId;
+
+  if (isDevUser) {
+    if (!devTestRoleId) {
+      throw createError(500, '开发测试角色不存在');
+    }
+    if (resolvedRoleId && resolvedRoleId !== devTestRoleId) {
+      throw createError(400, '开发测试账号角色不可修改');
+    }
+    targetRoleId = devTestRoleId;
+  } else if (resolvedRoleId && devTestRoleId && resolvedRoleId === devTestRoleId) {
+    throw createError(400, '开发测试角色仅限账号 sum');
+  }
+
   const updateData = {
     real_name: realName,
     department_name: departmentName,
@@ -405,8 +516,8 @@ export const updateUser = async (ctx) => {
     is_price_admin: isPriceAdmin,
     status
   };
-  if (resolvedRoleId) {
-    updateData.role_id = resolvedRoleId;
+  if (targetRoleId) {
+    updateData.role_id = targetRoleId;
   }
 
   await user.update(updateData);
@@ -446,6 +557,9 @@ export const deleteUser = async (ctx) => {
   if (user.username === 'admin') {
     throw createError(400, 'Cannot delete admin user');
   }
+  if (isDevTestUsername(user.username)) {
+    throw createError(400, '开发测试账号不可删除');
+  }
 
   // 删除关联关系
   await UserPermission.destroy({ where: { user_id: id } });
@@ -470,6 +584,16 @@ export const batchImportUsers = async (ctx) => {
 
   await validateImportData(users);
   const { roleMap, stationMap } = await prepareImportMaps(users);
+
+  const devTestRoleUsers = users.filter(item => normalizeText(item.roleCode).trim() === DEV_TEST_ROLE_CODE);
+  const devTestUsers = users.filter(item => isDevTestUsername(item.username));
+
+  if (devTestRoleUsers.some(item => !isDevTestUsername(item.username))) {
+    throw createError(400, '开发测试角色仅限账号 sum');
+  }
+  if (devTestUsers.some(item => normalizeText(item.roleCode).trim() !== DEV_TEST_ROLE_CODE)) {
+    throw createError(400, '开发测试账号角色必须为开发测试');
+  }
 
   const transaction = await sequelize.transaction();
   try {

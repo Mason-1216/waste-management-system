@@ -91,3 +91,5 @@ services:
 
 volumes:
   mysql_data:
+    name: waste-management-system_mysql_data
+    external: true

@@ -39,6 +39,11 @@
       <el-table :data="maintenanceItems" border size="small">
         <el-table-column prop="name" label="项目" min-width="150" />
         <el-table-column prop="specification" label="标准" min-width="200" />
+        <el-table-column label="积分" width="90" align="center">
+          <template #default="{ row }">
+            <span>{{ row.points ?? 0 }}</span>
+          </template>
+        </el-table-column>
         <el-table-column label="确认" width="80" align="center">
           <template #default="{ row }">
             <el-tag :type="row.confirmed ? 'success' : 'info'" size="small">
@@ -78,20 +83,26 @@
         <el-input v-model="record.remark" type="textarea" :rows="2" disabled />
       </el-form-item>
       <template v-if="showVerify">
-        <el-divider content-position="left">????</el-divider>
+        <el-divider content-position="left">验收信息</el-divider>
         <div class="section-grid">
-          <el-form-item label="????">
+          <el-form-item label="验收结果">
             <el-tag :type="verifyTagType">
               {{ verifyResultText }}
             </el-tag>
           </el-form-item>
-          <el-form-item label="???">
+          <el-form-item v-if="showDeduction" label="扣分">
+            <span>{{ deductionPointsText }}</span>
+          </el-form-item>
+          <el-form-item v-if="showDeduction && deductionRemarkText" label="扣分说明">
+            <span>{{ deductionRemarkText }}</span>
+          </el-form-item>
+          <el-form-item label="验收人">
             <span>{{ verifyPersonText }}</span>
           </el-form-item>
-          <el-form-item label="????">
+          <el-form-item label="验收时间">
             <span>{{ verifyTimeText }}</span>
           </el-form-item>
-          <el-form-item v-if="verifyRemarkText" label="????">
+          <el-form-item v-if="verifyRemarkText" label="验收备注">
             <span>{{ verifyRemarkText }}</span>
           </el-form-item>
         </div>
@@ -174,8 +185,8 @@ const verifyResultText = computed(() => {
   const record = props.record;
   if (!record) return '-';
   const result = record.verifyResult;
-  if (result === 'pass') return '????';
-  if (result === 'fail') return '?????';
+  if (result === 'pass') return '验收通过';
+  if (result === 'fail') return '验收不通过';
   return '-';
 });
 
@@ -201,6 +212,24 @@ const verifyTimeText = computed(() => {
 const verifyRemarkText = computed(() => {
   if (!props.record) return '';
   return hasValue(props.record.verifyRemark) ? props.record.verifyRemark : '';
+});
+
+const showDeduction = computed(() => {
+  if (!props.record) return false;
+  if (props.record.verifyResult === 'fail') return true;
+  if (hasValue(props.record.deductionPoints)) return true;
+  if (hasValue(props.record.deductionRemark)) return true;
+  return false;
+});
+
+const deductionPointsText = computed(() => {
+  if (!props.record) return '-';
+  return hasValue(props.record.deductionPoints) ? props.record.deductionPoints : '0';
+});
+
+const deductionRemarkText = computed(() => {
+  if (!props.record) return '';
+  return hasValue(props.record.deductionRemark) ? props.record.deductionRemark : '';
 });
 
 const handleClose = () => {

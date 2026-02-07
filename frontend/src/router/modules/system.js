@@ -6,12 +6,6 @@ export const systemRoutes = [
     meta: { title: '消息通知' }
   },
   {
-    path: '/price-management',
-    name: 'PriceManagement',
-    component: () => import('@/views/system/PriceManagement.vue'),
-    meta: { title: '单价管理' }
-  },
-  {
     path: '/user-management',
     name: 'UserManagement',
     component: () => import('@/views/system/UserManagement.vue'),

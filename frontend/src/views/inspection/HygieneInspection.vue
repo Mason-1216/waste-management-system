@@ -1,101 +1,175 @@
 <template>
   <div class="hygiene-inspection-page">
     <div class="page-header">
-      <h2>卫生自检</h2>
+      <h2>
+        <span v-if="isRecordsView" class="page-title-link" @click="goFormView">卫生自检</span>
+        <span v-else>卫生自检</span>
+      </h2>
+      <div v-if="!isRecordsView" class="header-actions">
+        <el-button @click="goRecordsView">查询</el-button>
+      </div>
     </div>
 
-    <!-- 我的卫生自检 -->
-    <div class="header-controls">
-      <el-date-picker
-        v-model="dateRange"
-        type="daterange"
-        start-placeholder="开始日期"
-        end-placeholder="结束日期"
-        format="YYYY-MM-DD"
-        value-format="YYYY-MM-DD"
-        @change="loadHistory"
-        @clear="loadHistory"
-        style="width: 240px"
-      />
-    </div>
+    <el-card v-if="!isRecordsView" class="inspection-form-card" v-loading="formLoading">
+      <div class="inspection-form-header">
+        <div class="form-title-row">
+          <div class="form-subtitle">自检表单</div>
+        </div>
+        <div class="form-meta">
+          {{ inspectionForm.stationName ?? '' }} {{ inspectionForm.positionName ?? '' }}
+        </div>
+      </div>
 
-        <!-- 今日自检状态 -->
-        <div class="status-card" :class="{ completed: todayInspection }">
-          <div v-if="todayInspection" class="status-content">
-            <el-icon class="status-icon"><CircleCheck /></el-icon>
-            <div class="status-info">
-              <div class="status-title">今日卫生自检已完成</div>
-              <div class="status-time">完成时间：{{ formatDateTime(todayInspection.submitTime) }}</div>
-            </div>
-            <el-button type="primary" @click="viewDetail(todayInspection)">查看详情</el-button>
+      <!-- 今日自检状态 -->
+      <div class="status-card" :class="{ completed: todayInspection }">
+        <div v-if="todayInspection" class="status-content">
+          <el-icon class="status-icon"><CircleCheck /></el-icon>
+          <div class="status-info">
+            <div class="status-title">今日卫生自检已完成</div>
+            <div class="status-time">完成时间：{{ formatDateTime(todayInspection.submitTime) }}</div>
           </div>
-          <div v-else class="status-content">
-            <el-icon class="status-icon warning"><Warning /></el-icon>
-            <div class="status-info">
-              <div class="status-title">今日尚未完成卫生自检</div>
-              <div class="status-time">请尽快完成卫生自检</div>
-            </div>
-            <el-button type="primary" @click="startInspection">开始自检</el-button>
+          <el-button type="primary" @click="viewDetail(todayInspection)">查看详情</el-button>
+        </div>
+        <div v-else class="status-content">
+          <el-icon class="status-icon warning"><Warning /></el-icon>
+          <div class="status-info">
+            <div class="status-title">{{ incompleteStatusTitle }}</div>
+            <div v-if="incompleteStatusTime" class="status-time">{{ incompleteStatusTime }}</div>
           </div>
         </div>
+      </div>
 
-        <!-- 自检表单 -->
-        <FormDialog
-          v-model="inspectionDialogVisible"
-          :title="`卫生自检 - ${inspectionForm.stationName || ''} - ${inspectionForm.positionName || ''}`"
-          width="700px"
-          :close-on-click-modal="false"
-          :show-confirm="false"
-          :show-cancel="false"
-        >
-          <el-form :model="inspectionForm" ref="formRef" label-width="140px">
-            <HygieneAreaChecklist
-              :areas="inspectionForm.areas"
-              :upload-url="uploadUrl"
-              :upload-headers="uploadHeaders"
-              header-type="divider"
-              :show-area-photos="true"
-              :empty-description="'暂无分配的卫生责任区'"
-              :requirement-prefix="'要求：'"
-              :requirement-fallback="'无'"
-              :pass-label="'合格'"
-              :fail-label="'不合格'"
-              :point-photo-label="'不合格照片（有不合格项至少 1 张，可任选点位上传）：'"
-              :area-photo-label="'责任区照片（必填，至少 1 张）：'"
-              @point-status-change="handlePointStatusChange"
-              @point-photo-change="updatePointPhotoList"
-              @area-photo-change="updateAreaPhotoList"
-              @upload-error="handleUploadError"
+      <el-form :model="inspectionForm" ref="formRef" label-width="140px">
+        <HygieneAreaChecklist
+          :areas="inspectionForm.areas"
+          :upload-url="uploadUrl"
+          :upload-headers="uploadHeaders"
+          header-type="divider"
+          :show-area-photos="true"
+          :empty-description="'暂无分配的卫生责任区'"
+          :requirement-prefix="'要求：'"
+          :requirement-fallback="'无'"
+          :pass-label="'合格'"
+          :fail-label="'不合格'"
+          :point-photo-label="'不合格照片（有不合格项至少 1 张，可任选点位上传）：'"
+          :area-photo-label="'责任区照片（必填，至少 1 张）：'"
+          @point-status-change="handlePointStatusChange"
+          @point-photo-change="updatePointPhotoList"
+          @area-photo-change="updateAreaPhotoList"
+          @upload-error="handleUploadError"
+        />
+
+        <el-divider content-position="left">其他</el-divider>
+        <el-form-item label="不合格说明">
+          <el-input
+            v-model="inspectionForm.unqualifiedDescription"
+            type="textarea"
+            :rows="3"
+            placeholder="如有不合格项请详细说明"
+          />
+        </el-form-item>
+      </el-form>
+
+      <div class="form-actions">
+        <el-button @click="startInspection()">重新加载</el-button>
+        <el-button type="primary" @click="submitInspection" :loading="submitting">
+          提交自检
+        </el-button>
+      </div>
+    </el-card>
+
+    <template v-if="isRecordsView">
+      <el-card class="filter-card">
+        <FilterBar>
+        <div class="filter-item">
+          <span class="filter-label">开始日期</span>
+          <el-date-picker
+            v-model="startDate"
+            type="date"
+            placeholder="全部"
+            format="YYYY-MM-DD"
+            value-format="YYYY-MM-DD"
+            @change="handleSearch"
+          />
+        </div>
+        <div class="filter-item">
+          <span class="filter-label">结束日期</span>
+          <el-date-picker
+            v-model="endDate"
+            type="date"
+            placeholder="全部"
+            format="YYYY-MM-DD"
+            value-format="YYYY-MM-DD"
+            @change="handleSearch"
+          />
+        </div>
+        <div class="filter-item">
+          <span class="filter-label">日期排序</span>
+          <FilterSelect
+            v-model="historyFilters.sortOrder"
+            placeholder="升序"
+            filterable
+            style="width: 120px"
+            @change="handleSearch"
+          >
+            <el-option
+              v-for="opt in sortOrderOptions"
+              :key="opt.value"
+              :label="opt.label"
+              :value="opt.value"
             />
+          </FilterSelect>
+        </div>
+        <div class="filter-item">
+          <span class="filter-label">责任区</span>
+          <FilterSelect
+            v-model="historyFilters.areaName"
+            placeholder="全部"
+            clearable
+            filterable
+            @change="handleSearch"
+            @clear="handleSearch"
+          >
+            <el-option label="全部" value="all" />
+            <el-option
+              v-for="option in areaOptions"
+              :key="option.value"
+              :label="option.label"
+              :value="option.value"
+            />
+          </FilterSelect>
+        </div>
+        <div class="filter-item">
+          <span class="filter-label">检查结果</span>
+          <FilterSelect
+            v-model="historyFilters.result"
+            placeholder="全部"
+            clearable
+            filterable
+            @change="handleSearch"
+            @clear="handleSearch"
+          >
+            <el-option label="全部" value="all" />
+            <el-option
+              v-for="opt in historyResultOptions"
+              :key="opt.value"
+              :label="opt.label"
+              :value="opt.value"
+            />
+          </FilterSelect>
+        </div>
+        </FilterBar>
+      </el-card>
 
-            <el-divider content-position="left">其他</el-divider>
-            <el-form-item label="不合格说明">
-              <el-input
-                v-model="inspectionForm.unqualifiedDescription"
-                type="textarea"
-                :rows="3"
-                placeholder="如有不合格项请详细说明"
-              />
-            </el-form-item>
-          </el-form>
-          <template #footer>
-            <el-button @click="inspectionDialogVisible = false">取消</el-button>
-            <el-button type="primary" @click="submitInspection" :loading="submitting">
-              提交自检
-            </el-button>
-          </template>
-        </FormDialog>
-
-        <!-- 历史记录 -->
         <div class="history-section">
-          <h3>历史记录</h3>
+          <h3>记录列表</h3>
           <el-table :data="historyList" stripe border>
             <el-table-column prop="inspectionDate" label="日期" width="120">
               <template #default="{ row }">
                 {{ formatDate(row.inspectionDate) }}
               </template>
             </el-table-column>
-            <el-table-column label="工作性质" min-width="160">
+            <el-table-column label="责任区" min-width="160">
               <template #default="{ row }">
                 {{ getWorkTypeNames(row) }}
               </template>
@@ -123,17 +197,20 @@
               </template>
             </el-table-column>
           </el-table>
-
-          <div class="pagination-wrapper">
-            <el-pagination
-              v-model:current-page="pagination.page"
-              v-model:page-size="pagination.pageSize"
-              :total="pagination.total"
-              layout="total, prev, pager, next"
-              @current-change="loadHistory"
-            />
-          </div>
         </div>
+
+        <div class="pagination-wrapper">
+          <el-pagination
+            v-model:current-page="pagination.page"
+            v-model:page-size="pagination.pageSize"
+            :page-sizes="[5, 10, 20, 50]"
+            :total="pagination.total"
+            layout="total, sizes, prev, pager, next"
+            @current-change="handlePageChange"
+            @size-change="handlePageSizeChange"
+          />
+        </div>
+    </template>
 
     <!-- 详情对话框 -->
     <FormDialog
@@ -199,34 +276,74 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue';
+import { ref, onMounted, computed, watch } from 'vue';
 import { useUserStore } from '@/store/modules/user';
 import { useUpload } from '@/composables/useUpload';
 import { ElMessage } from 'element-plus';
 import { CircleCheck, Warning } from '@element-plus/icons-vue';
+import { useRoute, useRouter } from 'vue-router';
 import dayjs from 'dayjs';
 import request from '@/api/request';
 import { getHygieneAreasByPosition } from '@/api/hygieneManagement';
 import HygieneAreaChecklist from '@/components/inspection/HygieneAreaChecklist.vue';
+import FilterBar from '@/components/common/FilterBar.vue';
 import FormDialog from '@/components/system/FormDialog.vue';
 
 const userStore = useUserStore();
+const route = useRoute();
+const router = useRouter();
 
-const { uploadUrl, uploadHeaders } = useUpload();
+const isRecordsView = computed(() => route.query.view === 'records');
+const goRecordsView = () => router.push({ query: { ...route.query, view: 'records' } });
+const goFormView = () => {
+  const query = { ...route.query };
+  delete query.view;
+  router.push({ query });
+};
+
+const { uploadUrl, uploadHeaders, resolveUploadUrl } = useUpload();
 const formRef = ref(null);
 
 const currentDate = ref(dayjs().format('YYYY-MM-DD'));
-const dateRange = ref([]);
+const today = dayjs().format('YYYY-MM-DD');
+const startDate = ref(dayjs().subtract(5, 'day').format('YYYY-MM-DD'));
+const endDate = ref(today);
 const todayInspection = ref(null);
+const historySource = ref([]);
 const historyList = ref([]);
 const currentRecord = ref(null);
-const inspectionDialogVisible = ref(false);
 const detailVisible = ref(false);
 const submitting = ref(false);
+const formHint = ref('');
+const incompleteStatusTitle = computed(() => {
+  if (formHint.value) return formHint.value;
+  return '今日尚未完成卫生自检';
+});
+const incompleteStatusTime = computed(() => {
+  if (formHint.value) return '';
+  return '请尽快完成卫生自检';
+});
+const formLoading = ref(false);
+
+const defaultHistoryFilters = {
+  areaName: 'all',
+  result: 'all',
+  sortOrder: 'asc'
+};
+const historyFilters = ref({ ...defaultHistoryFilters });
+const historyResultOptions = [
+  { label: '全部合格', value: 'pass' },
+  { label: '有异常', value: 'fail' },
+  { label: '未完成', value: 'incomplete' }
+];
+const sortOrderOptions = [
+  { label: '升序', value: 'asc' },
+  { label: '降序', value: 'desc' }
+];
 
 const pagination = ref({
   page: 1,
-  pageSize: 10,
+  pageSize: 5,
   total: 0
 });
 
@@ -238,6 +355,29 @@ const inspectionForm = ref({
 const areaPointsMap = ref({});
 const areaNameMap = ref({});
 
+const normalizeAreaName = (value) => {
+  const name = typeof value === 'string' ? value.trim() : '';
+  if (!name || name === '未分类责任区') return '未配置责任区';
+  return name;
+};
+
+const areaOptions = computed(() => {
+  const names = new Set();
+  const mapValues = Object.values(areaNameMap.value ?? {});
+  mapValues.forEach(name => {
+    const normalized = normalizeAreaName(name);
+    if (normalized) names.add(normalized);
+  });
+  (historySource.value ?? []).forEach(record => {
+    const list = record.workTypeNames ?? [];
+    list.forEach(name => {
+      const normalized = normalizeAreaName(name);
+      if (normalized) names.add(normalized);
+    });
+  });
+  return Array.from(names).map(name => ({ label: name, value: name }));
+});
+
 
 const formatDate = (date) => date ? dayjs(date).format('YYYY-MM-DD') : '-';
 const formatDateTime = (date) => date ? dayjs(date).format('YYYY-MM-DD HH:mm') : '-';
@@ -245,6 +385,20 @@ const formatDateTime = (date) => date ? dayjs(date).format('YYYY-MM-DD HH:mm') :
 const isRemarkItem = (item) => item?.itemId === 'remark' || item?.itemName === '不合格说明';
 const isAreaPhotoItem = (item) => item?.itemType === 'area_photo' || item?.itemName === '责任区照片';
 const isMetaItem = (item) => isRemarkItem(item) || isAreaPhotoItem(item);
+const normalizePhotoUrls = (value) => {
+  if (Array.isArray(value)) return value.map(item => resolveUploadUrl(item)).filter(Boolean);
+  if (typeof value === 'string') {
+    try {
+      const parsed = JSON.parse(value);
+      return Array.isArray(parsed)
+        ? parsed.map(item => resolveUploadUrl(item)).filter(Boolean)
+        : [];
+    } catch (error) {
+      return [];
+    }
+  }
+  return [];
+};
 
 const getItemStatusValue = (item) => {
   if (item?.status === 0 || item?.status === 1) return item.status;
@@ -255,8 +409,8 @@ const getItemStatusValue = (item) => {
 };
 
 const getDetailItems = (record) => {
-  const items = record?.inspectionItems || [];
-  return items.filter(item => !isMetaItem(item));
+  const items = record?.inspectionItems ?? [];
+  return items.filter(item => !isRemarkItem(item));
 };
 
 const getInspectionResult = (record) => {
@@ -281,6 +435,24 @@ const getInspectionResult = (record) => {
   return { type: 'warning', text: `有${failCount}项异常` };
 };
 
+const getInspectionResultKey = (record) => {
+  const items = record?.inspectionItems || [];
+  if (!items.length) {
+    return 'incomplete';
+  }
+  const statuses = items
+    .filter(item => !isMetaItem(item))
+    .map(item => getItemStatusValue(item));
+  if (!statuses.length) {
+    return 'incomplete';
+  }
+  const unselectedCount = statuses.filter(value => value === null).length;
+  const failCount = statuses.filter(value => value === 0).length;
+  if (unselectedCount > 0) return 'incomplete';
+  if (failCount > 0) return 'fail';
+  return 'pass';
+};
+
 const getInspectionPoints = (record) => {
   const ids = record?.workTypeIds || [];
   let total = 0;
@@ -301,11 +473,12 @@ const normalizeRecord = (record) => {
   const normalizedItems = items.map(item => ({
     ...item,
     workTypeId: item.workTypeId ?? item.work_type_id ?? item.areaId ?? item.area_id ?? null,
-    workTypeName: item.workTypeName ?? item.work_type_name ?? item.areaName ?? item.area_name ?? '',
+    workTypeName: normalizeAreaName(item.workTypeName ?? item.work_type_name ?? item.areaName ?? item.area_name ?? ''),
     itemId: item.itemId ?? item.item_id ?? item.id ?? null,
     itemName: item.itemName ?? item.item_name ?? item.pointName ?? item.point_name ?? '',
     itemStandard: item.itemStandard ?? item.item_standard ?? item.workRequirements ?? item.work_requirements ?? '',
-    status: item.status ?? item.checkStatus ?? item.result ?? null
+    status: item.status ?? item.checkStatus ?? item.result ?? null,
+    photoUrls: normalizePhotoUrls(item.photoUrls ?? item.photo_urls)
   }));
 
   const remarkItem = normalizedItems.find(item => isRemarkItem(item));
@@ -344,12 +517,89 @@ const normalizeRecord = (record) => {
 
 const getWorkTypeNames = (record) => {
   const names = record?.workTypeNames;
-  if (Array.isArray(names) && names.length > 0) return names.join('、');
-  const ids = record?.workTypeIds || [];
+  if (Array.isArray(names) && names.length > 0) {
+    const normalized = names.map(normalizeAreaName).filter(Boolean);
+    if (normalized.length > 0) return normalized.join('、');
+  }
+  const ids = record?.workTypeIds ?? [];
   if (!Array.isArray(ids) || ids.length === 0) return '-';
-  const mapped = ids.map(id => areaNameMap.value[id]).filter(Boolean);
+  const mapped = ids.map(id => normalizeAreaName(areaNameMap.value[id])).filter(Boolean);
   if (mapped.length === 0) return '-';
   return mapped.join('、');
+};
+
+const filterHistoryList = (list) => {
+  const areaName = historyFilters.value.areaName;
+  const result = historyFilters.value.result;
+  return (list ?? []).filter(record => {
+    if (areaName && areaName !== 'all') {
+      let names = (record.workTypeNames ?? [])
+        .map(name => normalizeAreaName(name))
+        .filter(Boolean);
+      if (!names.length) {
+        const ids = record.workTypeIds ?? [];
+        if (Array.isArray(ids) && ids.length > 0) {
+          names = ids
+            .map(id => normalizeAreaName(areaNameMap.value[id]))
+            .filter(Boolean);
+        }
+      }
+      if (!names.includes(areaName)) return false;
+    }
+    if (result && result !== 'all') {
+      const key = getInspectionResultKey(record);
+      if (key !== result) return false;
+    }
+    return true;
+  });
+};
+
+const getHistoryDateValue = (record) => {
+  const dateValue = record?.inspectionDate || record?.inspection_date;
+  return dateValue ? dayjs(dateValue).valueOf() : 0;
+};
+
+const getHistoryTimeValue = (record) => {
+  const timeValue = record?.submitTime || record?.submit_time || record?.created_at || record?.createdAt || record?.inspectionDate || record?.inspection_date;
+  return timeValue ? dayjs(timeValue).valueOf() : 0;
+};
+
+const sortHistoryList = (list) => {
+  const direction = historyFilters.value.sortOrder === 'desc' ? -1 : 1;
+  return (list ?? []).slice().sort((a, b) => {
+    const dateDiff = getHistoryDateValue(a) - getHistoryDateValue(b);
+    if (dateDiff !== 0) return dateDiff * direction;
+    return (getHistoryTimeValue(a) - getHistoryTimeValue(b)) * direction;
+  });
+};
+
+const applyHistoryFilters = (source = historySource.value) => {
+  const filtered = sortHistoryList(filterHistoryList(source));
+  pagination.value.total = filtered.length;
+  const startIndex = (pagination.value.page - 1) * pagination.value.pageSize;
+  historyList.value = filtered.slice(startIndex, startIndex + pagination.value.pageSize);
+};
+
+const handleSearch = () => {
+  pagination.value.page = 1;
+  loadHistory();
+};
+
+const resetFilters = () => {
+  startDate.value = dayjs().subtract(5, 'day').format('YYYY-MM-DD');
+  endDate.value = today;
+  historyFilters.value = { ...defaultHistoryFilters };
+  pagination.value.page = 1;
+  loadHistory();
+};
+
+const handlePageChange = () => {
+  applyHistoryFilters();
+};
+
+const handlePageSizeChange = () => {
+  pagination.value.page = 1;
+  applyHistoryFilters();
 };
 
 const loadInspection = async () => {
@@ -371,19 +621,21 @@ const loadInspection = async () => {
 const loadHistory = async () => {
   try {
     const params = {
-      inspectionType: 'hygiene',
-      startDate: undefined,
-      endDate: undefined
+      inspectionType: 'hygiene'
     };
-    if (dateRange.value && dateRange.value.length === 2) {
-      params.startDate = dateRange.value[0];
-      params.endDate = dateRange.value[1];
+    if (startDate.value) {
+      params.startDate = startDate.value;
+    }
+    if (endDate.value) {
+      params.endDate = endDate.value;
+    }
+    if (historyFilters.value.sortOrder) {
+      params.sortOrder = historyFilters.value.sortOrder;
     }
     const res = await request.get('/self-inspections/my', { params });
     const normalized = (res || []).map(normalizeRecord);
-    pagination.value.total = normalized.length;
-    const startIndex = (pagination.value.page - 1) * pagination.value.pageSize;
-    historyList.value = normalized.slice(startIndex, startIndex + pagination.value.pageSize);
+    historySource.value = normalized;
+    applyHistoryFilters(normalized);
   } catch (e) {
 
   }
@@ -419,7 +671,7 @@ const loadAssignedAreas = async () => {
     const nameMap = {};
     (areas || []).forEach(area => {
       pointsMap[area.id] = area.areaPoints ?? area.points ?? 0;
-      nameMap[area.id] = area.areaName ?? area.area_name ?? '';
+      nameMap[area.id] = normalizeAreaName(area.areaName ?? area.area_name ?? '');
     });
     areaPointsMap.value = pointsMap;
     areaNameMap.value = nameMap;
@@ -428,25 +680,36 @@ const loadAssignedAreas = async () => {
   }
 };
 
-const startInspection = async () => {
+const startInspection = async (options = {}) => {
+  const silent = options.silent === true;
+  formHint.value = '';
+  formLoading.value = true;
   try {
     const userSchedule = await resolveTodaySchedule();
     if (!userSchedule) {
-      ElMessage.warning('您今日没有排班，无法进行卫生自检');
+      formHint.value = '您今日没有排班，无法进行卫生自检';
+      if (!silent) {
+        ElMessage.warning(formHint.value);
+      }
+      inspectionForm.value = { areas: [], unqualifiedDescription: '' };
       return;
     }
 
     const positionName = userSchedule.position_name || userSchedule.positionName;
     if (!positionName) {
-      ElMessage.warning('您的排班信息中没有岗位，无法进行卫生自检');
+      formHint.value = '您的排班信息中没有岗位，无法进行卫生自检';
+      if (!silent) {
+        ElMessage.warning(formHint.value);
+      }
+      inspectionForm.value = { areas: [], unqualifiedDescription: '' };
       return;
     }
 
     const stationId = userSchedule.station_id || userSchedule.stationId;
     const stationName = userSchedule.station?.station_name
-      || userSchedule.station_name
-      || userSchedule.stationName
-      || '';
+      ?? userSchedule.station_name
+      ?? userSchedule.stationName
+      ?? '';
 
     
 
@@ -459,13 +722,23 @@ const startInspection = async () => {
     
 
     if (!areas || areas.length === 0) {
-      ElMessage.warning(`岗位"${positionName}"暂未分配卫生责任区，请联系管理员配置`);
+      formHint.value = `岗位"${positionName}"暂未分配卫生责任区，请联系管理员配置`;
+      if (!silent) {
+        ElMessage.warning(formHint.value);
+      }
+      inspectionForm.value = {
+        stationId,
+        stationName,
+        positionName,
+        areas: [],
+        unqualifiedDescription: ''
+      };
       return;
     }
 
     // 为每个卫生点添加检查状态
     const normalizedAreas = (areas || []).map(area => {
-      const areaName = area.areaName ?? area.area_name ?? '';
+      const areaName = normalizeAreaName(area.areaName ?? area.area_name ?? '');
       const points = (area.points || []).map(point => ({
         ...point,
         pointName: point.pointName ?? point.point_name ?? '',
@@ -500,17 +773,22 @@ const startInspection = async () => {
       unqualifiedDescription: ''
     };
 
-    inspectionDialogVisible.value = true;
   } catch (e) {
-    
-    
-    ElMessage.error('加载排班或责任区失败: ' + (e.message || '未知错误'));
+    ElMessage.error(`加载排班或责任区失败: ${e.message ?? '未知错误'}`);
+  } finally {
+    formLoading.value = false;
   }
 };
 
 const normalizeUploadFile = (file) => {
   const responseUrl = file?.response?.data?.url ?? file?.response?.url ?? '';
-  const url = responseUrl || file?.url || '';
+  let rawUrl = '';
+  if (responseUrl) {
+    rawUrl = responseUrl;
+  } else if (file?.url) {
+    rawUrl = file.url;
+  }
+  const url = resolveUploadUrl(rawUrl);
   return url ? { ...file, url } : file;
 };
 
@@ -627,9 +905,9 @@ const submitInspection = async () => {
       hasUnqualified
     });
     ElMessage.success('提交成功');
-    inspectionDialogVisible.value = false;
-    loadInspection();
-    loadHistory();
+    await loadInspection();
+    await loadHistory();
+    await startInspection({ silent: true });
   } catch (e) {
     ElMessage.error('提交失败');
     
@@ -646,6 +924,14 @@ const viewDetail = (row) => {
 onMounted(() => {
   loadAssignedAreas();
   loadInspection();
+  if (isRecordsView.value) {
+    loadHistory();
+  }
+  startInspection({ silent: true });
+});
+
+watch(isRecordsView, (value) => {
+  if (!value) return;
   loadHistory();
 });
 </script>
@@ -662,12 +948,73 @@ onMounted(() => {
       margin: 0;
       font-size: 20px;
     }
+
+    .page-title-link {
+      cursor: pointer;
+      color: var(--el-color-primary);
+    }
   }
 
-  .header-controls {
-    display: flex;
-    align-items: center;
+  .filter-card {
     margin-bottom: 20px;
+  }
+
+  .inspection-form-card {
+    margin-bottom: 20px;
+
+    .inspection-form-header {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      margin-bottom: 16px;
+    }
+
+    .form-title-row {
+      display: flex;
+      align-items: center;
+      justify-content: flex-start;
+      width: 100%;
+      gap: 12px;
+    }
+
+    .form-title {
+      font-size: 16px;
+      font-weight: 500;
+      color: #303133;
+    }
+
+    .form-subtitle {
+      font-size: 14px;
+      color: #606266;
+    }
+
+    .form-meta {
+      font-size: 12px;
+      color: #909399;
+    }
+
+    .form-actions {
+      display: flex;
+      gap: 8px;
+      justify-content: flex-end;
+      margin-top: 16px;
+    }
+
+    .form-hint {
+      margin-bottom: 16px;
+    }
+
+    .status-card {
+      margin-bottom: 16px;
+      box-shadow: none;
+    }
+  }
+
+  .filter-bar {
+    display: flex;
+    gap: 12px;
+    margin-bottom: 16px;
+    flex-wrap: wrap;
   }
 
   .status-card {
@@ -675,11 +1022,15 @@ onMounted(() => {
     border-radius: 8px;
     padding: 24px;
     margin-bottom: 24px;
-    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.1);
-    border-left: 4px solid #E6A23C;
+    border: 1px solid #e4e7ed;
 
     &.completed {
-      border-left-color: #67C23A;
+      border-color: #67c23a;
+      background: linear-gradient(135deg, #f0f9eb 0%, #fff 100%);
+
+      .status-icon {
+        color: #67c23a;
+      }
     }
 
     .status-content {
@@ -689,10 +1040,10 @@ onMounted(() => {
 
       .status-icon {
         font-size: 48px;
-        color: #67C23A;
+        color: #e6a23c;
 
         &.warning {
-          color: #E6A23C;
+          color: #e6a23c;
         }
       }
 
@@ -701,14 +1052,33 @@ onMounted(() => {
 
         .status-title {
           font-size: 18px;
-          font-weight: bold;
+          font-weight: 500;
           color: #303133;
+          margin-bottom: 4px;
         }
 
         .status-time {
           font-size: 14px;
           color: #909399;
-          margin-top: 4px;
+        }
+
+        .status-lines {
+          display: flex;
+          flex-direction: column;
+          gap: 6px;
+          margin-bottom: 6px;
+        }
+
+        .status-line {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+        }
+
+        .status-label {
+          min-width: 56px;
+          color: #606266;
+          font-size: 14px;
         }
       }
     }
@@ -718,25 +1088,18 @@ onMounted(() => {
     background: #fff;
     border-radius: 8px;
     padding: 20px;
-    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.1);
+    border: 1px solid #e4e7ed;
 
     h3 {
-      margin: 0 0 16px;
+      margin: 0 0 16px 0;
       font-size: 16px;
-      color: #303133;
-    }
-
-    .pagination-wrapper {
-      display: flex;
-      justify-content: flex-end;
-      margin-top: 16px;
     }
   }
 
   .pagination-wrapper {
     display: flex;
     justify-content: flex-end;
-    margin-top: 20px;
+    margin-top: 16px;
   }
 
   .empty-hint {

@@ -14,3 +14,20 @@ uploads/
 
 # local settings
 .claude/settings.local.json
+
+# local/dev artifacts
+.env
+.env.*
+!.env.example
+backups/
+db_dump_*.sql
+mysql_data_*.tar.gz
+.tmp_wx_images/
+_tmp/
+templates/
+frontend/test-results/
+frontend/playwright-report/
+
+temp_chinese.txt
+
+temp_instructions.json

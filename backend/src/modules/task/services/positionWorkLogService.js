@@ -1,4 +1,4 @@
-import { Op } from 'sequelize';
+﻿import { Op } from 'sequelize';
 import { PositionWorkLog, Schedule, PositionJob, User, Station, sequelize } from '../../../models/index.js';
 import { createError } from '../../../middlewares/error.js';
 import { getPagination, formatPaginationResponse, getOrderBy } from '../../../utils/helpers.js';
@@ -13,6 +13,13 @@ const resolveWorkDate = (value) => {
 };
 
 const normalizeQuantity = (value, fallback) => {
+  if (value === undefined || value === null || value === '') return fallback;
+  const parsed = Number.parseInt(value, 10);
+  if (Number.isNaN(parsed)) return null;
+  return parsed;
+};
+
+const normalizeUnitPointsValue = (value, fallback) => {
   if (value === undefined || value === null || value === '') return fallback;
   const parsed = Number.parseInt(value, 10);
   if (Number.isNaN(parsed)) return null;
@@ -45,10 +52,19 @@ const validateQuantity = (value) => {
   }
 };
 
+const validateUnitPointsValue = (value) => {
+  if (!Number.isInteger(value)) {
+    throw createError(400, '单位积分必须为整数');
+  }
+  if (value < 0 || value > 9999) {
+    throw createError(400, '单位积分必须是 0-9999 的整数');
+  }
+};
+
 const resolveReviewStatus = (taskSource, positionJob) => {
   if (taskSource === 'self_apply') return 'pending';
   if (taskSource === 'dispatch') {
-    return Number(positionJob.dispatch_review_required) === 1 ? 'pending' : 'auto_approved';
+    return Number(positionJob?.dispatch_review_required) === 1 ? 'pending' : 'auto_approved';
   }
   return 'auto_approved';
 };
@@ -73,6 +89,7 @@ const resolveStationInfo = async (stationId, stationName) => {
  * GET /api/position-work-logs/today-tasks
  */
 export const getTodayTasks = async (ctx) => {
+  const { page, pageSize, offset, limit } = getPagination(ctx.query);
   const user = ctx.state.user;
   const workDate = resolveWorkDate(ctx.query?.workDate);
   const dateValue = dayjs(workDate);
@@ -100,7 +117,11 @@ export const getTodayTasks = async (ctx) => {
         station_id: schedule.station_id,
         position_name: schedule.position_name,
         is_active: 1
-      }
+      },
+      order: [
+        ['sort_order', 'ASC'],
+        ['created_at', 'ASC']
+      ]
     });
 
     positionJobs.forEach(job => {
@@ -186,10 +207,13 @@ export const getTodayTasks = async (ctx) => {
     });
   });
 
+  const total = tasks.length;
+  const pagedTasks = tasks.slice(offset, offset + limit);
+
   ctx.body = {
     code: 200,
     message: 'success',
-    data: tasks
+    data: formatPaginationResponse({ rows: pagedTasks, count: total }, page, pageSize)
   };
 };
 
@@ -213,6 +237,7 @@ export const saveWorkLog = async (ctx) => {
     progress,
     remark,
     quantity,
+    unitPoints,
     taskSource
   } = ctx.request.body;
 
@@ -258,7 +283,7 @@ export const saveWorkLog = async (ctx) => {
     if (workLog.user_id !== user.id) {
       throw createError(403, '无权限提交该任务');
     }
-    if (workLog.submit_time) {
+    if (workLog.submit_time && workLog.review_status !== 'rejected') {
       throw createError(400, '任务已提交');
     }
     if (workLog.task_source !== 'dispatch') {
@@ -266,6 +291,11 @@ export const saveWorkLog = async (ctx) => {
     }
 
     const normalizedQuantity = resolveSubmitQuantity(quantity, workLog.quantity ?? defaultQuantity);
+    const resolvedUnitPoints = normalizeUnitPointsValue(unitPoints, positionJob.points);
+    if (resolvedUnitPoints === null) {
+      throw createError(400, '单位积分必须为整数');
+    }
+    validateUnitPointsValue(resolvedUnitPoints);
     await workLog.update({
       actual_hours: actualHoursValue,
       is_completed: completedValue,
@@ -274,7 +304,12 @@ export const saveWorkLog = async (ctx) => {
       is_overtime: isOvertime,
       submit_time: nowTime,
       review_status: resolveReviewStatus('dispatch', positionJob),
-      unit_points: positionJob.points,
+      approver_id: null,
+      approver_name: null,
+      approve_time: null,
+      deduction_reason: null,
+      deduction_points: null,
+      unit_points: resolvedUnitPoints,
       quantity: normalizedQuantity,
       quantity_editable: quantityEditable ? 1 : 0,
       task_category: positionJob.task_category ?? null,

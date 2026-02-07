@@ -10,7 +10,11 @@
       <el-tab-pane label="已完成" name="completed" />
     </el-tabs>
 
-    <el-table :data="repairList" stripe border>
+    <el-card class="filter-card">
+      <FilterBar />
+    </el-card>
+
+    <el-table :data="repairTableRows" stripe border>
       <el-table-column prop="faultReport.equipmentName" label="设备名称" min-width="150" />
       <el-table-column prop="faultReport.faultType" label="故障类型" width="120" />
       <el-table-column prop="faultReport.urgencyLevel" label="紧急程度" width="100">
@@ -29,6 +33,18 @@
         </template>
       </el-table-column>
     </el-table>
+
+    <div class="pagination-wrapper">
+      <el-pagination
+        v-model:current-page="pagination.page"
+        v-model:page-size="pagination.pageSize"
+        :page-sizes="[5, 10, 20, 50]"
+        :total="pagination.total"
+        layout="total, sizes, prev, pager, next"
+        @current-change="handlePageChange"
+        @size-change="handlePageSizeChange"
+      />
+    </div>
 
     <FormDialog
       v-model="completeDialogVisible"
@@ -54,13 +70,16 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue';
+import { ref, onMounted, computed, watch } from 'vue';
 import { ElMessage } from 'element-plus';
+
+import FilterBar from '@/components/common/FilterBar.vue';
 import request from '@/api/request';
 import FormDialog from '@/components/system/FormDialog.vue';
 
 const activeTab = ref('pending');
 const repairList = ref([]);
+const pagination = ref({ page: 1, pageSize: 5, total: 0 });
 const completeDialogVisible = ref(false);
 const currentRepair = ref(null);
 const completeForm = ref({ description: '', replacedParts: '', cost: 0 });
@@ -69,7 +88,25 @@ const loadList = async () => {
   try {
     const res = await request.get('/repair-records', { params: { status: activeTab.value } });
     repairList.value = res.list || [];
+    pagination.value.page = 1;
+    pagination.value.total = repairList.value.length;
   } catch (e) {  }
+};
+
+const repairTableRows = computed(() => {
+  const list = Array.isArray(repairList.value) ? repairList.value : [];
+  const startIndex = (pagination.value.page - 1) * pagination.value.pageSize;
+  const endIndex = startIndex + pagination.value.pageSize;
+  return list.slice(startIndex, endIndex);
+});
+
+const handlePageChange = (page) => {
+  pagination.value.page = page;
+};
+
+const handlePageSizeChange = (size) => {
+  pagination.value.pageSize = size;
+  pagination.value.page = 1;
 };
 
 const startRepair = async (row) => {
@@ -96,6 +133,16 @@ const viewDetail = (row) => {
 };
 
 onMounted(() => loadList());
+
+watch(
+  () => repairList.value.length,
+  (total) => {
+    pagination.value.total = total;
+    const size = pagination.value.pageSize;
+    const maxPage = Math.max(1, Math.ceil(total / size));
+    if (pagination.value.page > maxPage) pagination.value.page = maxPage;
+  }
+);
 </script>
 
 <style lang="scss" scoped>

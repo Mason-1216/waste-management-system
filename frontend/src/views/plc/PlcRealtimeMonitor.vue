@@ -1,28 +1,37 @@
-<template>
+﻿<template>
   <div class="realtime-monitor">
-    <FilterBar>
-      <el-select v-model="filterForm.stationId" placeholder="场站" clearable style="width: 180px">
-        <el-option
-          v-for="station in stations"
-          :key="station.id"
-          :label="station.station_name"
-          :value="station.id"
-        />
-      </el-select>
-      <el-select v-model="filterForm.categoryId" placeholder="分类" clearable style="width: 180px">
-        <el-option
-          v-for="cat in categories"
-          :key="cat.id"
-          :label="cat.category_name"
-          :value="cat.id"
-        />
-      </el-select>
-      <el-button type="primary" @click="fetchData">刷新数据</el-button>
+    <el-card class="filter-card">
+      <FilterBar>
+      <div class="filter-item">
+        <span class="filter-label">场站</span>
+        <FilterSelect v-model="filterForm.stationId" placeholder="全部" filterable clearable style="width: 180px" @change="handleSearch" @clear="handleSearch">
+          <el-option label="全部" value="all" />
+          <el-option
+            v-for="station in stations"
+            :key="station.id"
+            :label="station.station_name"
+            :value="station.id"
+          />
+        </FilterSelect>
+      </div>
+      <div class="filter-item">
+        <span class="filter-label">分类</span>
+        <FilterSelect v-model="filterForm.categoryId" placeholder="全部" filterable clearable style="width: 180px" @change="handleSearch" @clear="handleSearch">
+          <el-option label="全部" value="all" />
+          <el-option
+            v-for="cat in categories"
+            :key="cat.id"
+            :label="cat.category_name"
+            :value="cat.id"
+          />
+        </FilterSelect>
+      </div>
       <el-switch
         v-model="autoRefresh"
         active-text="自动刷新"
       />
-    </FilterBar>
+      </FilterBar>
+    </el-card>
 
     <el-card class="status-card">
       <template #header>
@@ -51,71 +60,71 @@
       </div>
     </el-card>
 
-    <el-card class="data-card">
-      <template #header>
-        <span>实时监控数据</span>
-      </template>
+    <div class="data-section">
+      <div class="section-title">实时监控数据</div>
 
-      <el-table
-        v-loading="loading"
-        :data="pagedData"
-        stripe
-        border
-        style="width: 100%"
-      >
-        <el-table-column prop="name" label="监控点名称" min-width="150" />
-        <el-table-column prop="station.station_name" label="场站" width="120">
-          <template #default="{ row }">
-            {{ row.station?.station_name || '-' }}
-          </template>
-        </el-table-column>
-        <el-table-column prop="category.category_name" label="分类" width="100">
-          <template #default="{ row }">
-            {{ row.category?.category_name || '-' }}
-          </template>
-        </el-table-column>
-        <el-table-column prop="address" label="地址" width="140" />
-        <el-table-column prop="dataType" label="数据类型" width="100" />
-        <el-table-column prop="value" label="当前值" width="120" align="right">
-          <template #default="{ row }">
-            <span :class="{ 'value-error': !row.success }">
-              {{ formatValue(row.value, row.dataType) }}
-            </span>
-          </template>
-        </el-table-column>
-        <el-table-column prop="unit" label="单位" width="80" align="center">
-          <template #default="{ row }">
-            {{ row.unit || '-' }}
-          </template>
-        </el-table-column>
-        <el-table-column label="连接" width="100" align="center">
-          <template #default="{ row }">
-            <el-tag :type="ipStatusMap[row.plcIp] ? 'success' : 'danger'" size="small">
-              {{ ipStatusMap[row.plcIp] ? '在线' : '离线' }}
-            </el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column prop="success" label="状态" width="80" align="center">
-          <template #default="{ row }">
-            <el-tag :type="row.success ? 'success' : 'danger'" size="small">
-              {{ row.success ? '正常' : '异常' }}
-            </el-tag>
-          </template>
-        </el-table-column>
-      </el-table>
+      <TableWrapper>
+        <el-table
+          v-loading="loading"
+          :data="pagedData"
+          stripe
+          border
+          style="width: 100%"
+        >
+          <el-table-column prop="name" label="监控点名称" min-width="150" />
+          <el-table-column prop="station.station_name" label="场站" width="120">
+            <template #default="{ row }">
+              {{ row.station?.station_name || '-' }}
+            </template>
+          </el-table-column>
+          <el-table-column prop="category.category_name" label="分类" width="100">
+            <template #default="{ row }">
+              {{ row.category?.category_name || '-' }}
+            </template>
+          </el-table-column>
+          <el-table-column prop="address" label="地址" width="140" />
+          <el-table-column prop="dataType" label="数据类型" width="100" />
+          <el-table-column prop="value" label="当前值" width="120" align="right">
+            <template #default="{ row }">
+              <span :class="{ 'value-error': !row.success }">
+                {{ formatValue(row.value, row.dataType) }}
+              </span>
+            </template>
+          </el-table-column>
+          <el-table-column prop="unit" label="单位" width="80" align="center">
+            <template #default="{ row }">
+              {{ row.unit || '-' }}
+            </template>
+          </el-table-column>
+          <el-table-column label="连接" width="100" align="center">
+            <template #default="{ row }">
+              <el-tag :type="ipStatusMap[row.plcIp] ? 'success' : 'danger'" size="small">
+                {{ ipStatusMap[row.plcIp] ? '在线' : '离线' }}
+              </el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column prop="success" label="状态" width="80" align="center">
+            <template #default="{ row }">
+              <el-tag :type="row.success ? 'success' : 'danger'" size="small">
+                {{ row.success ? '正常' : '异常' }}
+              </el-tag>
+            </template>
+          </el-table-column>
+        </el-table>
+      </TableWrapper>
 
       <div class="pagination-wrapper">
         <el-pagination
           v-model:current-page="pagination.page"
           v-model:page-size="pagination.pageSize"
-          :page-sizes="[10, 20, 50, 100]"
+          :page-sizes="[5, 10, 20, 50, 100]"
           :total="pagination.total"
           layout="total, sizes, prev, pager, next, jumper"
           @size-change="handleSizeChange"
           @current-change="handleCurrentChange"
         />
       </div>
-    </el-card>
+    </div>
   </div>
 </template>
 
@@ -136,13 +145,13 @@ const categories = ref([]);
 let refreshTimer = null;
 
 const filterForm = reactive({
-  stationId: '',
-  categoryId: ''
+  stationId: 'all',
+  categoryId: 'all'
 });
 
 const pagination = reactive({
   page: 1,
-  pageSize: 10,
+  pageSize: 5,
   total: 0
 });
 
@@ -219,8 +228,8 @@ const fetchData = async () => {
   loading.value = true;
   try {
     const params = {};
-    if (filterForm.stationId) params.stationId = filterForm.stationId;
-    if (filterForm.categoryId) params.categoryId = filterForm.categoryId;
+    if (filterForm.stationId && filterForm.stationId !== 'all') params.stationId = filterForm.stationId;
+    if (filterForm.categoryId && filterForm.categoryId !== 'all') params.categoryId = filterForm.categoryId;
 
     const res = await getRealtimeData(params);
     tableData.value = res || [];
@@ -238,6 +247,17 @@ const fetchData = async () => {
   } finally {
     loading.value = false;
   }
+};
+
+const handleSearch = () => {
+  pagination.page = 1;
+  fetchData();
+};
+
+const resetFilters = () => {
+  filterForm.stationId = 'all';
+  filterForm.categoryId = 'all';
+  handleSearch();
 };
 
 const handleSizeChange = (val) => {
@@ -286,14 +306,13 @@ onUnmounted(() => {
 
 <style scoped lang="scss">
 .realtime-monitor {
+  .filter-card {
+    margin-bottom: 20px;
+  }
+
   .filter-bar {
     display: flex;
     gap: 12px;
-    margin-bottom: 20px;
-    background: #fff;
-    padding: 16px;
-    border-radius: 8px;
-    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.1);
     flex-wrap: wrap;
     align-items: center;
   }
@@ -360,7 +379,14 @@ onUnmounted(() => {
     font-size: 12px;
   }
 
-  .data-card {
+  .data-section {
+    .section-title {
+      font-size: 16px;
+      font-weight: 600;
+      color: #303133;
+      margin-bottom: 12px;
+    }
+
     .value-error {
       color: #f56c6c;
     }

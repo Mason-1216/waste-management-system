@@ -18,6 +18,19 @@ SET @stmt := (
   SELECT IF(
     EXISTS (
       SELECT 1 FROM information_schema.COLUMNS
+      WHERE TABLE_SCHEMA = @db AND TABLE_NAME = 'position_jobs' AND COLUMN_NAME = 'sort_order'
+    ),
+    'SELECT 1',
+    'ALTER TABLE position_jobs ADD COLUMN sort_order INT NOT NULL DEFAULT 1 COMMENT ''????'' AFTER job_name'
+  )
+);
+PREPARE s FROM @stmt; EXECUTE s; DEALLOCATE PREPARE s;
+
+
+SET @stmt := (
+  SELECT IF(
+    EXISTS (
+      SELECT 1 FROM information_schema.COLUMNS
       WHERE TABLE_SCHEMA = @db AND TABLE_NAME = 'position_jobs' AND COLUMN_NAME = 'score_method'
     ),
     'SELECT 1',

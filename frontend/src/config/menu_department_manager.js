@@ -12,10 +12,10 @@ export const departmentManagerMenus = [
   {
     path: '/safety',
     name: '安全检查',
-    icon: 'Shield',
+    icon: 'CircleCheck',
     children: [
       { path: '/safety-self-inspection', name: '安全自检' },
-      { path: '/safety-other-inspection', name: '员工检查记录' }
+      { path: '/safety-other-inspection', name: '安全他检' }
     ]
   },
   { path: '/safety-rectification', name: '安全隐患', icon: 'Warning' },
@@ -25,8 +25,8 @@ export const departmentManagerMenus = [
     icon: 'Brush',
     children: [
       { path: '/hygiene-self-inspection', name: '卫生自检' },
-      { path: '/hygiene-other-inspection', name: '员工检查记录' },
-      { path: '/hygiene-work-arrangement', name: '卫生工作安排' }
+      { path: '/hygiene-other-inspection', name: '卫生他检' },
+      { path: '/hygiene-work-arrangement', name: '卫生工作管理' }
     ]
   },
   {
@@ -34,12 +34,21 @@ export const departmentManagerMenus = [
     name: '岗位工作',
     icon: 'Monitor',
     children: [
-      { path: '/position-work/field', name: '固定任务' },
-      { path: '/position-work/management', name: '岗位工作任务库' },
-      { path: '/position-work/records', name: '岗位工作完成情况记录' }
+      { path: '/position-work/field', name: '固定任务填报' },
+      { path: '/position-work/records', name: '岗位工作完成情况记录' },
+      { path: '/position-work/management', name: '岗位工作任务汇总表' }
     ]
   },
-  { path: '/temporary-tasks', name: '临时任务', icon: 'Operation' },
+  {
+    path: '/temporary-tasks',
+    name: '临时任务',
+    icon: 'Operation',
+    children: [
+      { path: '/temporary-tasks/fill', name: '临时任务填报' },
+      { path: '/temporary-tasks/history', name: '临时任务完成情况记录' },
+      { path: '/temporary-tasks/library', name: '临时工作任务汇总表' }
+    ]
+  },
   {
     path: '/maintenance-task',
     name: '设备保养',
@@ -56,8 +65,8 @@ export const departmentManagerMenus = [
     name: '设备故障',
     icon: 'List',
     children: [
-      { path: '/device-faults/records', name: '设备维修记录' },
-      { path: '/device-faults/task-library', name: '维修任务库' },
+      { path: '/device-faults/records', name: '故障上报' },
+      { path: '/device-faults/task-library', name: '维修任务汇总表' },
       { path: '/device-faults/equipment', name: '设备管理' }
     ]
   },
@@ -72,5 +81,6 @@ export const departmentManagerMenus = [
     ]
   },
   { path: '/reports', name: '维保数据报表', icon: 'DataAnalysis' },
+  { path: '/points-summary', name: '积分统计', icon: 'DataAnalysis' },
   { path: '/change-password', name: '修改密码', icon: 'Lock' }
 ];

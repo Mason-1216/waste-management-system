@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div class="organization-management-page">
     <div class="page-header">
       <h2>组织架构管理</h2>
@@ -8,18 +8,28 @@
       <!-- 场站管理 -->
       <el-tab-pane v-if="canViewStation" label="场站管理" name="station">
         <div class="tab-header">
-          <el-input
-            v-model="stationFilters.keyword"
-            placeholder="搜索场站名称"
-            clearable
-            style="width: 250px"
-            @keyup.enter="loadStations"
-          />
-          <el-button type="primary" @click="loadStations">搜索</el-button>
           <el-button v-if="canEditStation" type="primary" @click="showAddStationDialog">
             <el-icon><Plus /></el-icon>新增场站
           </el-button>
         </div>
+        <el-card class="filter-card">
+          <FilterBar>
+            <div class="filter-item">
+              <span class="filter-label">场站名称</span>
+              <FilterAutocomplete
+                v-model="stationFilters.keyword"
+                :fetch-suggestions="fetchStationKeywordSuggestions"
+                trigger-on-focus
+                placeholder="全部"
+                clearable
+                @select="loadStations"
+                @input="loadStations"
+                @clear="loadStations"
+                @keyup.enter="loadStations"
+              />
+            </div>
+          </FilterBar>
+        </el-card>
 
         <el-table :data="stationList" stripe border v-loading="stationLoading">
           <el-table-column prop="id" label="ID" width="80" />
@@ -53,7 +63,7 @@
             v-model:current-page="stationPagination.page"
             v-model:page-size="stationPagination.pageSize"
             :total="stationPagination.total"
-            :page-sizes="[10, 20, 50]"
+            :page-sizes="[5, 10, 20, 50]"
             layout="total, sizes, prev, pager, next"
             @current-change="loadStations"
             @size-change="loadStations"
@@ -64,18 +74,28 @@
       <!-- 部门管理 -->
       <el-tab-pane v-if="canViewDepartment" label="部门管理" name="department">
         <div class="tab-header">
-          <el-input
-            v-model="deptFilters.keyword"
-            placeholder="搜索部门名称"
-            clearable
-            style="width: 250px"
-            @keyup.enter="loadDepartments"
-          />
-          <el-button type="primary" @click="loadDepartments">搜索</el-button>
           <el-button v-if="canEditDepartment" type="primary" @click="showAddDeptDialog">
             <el-icon><Plus /></el-icon>新增部门
           </el-button>
         </div>
+        <el-card class="filter-card">
+          <FilterBar>
+            <div class="filter-item">
+              <span class="filter-label">部门名称</span>
+              <FilterAutocomplete
+                v-model="deptFilters.keyword"
+                :fetch-suggestions="fetchDeptKeywordSuggestions"
+                trigger-on-focus
+                placeholder="全部"
+                clearable
+                @select="loadDepartments"
+                @input="loadDepartments"
+                @clear="loadDepartments"
+                @keyup.enter="loadDepartments"
+              />
+            </div>
+          </FilterBar>
+        </el-card>
 
         <el-table :data="deptList" stripe border v-loading="deptLoading">
           <el-table-column prop="id" label="ID" width="80" />
@@ -114,7 +134,7 @@
             v-model:current-page="deptPagination.page"
             v-model:page-size="deptPagination.pageSize"
             :total="deptPagination.total"
-            :page-sizes="[10, 20, 50]"
+            :page-sizes="[5, 10, 20, 50]"
             layout="total, sizes, prev, pager, next"
             @current-change="loadDepartments"
             @size-change="loadDepartments"
@@ -125,18 +145,28 @@
       <!-- 公司管理 -->
       <el-tab-pane v-if="canViewCompany" label="公司管理" name="company">
         <div class="tab-header">
-          <el-input
-            v-model="companyFilters.keyword"
-            placeholder="搜索公司名称"
-            clearable
-            style="width: 250px"
-            @keyup.enter="loadCompanies"
-          />
-          <el-button type="primary" @click="loadCompanies">搜索</el-button>
           <el-button v-if="canEditCompany" type="primary" @click="showAddCompanyDialog">
             <el-icon><Plus /></el-icon>新增公司
           </el-button>
         </div>
+        <el-card class="filter-card">
+          <FilterBar>
+            <div class="filter-item">
+              <span class="filter-label">公司名称</span>
+              <FilterAutocomplete
+                v-model="companyFilters.keyword"
+                :fetch-suggestions="fetchCompanyKeywordSuggestions"
+                trigger-on-focus
+                placeholder="全部"
+                clearable
+                @select="loadCompanies"
+                @input="loadCompanies"
+                @clear="loadCompanies"
+                @keyup.enter="loadCompanies"
+              />
+            </div>
+          </FilterBar>
+        </el-card>
 
         <el-table :data="companyList" stripe border v-loading="companyLoading">
           <el-table-column prop="id" label="ID" width="80" />
@@ -175,7 +205,7 @@
             v-model:current-page="companyPagination.page"
             v-model:page-size="companyPagination.pageSize"
             :total="companyPagination.total"
-            :page-sizes="[10, 20, 50]"
+            :page-sizes="[5, 10, 20, 50]"
             layout="total, sizes, prev, pager, next"
             @current-change="loadCompanies"
             @size-change="loadCompanies"
@@ -186,18 +216,24 @@
       <!-- 角色管理 -->
       <el-tab-pane v-if="canViewRole" label="角色管理" name="role">
         <div class="tab-header">
-          <el-input
-            v-model="roleFilters.keyword"
-            placeholder="搜索角色名称/编码"
-            clearable
-            style="width: 250px"
-            @keyup.enter="loadRoles"
-          />
-          <el-button type="primary" @click="loadRoles">搜索</el-button>
           <el-button v-if="canEditRole" type="primary" @click="showAddRoleDialog">
             <el-icon><Plus /></el-icon>新增角色
           </el-button>
         </div>
+        <el-card class="filter-card">
+          <FilterBar>
+            <div class="filter-item">
+              <span class="filter-label">角色名称</span>
+              <FilterAutocomplete
+                v-model="roleFilters.keyword"
+                :fetch-suggestions="fetchRoleKeywordSuggestions"
+                trigger-on-focus
+                placeholder="全部"
+                clearable
+              />
+            </div>
+          </FilterBar>
+        </el-card>
 
         <el-table :data="filteredRoleList" stripe border v-loading="roleLoading">
           <el-table-column prop="id" label="ID" width="80" />
@@ -373,7 +409,9 @@
 <script setup>
 import { ref, computed, nextTick, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { getStations, createStation, updateStation, deleteStation as deleteStationApi } from '@/api/station'
+
+import FilterBar from '@/components/common/FilterBar.vue'
+import { getAllStations, getStations, createStation, updateStation, deleteStation as deleteStationApi } from '@/api/station'
 import { getDepartments, createDepartment, updateDepartment, deleteDepartment as deleteDepartmentApi } from '@/api/department'
 import { getCompanies, createCompany, updateCompany, deleteCompany as deleteCompanyApi } from '@/api/company'
 import roleApi from '@/api/role'
@@ -381,6 +419,7 @@ import permissionApi from '@/api/permission'
 import ModulePermissionConfig from '@/components/ModulePermissionConfig.vue'
 import FormDialog from '@/components/system/FormDialog.vue'
 import { useUserStore } from '@/store/modules/user'
+import { createListSuggestionFetcher } from '@/utils/filterAutocomplete'
 
 const userStore = useUserStore()
 
@@ -417,10 +456,17 @@ const activeTab = ref('')
 // ==================== 场站管理 ====================
 const stationFormRef = ref(null)
 const stationList = ref([])
+// Auto-complete suggestions should not depend on table pagination (default pageSize=5).
+const stationSuggestionList = ref([])
 const stationLoading = ref(false)
 const stationDialogVisible = ref(false)
 const isStationEdit = ref(false)
 const stationSaving = ref(false)
+
+const fetchStationKeywordSuggestions = createListSuggestionFetcher(
+  () => stationSuggestionList.value,
+  (row) => row.stationName || row.station_name || row.name
+)
 
 const stationFilters = ref({
   keyword: ''
@@ -428,7 +474,7 @@ const stationFilters = ref({
 
 const stationPagination = ref({
   page: 1,
-  pageSize: 10,
+  pageSize: 5,
   total: 0
 })
 
@@ -440,6 +486,15 @@ const stationForm = ref({
 
 const stationRules = {
   stationName: [{ required: true, message: '请输入场站名称', trigger: 'blur' }]
+}
+
+const loadStationSuggestions = async () => {
+  try {
+    const res = await getAllStations()
+    stationSuggestionList.value = res?.data || res || []
+  } catch (e) {
+    stationSuggestionList.value = []
+  }
 }
 
 const loadStations = async () => {
@@ -497,6 +552,7 @@ const saveStation = async () => {
     }
     ElMessage.success('保存成功')
     stationDialogVisible.value = false
+    loadStationSuggestions()
     loadStations()
   } catch (e) {
     } finally {
@@ -510,6 +566,7 @@ const deleteStation = async (row) => {
   try {
     await deleteStationApi(row.id)
     ElMessage.success('删除成功')
+    loadStationSuggestions()
     loadStations()
   } catch (e) {
     }
@@ -518,10 +575,16 @@ const deleteStation = async (row) => {
 // ==================== 部门管理 ====================
 const deptFormRef = ref(null)
 const deptList = ref([])
+const deptSuggestionList = ref([])
 const deptLoading = ref(false)
 const deptDialogVisible = ref(false)
 const isDeptEdit = ref(false)
 const deptSaving = ref(false)
+
+const fetchDeptKeywordSuggestions = createListSuggestionFetcher(
+  () => deptSuggestionList.value,
+  (row) => row.dept_name
+)
 
 const deptFilters = ref({
   keyword: ''
@@ -529,7 +592,7 @@ const deptFilters = ref({
 
 const deptPagination = ref({
   page: 1,
-  pageSize: 10,
+  pageSize: 5,
   total: 0
 })
 
@@ -555,9 +618,24 @@ const loadDepartments = async () => {
     const res = await getDepartments(params)
     deptList.value = res.list || []
     deptPagination.value.total = res.total || 0
+    loadDeptSuggestions(params)
   } catch (e) {
     } finally {
     deptLoading.value = false
+  }
+}
+
+const loadDeptSuggestions = async (baseParams) => {
+  try {
+    const params = {
+      ...baseParams,
+      page: 1,
+      pageSize: 5000
+    }
+    const res = await getDepartments(params)
+    deptSuggestionList.value = res.list || []
+  } catch (e) {
+    deptSuggestionList.value = []
   }
 }
 
@@ -622,10 +700,16 @@ const deleteDept = async (row) => {
 // ==================== 公司管理 ====================
 const companyFormRef = ref(null)
 const companyList = ref([])
+const companySuggestionList = ref([])
 const companyLoading = ref(false)
 const companyDialogVisible = ref(false)
 const isCompanyEdit = ref(false)
 const companySaving = ref(false)
+
+const fetchCompanyKeywordSuggestions = createListSuggestionFetcher(
+  () => companySuggestionList.value,
+  (row) => row.company_name
+)
 
 const companyFilters = ref({
   keyword: ''
@@ -633,7 +717,7 @@ const companyFilters = ref({
 
 const companyPagination = ref({
   page: 1,
-  pageSize: 10,
+  pageSize: 5,
   total: 0
 })
 
@@ -659,9 +743,24 @@ const loadCompanies = async () => {
     const res = await getCompanies(params)
     companyList.value = res.list || []
     companyPagination.value.total = res.total || 0
+    loadCompanySuggestions(params)
   } catch (e) {
     } finally {
     companyLoading.value = false
+  }
+}
+
+const loadCompanySuggestions = async (baseParams) => {
+  try {
+    const params = {
+      ...baseParams,
+      page: 1,
+      pageSize: 5000
+    }
+    const res = await getCompanies(params)
+    companySuggestionList.value = res.list || []
+  } catch (e) {
+    companySuggestionList.value = []
   }
 }
 
@@ -768,15 +867,30 @@ const modulePermissions = ref([])
 const selectedModulePermissionIds = ref([])
 const allPermissions = ref([])
 
+const hiddenRoleCodes = new Set(['dev_test'])
+const isHiddenRole = (role) => hiddenRoleCodes.has(role.roleCode) || role.roleName === '开发测试'
+
 const filteredRoleList = computed(() => {
-  const keyword = roleFilters.value.keyword?.trim().toLowerCase() || ''
-  if (!keyword) return roleList.value
-  return roleList.value.filter(role => {
-    return `${role.roleName}${role.roleCode}`.toLowerCase().includes(keyword)
-  })
+  const visibleRoles = roleList.value.filter(role => !isHiddenRole(role))
+  const keyword = roleFilters.value.keyword?.trim()
+  if (!keyword) return visibleRoles
+  const normalized = keyword.toLowerCase()
+  return visibleRoles.filter(role => (role?.roleName || '').toLowerCase().includes(normalized))
 })
 
-const baseRoleOptions = computed(() => roleList.value)
+const fetchRoleKeywordSuggestions = createListSuggestionFetcher(
+  () => {
+    const list = filteredRoleList.value || []
+    const values = []
+    for (const role of list) {
+      if (role?.roleName) values.push(role.roleName)
+    }
+    return values
+  },
+  (value) => value
+)
+
+const baseRoleOptions = computed(() => roleList.value.filter(role => !isHiddenRole(role)))
 
 const menuCodeToModuleCode = (menuCode) => {
   if (!menuCode || !menuCode.startsWith('menu:/')) return null
@@ -958,6 +1072,7 @@ const deleteRole = async (row) => {
 
 onMounted(() => {
   activeTab.value = defaultTab.value
+  loadStationSuggestions()
   loadStations()
   loadDepartments()
   loadCompanies()
@@ -979,12 +1094,18 @@ onMounted(() => {
 
   .tab-header {
     display: flex;
+    flex-wrap: wrap;
     gap: 12px;
+    align-items: flex-start;
     margin-bottom: 20px;
     padding: 16px;
     background: #fff;
     border-radius: 8px;
     box-shadow: 0 2px 12px rgba(0, 0, 0, 0.1);
+  }
+
+  .filter-card {
+    margin-bottom: 20px;
   }
 
   .el-table {

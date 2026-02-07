@@ -1,98 +1,27 @@
-<template>
+﻿<template>
   <div class="safety-rectification-page">
     <div class="page-header">
-      <h2>安全隐患</h2>
-      <el-button v-if="canCreate" type="primary" @click="showCreateDialog">
-        <el-icon><Plus /></el-icon> 新增隐患
-      </el-button>
+      <h2>
+        <span v-if="isRecordsView" class="page-title-link" @click="goFormView">安全隐患</span>
+        <span v-else>安全隐患</span>
+      </h2>
+      <div v-if="!isRecordsView" class="header-actions">
+        <el-button @click="goRecordsView">查询</el-button>
+      </div>
     </div>
 
-    <!-- 筛选条件 -->
-    <FilterBar>
-      <el-input
-        v-model="filters.stationName"
-        placeholder="场站名称"
-        clearable
-        style="width: 180px"
-        @change="loadList"
-      />
-      <el-select v-model="filters.hazardCategory" placeholder="隐患类别" clearable style="width: 150px" @change="loadList">
-        <el-option v-for="cat in categoryList" :key="cat.id" :label="formatCategoryName(cat.category_name)" :value="cat.category_name" />
-      </el-select>
-      <el-select v-model="filters.status" placeholder="状态" clearable style="width: 120px" @change="loadList">
-        <el-option label="全部" value="" />
-        <el-option label="待整改" value="pending" />
-        <el-option label="已整改" value="rectified" />
-        <el-option label="已复核" value="reviewed" />
-      </el-select>
-      <el-date-picker
-        v-model="filters.dateRange"
-        type="daterange"
-        start-placeholder="开始日期"
-        end-placeholder="结束日期"
-        value-format="YYYY-MM-DD"
-        style="width: 240px"
-        @change="loadList"
-      />
-    </FilterBar>
+    <el-card v-if="!isRecordsView && canCreate" class="inspection-form-card">
+      <div class="inspection-form-header">
+        <div class="form-title-row">
+          <div class="form-subtitle">隐患表单</div>
+        </div>
+      </div>
 
-    <!-- 列表 -->
-    <el-table :data="list" v-loading="loading" style="width: 100%">
-      <el-table-column prop="record_code" label="表单编号" width="140" />
-      <el-table-column prop="station_name" label="场站" width="150" />
-      <el-table-column prop="hazard_category" label="隐患类别" width="120" />
-      <el-table-column label="发起日期" width="110">
-        <template #default="{ row }">{{ formatDate(row.inspection_date) }}</template>
-      </el-table-column>
-      <el-table-column label="发起时间" width="90">
-        <template #default="{ row }">{{ formatTime(row.submit_time) }}</template>
-      </el-table-column>
-      <el-table-column prop="inspector_name" label="发起人" width="90" />
-      <el-table-column prop="hazard_description" label="隐患描述" min-width="180" show-overflow-tooltip />
-      <el-table-column prop="status" label="状态" width="100">
-        <template #default="{ row }">
-          <el-tag :type="getStatusType(row.status)">{{ getStatusText(row.status) }}</el-tag>
-        </template>
-      </el-table-column>
-      <el-table-column label="操作" width="220">
-        <template #default="{ row }">
-          <el-button link type="primary" @click="viewDetail(row)">查看</el-button>
-          <el-button v-if="canEdit(row)" link type="warning" @click="showEditDialog(row)">编辑</el-button>
-          <el-button v-if="canReview(row)" link type="primary" @click="reviewRectification(row)">复核</el-button>
-          <el-button v-if="canDelete(row)" link type="danger" @click="deleteRecord(row)">删除</el-button>
-        </template>
-      </el-table-column>
-    </el-table>
-
-    <!-- 分页 -->
-    <div class="pagination-wrapper">
-      <el-pagination
-        v-model:current-page="pagination.page"
-        v-model:page-size="pagination.pageSize"
-        :total="pagination.total"
-        :page-sizes="[10, 20, 50]"
-        layout="total, sizes, prev, pager, next"
-        @size-change="loadList"
-        @current-change="loadList"
-      />
-    </div>
-
-    <!-- 新增/编辑隐患对话框 -->
-    <FormDialog
-      v-model="dialogVisible"
-      :title="isEdit ? '编辑隐患' : '新增隐患'"
-      width="650px"
-      :confirm-text="'提交'"
-      :cancel-text="'取消'"
-      :confirm-loading="submitting"
-      @confirm="submitForm"
-    >
-      <el-form :model="form" label-width="100px" :rules="formRules" ref="formRef">
-        <!-- 自动生成字段显示 -->
+      <el-form :model="createForm" label-width="100px" :rules="formRules" ref="createFormRef">
         <el-row :gutter="16">
           <el-col :span="12">
             <el-form-item label="表单编号">
-              <el-input v-model="form.recordCode" disabled placeholder="提交后自动生成" />
+              <el-input v-model="createForm.recordCode" disabled placeholder="提交后自动生成" />
             </el-form-item>
           </el-col>
           <el-col :span="12">
@@ -104,26 +33,26 @@
         <el-row :gutter="16">
           <el-col :span="12">
             <el-form-item label="发起日期">
-              <el-input :value="form.inspectionDate" disabled />
+              <el-input :value="createForm.inspectionDate" disabled />
             </el-form-item>
           </el-col>
           <el-col :span="12">
             <el-form-item label="发起时间">
-              <el-input :value="formatTime(form.submitTime)" disabled />
+              <el-input :value="formatTime(createForm.submitTime)" disabled />
             </el-form-item>
           </el-col>
         </el-row>
         <el-form-item label="场站" prop="stationId">
-          <el-select v-model="form.stationId" placeholder="选择场站" filterable style="width: 100%" @change="onStationChange">
+          <el-select v-model="createForm.stationId" placeholder="选择场站" filterable style="width: 100%" @change="onCreateStationChange">
             <el-option v-for="s in stationList" :key="s.id" :label="s.stationName" :value="s.id" />
           </el-select>
         </el-form-item>
         <el-form-item label="位置" prop="location">
-          <el-input v-model="form.location" placeholder="隐患具体位置（可手动修改）" />
+          <el-input v-model="createForm.location" placeholder="隐患具体位置（可手动修改）" />
         </el-form-item>
         <el-form-item label="隐患类别" prop="hazardCategory">
           <el-select
-            v-model="form.hazardCategory"
+            v-model="createForm.hazardCategory"
             placeholder="选择类别"
             filterable
             allow-create
@@ -139,18 +68,206 @@
           <div class="tip-text">可输入新类别并选择，将自动保存到类别库</div>
         </el-form-item>
         <el-form-item label="隐患描述" prop="hazardDescription">
-          <el-input v-model="form.hazardDescription" type="textarea" :rows="3" placeholder="详细描述隐患情况" />
+          <el-input v-model="createForm.hazardDescription" type="textarea" :rows="3" placeholder="详细描述隐患情况" />
         </el-form-item>
         <el-form-item label="隐患处照片">
           <BaseUpload
             :action="uploadUrl"
             :headers="uploadHeaders"
             list-type="picture-card"
-            :file-list="form.photoList"
+            :file-list="createForm.photoList"
             accept="image/*"
-            @change="(file, fileList) => updateFormPhotoList(fileList)"
-            @success="(response, file, fileList) => updateFormPhotoList(fileList)"
-            @remove="(file, fileList) => updateFormPhotoList(fileList)"
+            @change="(file, fileList) => updateCreatePhotoList(fileList)"
+            @success="(response, file, fileList) => updateCreatePhotoList(fileList)"
+            @remove="(file, fileList) => updateCreatePhotoList(fileList)"
+            @error="handleUploadError"
+          >
+            <el-icon><Plus /></el-icon>
+          </BaseUpload>
+        </el-form-item>
+      </el-form>
+
+      <div class="form-actions">
+        <el-button @click="resetCreateForm">重置</el-button>
+        <el-button type="danger" :loading="submittingCreate" @click="submitCreate">提交</el-button>
+      </div>
+    </el-card>
+
+    <template v-if="isRecordsView">
+      <!-- 筛选条件 -->
+      <el-card class="filter-card">
+        <FilterBar>
+          <div class="filter-item">
+            <span class="filter-label">场站名称</span>
+            <FilterAutocomplete
+              v-model="filters.stationName"
+              :fetch-suggestions="fetchStationNameSuggestions"
+              trigger-on-focus
+              placeholder="全部"
+              clearable
+              style="width: 180px"
+              @select="loadList"
+              @input="loadList"
+              @clear="loadList"
+              @change="loadList"
+            />
+          </div>
+          <div class="filter-item">
+            <span class="filter-label">隐患类别</span>
+            <FilterSelect v-model="filters.hazardCategory" placeholder="全部" filterable clearable style="width: 150px" @change="loadList" @clear="loadList">
+              <el-option label="全部" value="all" />
+              <el-option v-for="cat in categoryList" :key="cat.id" :label="formatCategoryName(cat.category_name)" :value="cat.category_name" />
+            </FilterSelect>
+          </div>
+          <div class="filter-item">
+            <span class="filter-label">状态</span>
+            <FilterSelect v-model="filters.status" placeholder="全部" filterable clearable style="width: 120px" @change="loadList" @clear="loadList">
+              <el-option label="全部" value="all" />
+              <el-option label="待整改" value="pending" />
+              <el-option label="已整改" value="rectified" />
+              <el-option label="已复核" value="reviewed" />
+            </FilterSelect>
+          </div>
+          <div class="filter-item">
+            <span class="filter-label">开始日期</span>
+            <el-date-picker
+              v-model="filters.startDate"
+              type="date"
+              placeholder="全部"
+              value-format="YYYY-MM-DD"
+              @change="loadList"
+            />
+          </div>
+          <div class="filter-item">
+            <span class="filter-label">结束日期</span>
+            <el-date-picker
+              v-model="filters.endDate"
+              type="date"
+              placeholder="全部"
+              value-format="YYYY-MM-DD"
+              @change="loadList"
+            />
+          </div>
+        </FilterBar>
+      </el-card>
+
+      <div class="history-section">
+        <h3>记录列表</h3>
+        <el-table :data="list" v-loading="loading" stripe border style="width: 100%">
+          <el-table-column prop="record_code" label="表单编号" width="140" />
+          <el-table-column prop="station_name" label="场站" width="150" />
+          <el-table-column prop="hazard_category" label="隐患类别" width="120" />
+          <el-table-column label="发起日期" width="110">
+            <template #default="{ row }">{{ formatDate(row.inspection_date) }}</template>
+          </el-table-column>
+          <el-table-column label="发起时间" width="90">
+            <template #default="{ row }">{{ formatTime(row.submit_time) }}</template>
+          </el-table-column>
+          <el-table-column prop="inspector_name" label="发起人" width="90" />
+          <el-table-column prop="hazard_description" label="隐患描述" min-width="180" show-overflow-tooltip />
+          <el-table-column prop="status" label="状态" width="100">
+            <template #default="{ row }">
+              <el-tag :type="getStatusType(row.status)">{{ getStatusText(row.status) }}</el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column label="操作" width="220">
+            <template #default="{ row }">
+              <el-button link type="primary" @click="viewDetail(row)">查看</el-button>
+              <el-button v-if="canEdit(row)" link type="warning" @click="showEditDialog(row)">编辑</el-button>
+              <el-button v-if="canReview(row)" link type="primary" @click="reviewRectification(row)">复核</el-button>
+              <el-button v-if="canDelete(row)" link type="danger" @click="deleteRecord(row)">删除</el-button>
+            </template>
+          </el-table-column>
+        </el-table>
+      </div>
+
+      <div class="pagination-wrapper">
+        <el-pagination
+          v-model:current-page="pagination.page"
+          v-model:page-size="pagination.pageSize"
+          :total="pagination.total"
+          :page-sizes="[5, 10, 20, 50]"
+          layout="total, sizes, prev, pager, next"
+          @size-change="loadList"
+          @current-change="loadList"
+        />
+      </div>
+    </template>
+
+    <!-- 编辑隐患对话框 -->
+    <FormDialog
+      v-model="dialogVisible"
+      title="编辑隐患"
+      width="650px"
+      :confirm-text="'提交'"
+      :cancel-text="'取消'"
+      :confirm-loading="submittingEdit"
+      @confirm="submitEdit"
+    >
+      <el-form :model="editForm" label-width="100px" :rules="formRules" ref="editFormRef">
+        <!-- 自动生成字段显示 -->
+        <el-row :gutter="16">
+          <el-col :span="12">
+            <el-form-item label="表单编号">
+              <el-input v-model="editForm.recordCode" disabled placeholder="提交后自动生成" />
+            </el-form-item>
+          </el-col>
+          <el-col :span="12">
+            <el-form-item label="发起人">
+              <el-input :value="userStore.realName" disabled />
+            </el-form-item>
+          </el-col>
+        </el-row>
+        <el-row :gutter="16">
+          <el-col :span="12">
+            <el-form-item label="发起日期">
+              <el-input :value="editForm.inspectionDate" disabled />
+            </el-form-item>
+          </el-col>
+          <el-col :span="12">
+            <el-form-item label="发起时间">
+              <el-input :value="formatTime(editForm.submitTime)" disabled />
+            </el-form-item>
+          </el-col>
+        </el-row>
+        <el-form-item label="场站" prop="stationId">
+          <el-select v-model="editForm.stationId" placeholder="选择场站" filterable style="width: 100%" @change="onEditStationChange">
+            <el-option v-for="s in stationList" :key="s.id" :label="s.stationName" :value="s.id" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="位置" prop="location">
+          <el-input v-model="editForm.location" placeholder="隐患具体位置（可手动修改）" />
+        </el-form-item>
+        <el-form-item label="隐患类别" prop="hazardCategory">
+          <el-select
+            v-model="editForm.hazardCategory"
+            placeholder="选择类别"
+            filterable
+            allow-create
+            style="width: 100%"
+            @change="onCategoryChange"
+          >
+            <el-option v-for="cat in categoryList" :key="cat.id" :label="formatCategoryName(cat.category_name)" :value="cat.category_name" />
+          </el-select>
+          <div class="category-actions" v-if="canManageCategory">
+            <el-button size="small" type="primary" @click="promptAddCategory">新增类别</el-button>
+            <el-button size="small" @click="openCategoryLibrary">类别库</el-button>
+          </div>
+          <div class="tip-text">可输入新类别并选择，将自动保存到类别库</div>
+        </el-form-item>
+        <el-form-item label="隐患描述" prop="hazardDescription">
+          <el-input v-model="editForm.hazardDescription" type="textarea" :rows="3" placeholder="详细描述隐患情况" />
+        </el-form-item>
+        <el-form-item label="隐患处照片">
+          <BaseUpload
+            :action="uploadUrl"
+            :headers="uploadHeaders"
+            list-type="picture-card"
+            :file-list="editForm.photoList"
+            accept="image/*"
+            @change="(file, fileList) => updateEditPhotoList(fileList)"
+            @success="(response, file, fileList) => updateEditPhotoList(fileList)"
+            @remove="(file, fileList) => updateEditPhotoList(fileList)"
             @error="handleUploadError"
           >
             <el-icon><Plus /></el-icon>
@@ -369,33 +486,46 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, onMounted, watch } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
-import { Plus } from '@element-plus/icons-vue';
+import { WarningFilled } from '@element-plus/icons-vue';
+import { useRoute, useRouter } from 'vue-router';
 import { useUserStore } from '@/store/modules/user';
 import { useUpload } from '@/composables/useUpload';
 import request from '@/api/request';
 import { getHazardCategories, createHazardCategory, deleteHazardCategory, getHazardRootCauses, createHazardRootCause, updateHazardRootCause, deleteHazardRootCause } from '@/api/hazardConfig';
 import dayjs from 'dayjs';
+
+import { createListSuggestionFetcher } from '@/utils/filterAutocomplete';
 import FormDialog from '@/components/system/FormDialog.vue';
 
 const userStore = useUserStore();
+const route = useRoute();
+const router = useRouter();
 
-const { uploadUrl, uploadHeaders } = useUpload();
+const isRecordsView = computed(() => route.query.view === 'records');
+const goRecordsView = () => router.push({ query: { ...route.query, view: 'records' } });
+const goFormView = () => {
+  const query = { ...route.query };
+  delete query.view;
+  router.push({ query });
+};
+
+const { uploadUrl, uploadHeaders, resolveUploadUrl } = useUpload();
 
 // 权限判断
-const canCreate = computed(() => userStore.roleCode === 'safety_inspector');
-const canManageCategory = computed(() => userStore.roleCode === 'safety_inspector');
-const canManageRootCause = computed(() => ['safety_inspector', 'station_manager', 'department_manager', 'deputy_manager'].includes(userStore.roleCode));
-const canEdit = (row) => userStore.roleCode === 'safety_inspector' && row.status === 'pending';
-const canDelete = (row) => userStore.roleCode === 'safety_inspector' && row.status === 'pending' && !row.rectification;
+const canCreate = computed(() => userStore.hasRole('safety_inspector'));
+const canManageCategory = computed(() => userStore.hasRole('safety_inspector'));
+const canManageRootCause = computed(() => userStore.hasRole(['safety_inspector', 'station_manager', 'department_manager', 'deputy_manager']));
+const canEdit = (row) => userStore.hasRole('safety_inspector') && row.status === 'pending';
+const canDelete = (row) => userStore.hasRole('safety_inspector') && row.status === 'pending' && !row.rectification;
 const canFillRectification = (row) => {
   // 站长可以填写整改（状态为待整改时）
-  return userStore.roleCode === 'station_manager' && row.status === 'pending';
+  return userStore.hasRole('station_manager') && row.status === 'pending';
 };
 const canReview = (row) => {
   // 安全员可以复核（状态为已整改时）
-  return userStore.roleCode === 'safety_inspector' && row.status === 'rectified' && row.rectification;
+  return userStore.hasRole('safety_inspector') && row.status === 'rectified' && row.rectification;
 };
 const currentRecord = ref(null);
 const canEditRect = computed(() => (currentRecord.value ? canFillRectification(currentRecord.value) : false));
@@ -408,9 +538,24 @@ const showReviewSection = computed(() => {
 // 列表数据
 
 const list = ref([]);
+const listSuggestion = ref([]);
 const loading = ref(false);
-const pagination = ref({ page: 1, pageSize: 10, total: 0 });
-const filters = ref({ stationName: '', hazardCategory: '', status: '', dateRange: null });
+
+const fetchStationNameSuggestions = createListSuggestionFetcher(
+  () => listSuggestion.value,
+  (row) => row.station_name
+);
+
+const pagination = ref({ page: 1, pageSize: 5, total: 0 });
+const today = dayjs().format('YYYY-MM-DD');
+const defaultFilters = {
+  stationName: '',
+  hazardCategory: 'all',
+  status: 'all',
+  startDate: dayjs().subtract(5, 'day').format('YYYY-MM-DD'),
+  endDate: today
+};
+const filters = ref({ ...defaultFilters });
 
 // 配置数据
 const stationList = ref([]);
@@ -435,21 +580,26 @@ const rootCauseList = ref([]);
 
 // 对话框
 const dialogVisible = ref(false);
-const isEdit = ref(false);
-const formRef = ref(null);
-const submitting = ref(false);
-const form = ref({
+const createFormRef = ref(null);
+const editFormRef = ref(null);
+const submittingCreate = ref(false);
+const submittingEdit = ref(false);
+
+const buildDefaultCreateForm = () => ({
   id: null,
   recordCode: '',
   inspectionDate: dayjs().format('YYYY-MM-DD'),
   submitTime: dayjs().format('HH:mm'),
-  stationId: null,
+  stationId: userStore.currentStationId || null,
   stationName: '',
   hazardCategory: '',
   location: '',
   hazardDescription: '',
   photoList: []
 });
+
+const createForm = ref(buildDefaultCreateForm());
+const editForm = ref(buildDefaultCreateForm());
 
 const formRules = {
   stationId: [{ required: true, message: '请选择场站', trigger: 'change' }],
@@ -500,11 +650,14 @@ const rectFormRules = {
 // 上传配置
 const decodeMojibake = (text) => {
   if (!text) return text;
+  const value = String(text);
+  if (/[\u4E00-\u9FFF]/.test(value)) return value;
+  if (!/[\u00C0-\u00FF]/.test(value)) return value;
   try {
-    const bytes = new Uint8Array(Array.from(text, char => char.charCodeAt(0)));
+    const bytes = new Uint8Array(Array.from(value, char => char.charCodeAt(0)));
     return new TextDecoder('utf-8').decode(bytes);
   } catch {
-    return text;
+    return value;
   }
 };
 
@@ -539,28 +692,71 @@ const loadList = async () => {
       pageSize: pagination.value.pageSize
     };
     if (filters.value.stationName) params.stationName = filters.value.stationName;
-    if (filters.value.hazardCategory) params.hazardCategory = filters.value.hazardCategory;
-    if (filters.value.status) params.status = filters.value.status;
-    if (filters.value.dateRange?.length === 2) {
-      params.startDate = filters.value.dateRange[0];
-      params.endDate = filters.value.dateRange[1];
+    if (filters.value.hazardCategory && filters.value.hazardCategory !== 'all') params.hazardCategory = filters.value.hazardCategory;
+    if (filters.value.status && filters.value.status !== 'all') params.status = filters.value.status;
+    if (filters.value.startDate) {
+      params.startDate = filters.value.startDate;
+    }
+    if (filters.value.endDate) {
+      params.endDate = filters.value.endDate;
     }
 
     const res = await request.get('/hazard-inspections', { params });
     list.value = (res.list || []).map(item => ({
       ...item,
-      photoUrls: item.photo_urls ? JSON.parse(item.photo_urls) : [],
+      photoUrls: item.photo_urls
+        ? JSON.parse(item.photo_urls).map(url => resolveUploadUrl(url)).filter(Boolean)
+        : [],
       rectification: item.rectification ? {
         ...item.rectification,
-        completionPhotos: item.rectification.completion_photos ? JSON.parse(item.rectification.completion_photos) : []
+        completionPhotos: item.rectification.completion_photos
+          ? JSON.parse(item.rectification.completion_photos).map(url => resolveUploadUrl(url)).filter(Boolean)
+          : []
       } : null
     }));
     pagination.value.total = res.total || 0;
+    loadListSuggestions(params);
   } catch (e) {
     ElMessage.error('加载列表失败');
   } finally {
     loading.value = false;
   }
+};
+
+const loadListSuggestions = async (baseParams) => {
+  try {
+    const params = {
+      ...baseParams,
+      page: 1,
+      pageSize: 5000
+    };
+    const res = await request.get('/hazard-inspections', { params });
+    listSuggestion.value = (res.list || []).map(item => ({
+      ...item,
+      photoUrls: item.photo_urls
+        ? JSON.parse(item.photo_urls).map(url => resolveUploadUrl(url)).filter(Boolean)
+        : [],
+      rectification: item.rectification ? {
+        ...item.rectification,
+        completionPhotos: item.rectification.completion_photos
+          ? JSON.parse(item.rectification.completion_photos).map(url => resolveUploadUrl(url)).filter(Boolean)
+          : []
+      } : null
+    }));
+  } catch (e) {
+    listSuggestion.value = [];
+  }
+};
+
+const handleSearch = () => {
+  pagination.value.page = 1;
+  loadList();
+};
+
+const resetFilters = () => {
+  filters.value = { ...defaultFilters };
+  pagination.value.page = 1;
+  loadList();
 };
 
 const loadStations = async () => {
@@ -620,9 +816,22 @@ const loadRootCauses = async () => {
   }
 };
 
-const onStationChange = (stationId) => {
+const onCreateStationChange = (stationId) => {
   const station = stationList.value.find(s => s.id === stationId);
-  form.value.stationName = station?.stationName || '';
+  createForm.value.stationName = station?.stationName || '';
+};
+
+const onEditStationChange = (stationId) => {
+  const station = stationList.value.find(s => s.id === stationId);
+  editForm.value.stationName = station?.stationName || '';
+};
+
+const resetCreateForm = () => {
+  createForm.value = buildDefaultCreateForm();
+  if (createForm.value.stationId) {
+    const station = stationList.value.find(s => s.id === createForm.value.stationId);
+    createForm.value.stationName = station?.stationName || '';
+  }
 };
 
 const onCategoryChange = async (value) => {
@@ -654,7 +863,8 @@ const promptAddCategory = async () => {
     }
     await createHazardCategory({ categoryName: name });
     await loadCategories();
-    form.value.hazardCategory = name;
+    const target = dialogVisible.value ? editForm : createForm;
+    target.value.hazardCategory = name;
     ElMessage.success('新增类别成功');
   } catch (e) {
     if (e !== 'cancel') ElMessage.error('新增类别失败');
@@ -670,8 +880,11 @@ const deleteCategoryRow = async (row) => {
     await ElMessageBox.confirm(`确认删除类别“${row.category_name}”吗？`, '确认删除', { type: 'warning' });
     await deleteHazardCategory(row.id);
     await loadCategories();
-    if (form.value.hazardCategory === row.category_name) {
-      form.value.hazardCategory = '';
+    if (createForm.value.hazardCategory === row.category_name) {
+      createForm.value.hazardCategory = '';
+    }
+    if (editForm.value.hazardCategory === row.category_name) {
+      editForm.value.hazardCategory = '';
     }
     ElMessage.success('删除类别成功');
   } catch (e) {
@@ -746,31 +959,8 @@ const deleteRootCauseRow = async (row) => {
   }
 };
 
-const showCreateDialog = () => {
-  isEdit.value = false;
-  form.value = {
-    id: null,
-    recordCode: '',
-    inspectionDate: dayjs().format('YYYY-MM-DD'),
-    submitTime: dayjs().format('HH:mm'),
-    stationId: userStore.currentStationId || null,
-    stationName: '',
-    hazardCategory: '',
-    location: '',
-    hazardDescription: '',
-    photoList: []
-  };
-  // 自动填充场站名称
-  if (form.value.stationId) {
-    const station = stationList.value.find(s => s.id === form.value.stationId);
-    form.value.stationName = station?.stationName || '';
-  }
-  dialogVisible.value = true;
-};
-
 const showEditDialog = (row) => {
-  isEdit.value = true;
-  form.value = {
+  editForm.value = {
     id: row.id,
     recordCode: row.record_code,
     inspectionDate: row.inspection_date,
@@ -787,12 +977,22 @@ const showEditDialog = (row) => {
 
 const normalizeUploadFile = (file) => {
   const responseUrl = file?.response?.data?.url ?? file?.response?.url ?? '';
-  const url = responseUrl ? responseUrl : (file?.url ?? '');
+  let rawUrl = '';
+  if (responseUrl) {
+    rawUrl = responseUrl;
+  } else if (file?.url) {
+    rawUrl = file.url;
+  }
+  const url = resolveUploadUrl(rawUrl);
   return url ? { ...file, url } : file;
 };
 
-const updateFormPhotoList = (fileList) => {
-  form.value.photoList = (fileList ?? []).map(normalizeUploadFile);
+const updateCreatePhotoList = (fileList) => {
+  createForm.value.photoList = (fileList ?? []).map(normalizeUploadFile);
+};
+
+const updateEditPhotoList = (fileList) => {
+  editForm.value.photoList = (fileList ?? []).map(normalizeUploadFile);
 };
 
 const updateRectPhotoList = (fileList) => {
@@ -803,37 +1003,61 @@ const handleUploadError = () => {
   ElMessage.error('图片上传失败，请检查图片大小或网络');
 };
 
-const submitForm = async () => {
+const submitCreate = async () => {
   try {
-    await formRef.value.validate();
+    await createFormRef.value.validate();
   } catch {
     return;
   }
 
-  submitting.value = true;
+  submittingCreate.value = true;
   try {
     const data = {
-      stationId: form.value.stationId,
-      stationName: form.value.stationName,
-      hazardCategory: form.value.hazardCategory,
-      location: form.value.location,
-      hazardDescription: form.value.hazardDescription,
-      photoUrls: form.value.photoList.map(f => f.url)
+      stationId: createForm.value.stationId,
+      stationName: createForm.value.stationName,
+      hazardCategory: createForm.value.hazardCategory,
+      location: createForm.value.location,
+      hazardDescription: createForm.value.hazardDescription,
+      photoUrls: createForm.value.photoList.map(f => f.url)
     };
 
-    if (isEdit.value) {
-      await request.put(`/hazard-inspections/${form.value.id}`, data);
-      ElMessage.success('更新成功');
-    } else {
-      await request.post('/hazard-inspections', data);
-      ElMessage.success('提交成功，表单状态为"待整改"');
-    }
+    await request.post('/hazard-inspections', data);
+    ElMessage.success('提交成功，表单状态为"待整改"');
+    resetCreateForm();
+    loadList();
+  } catch (e) {
+    ElMessage.error(e.message || '操作失败');
+  } finally {
+    submittingCreate.value = false;
+  }
+};
+
+const submitEdit = async () => {
+  try {
+    await editFormRef.value.validate();
+  } catch {
+    return;
+  }
+
+  submittingEdit.value = true;
+  try {
+    const data = {
+      stationId: editForm.value.stationId,
+      stationName: editForm.value.stationName,
+      hazardCategory: editForm.value.hazardCategory,
+      location: editForm.value.location,
+      hazardDescription: editForm.value.hazardDescription,
+      photoUrls: editForm.value.photoList.map(f => f.url)
+    };
+
+    await request.put(`/hazard-inspections/${editForm.value.id}`, data);
+    ElMessage.success('更新成功');
     dialogVisible.value = false;
     loadList();
   } catch (e) {
     ElMessage.error(e.message || '操作失败');
   } finally {
-    submitting.value = false;
+    submittingEdit.value = false;
   }
 };
 
@@ -957,12 +1181,17 @@ const viewDetail = (row) => {
   showRectificationDialog(row);
 };
 
-onMounted(() => {
-  loadList();
-  loadStations();
+onMounted(async () => {
+  await loadStations();
+  resetCreateForm();
   loadUsers();
   loadCategories();
   loadRootCauses();
+  if (isRecordsView.value) loadList();
+});
+
+watch(isRecordsView, (next) => {
+  if (next) loadList();
 });
 </script>
 
@@ -977,19 +1206,110 @@ onMounted(() => {
     margin-bottom: 20px;
 
     h2 { margin: 0; }
+
+    .page-title-link {
+      cursor: pointer;
+      color: var(--el-color-primary);
+    }
+  }
+
+  .inspection-form-card {
+    margin-bottom: 16px;
+
+    .inspection-form-header {
+      margin-bottom: 12px;
+    }
+
+    .form-title-row {
+      display: flex;
+      align-items: center;
+      justify-content: flex-start;
+      width: 100%;
+      gap: 12px;
+    }
+
+    .form-subtitle {
+      font-size: 14px;
+      color: #606266;
+    }
+
+    .form-actions {
+      display: flex;
+      gap: 8px;
+      justify-content: flex-end;
+      margin-top: 12px;
+    }
+  }
+
+  .report-banner {
+    background: #fff;
+    border-radius: 8px;
+    padding: 24px;
+    margin-bottom: 16px;
+    border: 1px solid #e4e7ed;
+    border-left: 4px solid #f56c6c;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+
+    .banner-content {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      flex: 1;
+      min-width: 0;
+    }
+
+    .banner-icon {
+      font-size: 44px;
+      color: #f56c6c;
+    }
+
+    .banner-info {
+      flex: 1;
+      min-width: 0;
+
+      .banner-title {
+        font-size: 18px;
+        font-weight: 600;
+        color: #303133;
+      }
+
+      .banner-desc {
+        font-size: 14px;
+        color: #909399;
+        margin-top: 4px;
+      }
+    }
   }
 
   .filter-bar {
     display: flex;
     gap: 12px;
-    margin-bottom: 20px;
     flex-wrap: wrap;
+  }
+
+  .filter-card {
+    margin-bottom: 20px;
+  }
+
+  .history-section {
+    background: #fff;
+    border-radius: 8px;
+    padding: 20px;
+    border: 1px solid #e4e7ed;
+
+    h3 {
+      margin: 0 0 16px 0;
+      font-size: 16px;
+    }
   }
 
   .pagination-wrapper {
     display: flex;
     justify-content: flex-end;
-    margin-top: 20px;
+    margin-top: 16px;
   }
 
   .tip-text {
@@ -1055,6 +1375,39 @@ onMounted(() => {
 
       &.active {
         color: #409eff;
+      }
+    }
+  }
+
+  
+  @media (min-width: 1025px) {
+    .report-banner {
+      .banner-actions {
+        order: -1;
+      }
+
+      .banner-content {
+        order: 0;
+      }
+    }
+  }
+
+  @media (max-width: 1024px) {
+    .report-banner {
+      padding: 16px;
+      flex-direction: column;
+      align-items: stretch;
+
+      .banner-content {
+        width: 100%;
+      }
+
+      .banner-actions {
+        width: 100%;
+      }
+
+      :deep(.el-button) {
+        width: 100%;
       }
     }
   }

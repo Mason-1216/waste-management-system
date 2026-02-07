@@ -5,6 +5,13 @@
         <h2>维保数据报表</h2>
         <p class="sub">围绕保养记录与故障维修记录，快速查看核心指标与明细</p>
       </div>
+
+      <div class="header-actions">
+        <el-button type="primary" @click="exportCurrent">
+          <el-icon><Upload /></el-icon>批量导出
+        </el-button>
+      </div>
+
     </div>
 
     <el-tabs v-model="activeTab" @tab-change="handleTabChange">
@@ -12,27 +19,51 @@
       <el-tab-pane label="设备故障统计" name="faults" />
     </el-tabs>
 
-    <FilterBar>
-      <el-date-picker
-        v-model="filters.dateRange"
-        type="daterange"
-        start-placeholder="开始日期"
-        end-placeholder="结束日期"
-        value-format="YYYY-MM-DD"
-        @change="refreshActive"
-      />
-      <el-select v-model="filters.stationId" placeholder="选择场站" clearable @change="refreshActive">
-        <el-option label="全部场站" :value="null" />
-        <el-option
-          v-for="s in stations"
-          :key="s.id"
-          :label="s.stationName"
-          :value="s.id"
-        />
-      </el-select>
-      <el-button type="primary" @click="refreshActive">查询</el-button>
-      <el-button @click="exportCurrent">导出 Excel</el-button>
-    </FilterBar>
+    <el-card class="filter-card">
+      <FilterBar>
+        <div class="filter-item">
+          <span class="filter-label">开始日期</span>
+          <el-date-picker
+            v-model="filters.startDate"
+            type="date"
+            placeholder="全部"
+            value-format="YYYY-MM-DD"
+            @change="refreshActive"
+          />
+        </div>
+        <div class="filter-item">
+          <span class="filter-label">结束日期</span>
+          <el-date-picker
+            v-model="filters.endDate"
+            type="date"
+            placeholder="全部"
+            value-format="YYYY-MM-DD"
+            @change="refreshActive"
+          />
+        </div>
+        <div class="filter-item">
+          <span class="filter-label">场站</span>
+          <FilterSelect
+            v-model="filters.stationId"
+            placeholder="全部"
+            :clearable="!isStationLocked"
+            filterable
+            :disabled="isStationLocked"
+            style="width: 200px"
+            @change="handleStationChange"
+            @clear="handleStationChange"
+          >
+            <el-option label="全部" :value="null" />
+            <el-option
+              v-for="s in stationOptions"
+              :key="s.id"
+              :label="s.stationName"
+              :value="s.id"
+            />
+          </FilterSelect>
+        </div>
+      </FilterBar>
+    </el-card>
 
     <ReportSummaryCards :items="summaryCards" />
 
@@ -64,25 +95,52 @@
       <h3>{{ activeTab === 'maintenance' ? '设备保养全年趋势' : '设备维修全年趋势' }}</h3>
 
       <div class="trend-filters">
-        <el-select v-model="selectedEquipment" placeholder="请选择设备" clearable style="width: 250px">
-          <el-option
-            v-for="eq in equipmentOptions"
-            :key="eq.code"
-            :label="`${eq.name} (${eq.code})`"
-            :value="eq.code"
-          />
-        </el-select>
+        <div class="filter-item">
+          <span class="filter-label">场站</span>
+          <FilterSelect
+            v-model="filters.stationId"
+            placeholder="全部"
+            :clearable="!isStationLocked"
+            filterable
+            :disabled="isStationLocked"
+            style="width: 200px"
+            @change="handleStationChange"
+            @clear="handleStationChange"
+          >
+            <el-option label="全部" :value="null" />
+            <el-option
+              v-for="s in stationOptions"
+              :key="s.id"
+              :label="s.stationName"
+              :value="s.id"
+            />
+          </FilterSelect>
+        </div>
 
-        <el-select v-model="selectedYear" placeholder="请选择年份" style="width: 150px">
-          <el-option
-            v-for="year in yearOptions"
-            :key="year"
-            :label="`${year}年`"
-            :value="year"
-          />
-        </el-select>
+        <div class="filter-item">
+          <span class="filter-label">设备</span>
+          <FilterSelect v-model="selectedEquipment" placeholder="全部" clearable filterable style="width: 280px">
+            <el-option
+              v-for="eq in equipmentOptions"
+              :key="eq.code"
+              :label="`${eq.name} (${eq.code})`"
+              :value="eq.code"
+            />
+          </FilterSelect>
+        </div>
 
-        <el-button type="primary" @click="loadTrendChart">查询</el-button>
+        <div class="filter-item">
+          <span class="filter-label">年份</span>
+          <FilterSelect v-model="selectedYear" placeholder="全部" style="width: 160px">
+            <el-option
+              v-for="year in yearOptions"
+              :key="year"
+              :label="`${year}年`"
+              :value="year"
+            />
+          </FilterSelect>
+        </div>
+
       </div>
 
       <div ref="trendChartRef" class="trend-chart"></div>
@@ -92,7 +150,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue';
+import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue';
 import { ElMessage } from 'element-plus';
 import dayjs from 'dayjs';
 import * as echarts from 'echarts';
@@ -100,8 +158,15 @@ import request from '@/api/request';
 import * as XLSX from 'xlsx';
 import ReportSummaryCards from '@/components/reports/ReportSummaryCards.vue';
 import ReportChartCard from '@/components/reports/ReportChartCard.vue';
+import FilterBar from '@/components/common/FilterBar.vue';
+import FilterSelect from '@/components/common/FilterSelect.vue';
+import { getAllStations } from '@/api/station';
+import { getEquipment } from '@/api/equipment';
+import { useUserStore } from '@/store/modules/user';
 
 const activeTab = ref('maintenance');
+const userStore = useUserStore();
+const effectiveRole = computed(() => userStore.baseRoleCode || userStore.roleCode || '');
 const stations = ref([]);
 const maintenanceRows = ref([]);
 const maintenancePlans = ref([]);
@@ -125,7 +190,8 @@ const cycleCharts = {
 };
 
 const filters = ref({
-  dateRange: [],
+  startDate: dayjs().subtract(5, 'day').format('YYYY-MM-DD'),
+  endDate: dayjs().format('YYYY-MM-DD'),
   stationId: null,
   keyword: '',
   maintenanceStatus: '',
@@ -135,15 +201,46 @@ const filters = ref({
 // 趋势图筛选
 const selectedEquipment = ref(null);
 const selectedYear = ref(dayjs().year());
+const equipmentList = ref([]);
 
-// 设备选项(从记录中提取)
+const isStationLocked = computed(() => {
+  if (Array.isArray(userStore.stations) && userStore.stations.length > 1) {
+    return false;
+  }
+  // 这些角色通常只能看自己场站的数据
+  if (['operator', 'maintenance', 'station_manager'].includes(effectiveRole.value)) {
+    return Boolean(userStore.currentStationId);
+  }
+  return false;
+});
+
+const stationOptions = computed(() => {
+  const list = Array.isArray(stations.value) ? stations.value : [];
+  const permittedStations = Array.isArray(userStore.stations) ? userStore.stations : [];
+  const permittedIds = permittedStations
+    .map(item => item?.id)
+    .filter(Boolean);
+
+  if (permittedIds.length > 0) {
+    const idSet = new Set(permittedIds);
+    return list.filter(item => idSet.has(item.id));
+  }
+
+  if (isStationLocked.value && userStore.currentStationId) {
+    return list.filter(item => item.id === userStore.currentStationId);
+  }
+
+  return list;
+});
+
+// 设备选项：不依赖维保/维修记录，避免被日期筛选影响
 const equipmentOptions = computed(() => {
-  const rows = activeTab.value === 'maintenance' ? maintenanceRows.value : faultRows.value;
+  const rows = equipmentList.value;
   const equipmentMap = new Map();
 
   rows.forEach(row => {
-    const code = row.equipment_code || row.equipmentCode;
-    const name = row.equipment_name || row.equipmentName;
+    const code = row.equipment_code || row.equipmentCode || row.code;
+    const name = row.equipment_name || row.equipmentName || row.name;
     if (code && name && !equipmentMap.has(code)) {
       equipmentMap.set(code, { code, name });
     }
@@ -183,11 +280,34 @@ const faultStatusLabels = {
 
 const loadStations = async () => {
   try {
-    const res = await request.get('/stations', { params: { pageSize: 100 } });
-    stations.value = res.list || [];
+    const res = await getAllStations();
+    const list = res?.data || res || [];
+    stations.value = (Array.isArray(list) ? list : []).map(item => ({
+      ...item,
+      stationName: item.stationName || item.station_name || item.name || ''
+    }));
   } catch {
     stations.value = [];
   }
+};
+
+const loadEquipmentList = async () => {
+  try {
+    // 后端返回格式在不同模块里有差异，这里做兼容
+    const res = await getEquipment({
+      stationId: filters.value.stationId || undefined
+    });
+    const list = res?.list || res?.data || res || [];
+    equipmentList.value = Array.isArray(list) ? list : [];
+  } catch {
+    equipmentList.value = [];
+  }
+};
+
+const handleStationChange = async () => {
+  selectedEquipment.value = null;
+  await loadEquipmentList();
+  await refreshActive();
 };
 
 const getStationName = (stationId) => {
@@ -196,17 +316,16 @@ const getStationName = (stationId) => {
 };
 
 const loadMaintenance = async () => {
-  const [startDate, endDate] = filters.value.dateRange || [];
+  const startDate = filters.value.startDate;
+  const endDate = filters.value.endDate;
   const params = {
     page: 1,
     pageSize: 2000,
     stationId: filters.value.stationId || undefined,
     status: filters.value.maintenanceStatus || undefined
   };
-  if (startDate && endDate) {
-    params.startDate = startDate;
-    params.endDate = endDate;
-  }
+  if (startDate) params.startDate = startDate;
+  if (endDate) params.endDate = endDate;
   const res = await request.get('/maintenance-work-records', { params });
   const rows = res.list || res.rows || [];
   maintenanceRows.value = rows.map(row => ({
@@ -254,7 +373,8 @@ const loadMaintenanceCompletionRows = async () => {
 };
 
 const loadFaults = async () => {
-  const [startDate, endDate] = filters.value.dateRange || [];
+  const startDate = filters.value.startDate;
+  const endDate = filters.value.endDate;
   const params = {
     page: 1,
     pageSize: 2000,
@@ -300,11 +420,6 @@ const refreshActive = async () => {
 
 // 加载趋势图
 const loadTrendChart = async () => {
-  if (!selectedEquipment.value) {
-    ElMessage.warning('请先选择设备');
-    return;
-  }
-
   try {
     const endpoint = activeTab.value === 'maintenance'
       ? '/reports/maintenance-by-month'
@@ -312,7 +427,8 @@ const loadTrendChart = async () => {
 
     const res = await request.get(endpoint, {
       params: {
-        equipmentCode: selectedEquipment.value,
+        stationId: filters.value.stationId || undefined,
+        equipmentCode: selectedEquipment.value || undefined,
         year: selectedYear.value
       }
     });
@@ -323,12 +439,21 @@ const loadTrendChart = async () => {
 
     if (!trendChart) return;
 
-    const months = res.map(item => `${item.month}月`);
-    const counts = res.map(item => item.count);
+    const list = Array.isArray(res) ? res : (res?.list || res?.data || []);
+    const normalized = list.length > 0
+      ? list
+      : Array.from({ length: 12 }, (_, i) => ({ month: i + 1, count: 0 }));
+
+    const months = normalized.map(item => `${item.month}月`);
+    const counts = normalized.map(item => item.count);
+
+    const equipmentLabel = selectedEquipment.value
+      ? (equipmentOptions.value.find(item => item.code === selectedEquipment.value)?.name || selectedEquipment.value)
+      : '全部设备';
 
     trendChart.setOption({
       title: {
-        text: `${selectedYear.value}年 ${activeTab.value === 'maintenance' ? '保养' : '维修'}次数统计`,
+        text: `${selectedYear.value}年 ${equipmentLabel} ${activeTab.value === 'maintenance' ? '保养' : '维修'}次数统计`,
         left: 'center'
       },
       tooltip: {
@@ -353,15 +478,19 @@ const loadTrendChart = async () => {
       }]
     });
 
-    ElMessage.success('加载成功');
   } catch {
-    ElMessage.error('加载失败');
+    ElMessage.error('趋势图加载失败');
   }
 };
 
 const handleTabChange = async () => {
   await refreshActive();
 };
+
+watch([selectedEquipment, selectedYear, activeTab], async () => {
+  await nextTick();
+  await loadTrendChart();
+});
 
 const filteredMaintenanceRows = computed(() => {
   const keyword = filters.value.keyword?.trim();
@@ -725,7 +854,11 @@ const handleResize = () => {
 };
 
 onMounted(async () => {
+  if (isStationLocked.value && userStore.currentStationId) {
+    filters.value.stationId = userStore.currentStationId;
+  }
   await loadStations();
+  await loadEquipmentList();
   await refreshActive();
   window.addEventListener('resize', handleResize);
 });
@@ -762,15 +895,14 @@ onUnmounted(() => {
     }
   }
 
+  .filter-card {
+    margin-bottom: 20px;
+  }
+
   .filter-bar {
     display: flex;
     flex-wrap: wrap;
     gap: 12px;
-    margin-bottom: 18px;
-    background: #fff;
-    padding: 16px;
-    border-radius: 8px;
-    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
   }
 
   .stats-grid {

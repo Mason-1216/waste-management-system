@@ -8,6 +8,7 @@ export const menuPermissions = [
   { code: 'menu:/user-management', name: '用户管理' },
   { code: 'menu:/organization-management', name: '组织架构' },
   { code: 'menu:/schedule', name: '排班表' },
+  { code: 'menu:/points-summary', name: '积分统计' },
   {
     code: 'menu:/safety',
     name: '安全检查',
@@ -24,7 +25,7 @@ export const menuPermissions = [
     children: [
       { code: 'menu:/hygiene-self-inspection', name: '卫生自检' },
       { code: 'menu:/hygiene-other-inspection', name: '员工检查记录' },
-      { code: 'menu:/hygiene-work-arrangement', name: '卫生工作安排' }
+      { code: 'menu:/hygiene-work-arrangement', name: '卫生工作管理' }
     ]
   },
   {
@@ -32,15 +33,22 @@ export const menuPermissions = [
     name: '岗位工作',
     children: [
       { code: 'menu:/position-work/field', name: '固定任务' },
-      { code: 'menu:/position-work/management', name: '岗位工作任务库' },
+      { code: 'menu:/position-work/management', name: '岗位工作任务汇总表' },
       { code: 'menu:/position-work/records', name: '岗位工作完成情况记录' }
     ]
   },
-  { code: 'menu:/temporary-tasks', name: '临时工作' },
+  {
+    code: 'menu:/temporary-tasks',
+    name: '临时任务',
+    children: [
+      { code: 'menu:/temporary-tasks/fill', name: '临时任务填报' },
+      { code: 'menu:/temporary-tasks/history', name: '历史完成记录' },
+      { code: 'menu:/temporary-tasks/library', name: '临时任务汇总表' }
+    ]
+  },
   { code: 'menu:/maintenance-task', name: '保养任务' },
   { code: 'menu:/device-faults', name: '设备故障' },
   { code: 'menu:/reports', name: '维保数据报表' },
-  { code: 'menu:/price-management', name: '单价管理' },
   { code: 'menu:/change-password', name: '修改密码' },
   { code: 'menu:/help-feedback', name: '帮助与反馈' }
 ];
@@ -171,8 +179,8 @@ export const modulePermissions = [
       { code: 'module:temporary-tasks:edit', name: '临时工作-编辑' },
       { code: 'module:temporary-tasks:tasks:view', name: '临时工作列表-查看' },
       { code: 'module:temporary-tasks:tasks:edit', name: '临时工作列表-编辑' },
-      { code: 'module:temporary-tasks:library:view', name: '临时工作任务库-查看' },
-      { code: 'module:temporary-tasks:library:edit', name: '临时工作任务库-编辑' }
+      { code: 'module:temporary-tasks:library:view', name: '临时工作任务汇总表-查看' },
+      { code: 'module:temporary-tasks:library:edit', name: '临时工作任务汇总表-编辑' }
     ]
   },
   // 设备故障
@@ -247,15 +255,6 @@ export const modulePermissions = [
       { code: 'module:reports:faults:edit', name: '设备故障统计-编辑' }
     ]
   },
-  // 单价管理
-  {
-    code: 'module:price-management',
-    name: '单价管理',
-    children: [
-      { code: 'module:price-management:view', name: '单价管理-查看' },
-      { code: 'module:price-management:edit', name: '单价管理-编辑' }
-    ]
-  },
   // 消息通知
   {
     code: 'module:notifications',
@@ -296,11 +295,13 @@ export const roleMenuDefaults = {
     'menu:/hygiene-self-inspection',
     'menu:/position-work',
     'menu:/position-work/field',
-    'menu:/position-work/management',
     'menu:/position-work/records',
     'menu:/temporary-tasks',
+    'menu:/temporary-tasks/fill',
+    'menu:/temporary-tasks/history',
     'menu:/maintenance-task',
     'menu:/device-faults',
+    'menu:/points-summary',
     'menu:/change-password'
   ],
   maintenance: [
@@ -308,6 +309,7 @@ export const roleMenuDefaults = {
     'menu:/notifications',
     'menu:/safety-self-inspection',
     'menu:/device-faults',
+    'menu:/points-summary',
     'menu:/change-password'
   ],
   station_manager: [
@@ -329,9 +331,13 @@ export const roleMenuDefaults = {
     'menu:/position-work/management',
     'menu:/position-work/records',
     'menu:/temporary-tasks',
+    'menu:/temporary-tasks/fill',
+    'menu:/temporary-tasks/history',
+    'menu:/temporary-tasks/library',
     'menu:/maintenance-task',
     'menu:/device-faults',
     'menu:/reports',
+    'menu:/points-summary',
     'menu:/change-password'
   ],
   deputy_manager: [
@@ -353,9 +359,13 @@ export const roleMenuDefaults = {
     'menu:/position-work/management',
     'menu:/position-work/records',
     'menu:/temporary-tasks',
+    'menu:/temporary-tasks/fill',
+    'menu:/temporary-tasks/history',
+    'menu:/temporary-tasks/library',
     'menu:/maintenance-task',
     'menu:/device-faults',
     'menu:/reports',
+    'menu:/points-summary',
     'menu:/change-password'
   ],
   department_manager: [
@@ -377,9 +387,13 @@ export const roleMenuDefaults = {
     'menu:/position-work/management',
     'menu:/position-work/records',
     'menu:/temporary-tasks',
+    'menu:/temporary-tasks/fill',
+    'menu:/temporary-tasks/history',
+    'menu:/temporary-tasks/library',
     'menu:/maintenance-task',
     'menu:/device-faults',
     'menu:/reports',
+    'menu:/points-summary',
     'menu:/change-password'
   ],
   safety_inspector: [
@@ -417,15 +431,20 @@ export const roleMenuDefaults = {
     'menu:/position-work/management',
     'menu:/position-work/records',
     'menu:/temporary-tasks',
+    'menu:/temporary-tasks/fill',
+    'menu:/temporary-tasks/history',
+    'menu:/temporary-tasks/library',
     'menu:/maintenance-task',
     'menu:/device-faults',
     'menu:/reports',
+    'menu:/points-summary',
     'menu:/change-password'
   ],
   client: [
     'menu:/home',
     'menu:/notifications',
     'menu:/reports',
+    'menu:/points-summary',
     'menu:/change-password'
   ]
 };
@@ -457,7 +476,6 @@ export const roleModuleDefaults = {
     'module:hygiene-self-inspection:staff:view', 'module:hygiene-self-inspection:staff:edit',
     'module:position-work:view', 'module:position-work:edit',
     'module:position-work:my-work:view', 'module:position-work:my-work:edit',
-    'module:position-work:management:view', 'module:position-work:management:edit',
     'module:temporary-tasks:view', 'module:temporary-tasks:edit',
     'module:temporary-tasks:tasks:view', 'module:temporary-tasks:tasks:edit',
     'module:temporary-tasks:library:view', 'module:temporary-tasks:library:edit',
@@ -613,7 +631,7 @@ export const roleModuleDefaults = {
     'module:help-feedback:view', 'module:help-feedback:edit'
   ],
   senior_management: [
-    'module:schedule:view',
+    'module:schedule:view', 'module:schedule:edit',
     'module:safety-self-inspection:view',
     'module:safety-self-inspection:my:view', 'module:safety-self-inspection:my:edit',
     'module:safety-self-inspection:staff:view', 'module:safety-self-inspection:staff:edit',

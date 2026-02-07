@@ -93,6 +93,278 @@ DEALLOCATE PREPARE stmt;
 SET @sql := (
     SELECT IF(
         COUNT(*) = 0,
+        'ALTER TABLE repair_task_library ADD COLUMN task_category VARCHAR(50) NULL AFTER task_name',
+        'SELECT 1'
+    )
+    FROM information_schema.COLUMNS
+    WHERE table_schema = DATABASE()
+      AND table_name = 'repair_task_library'
+      AND column_name = 'task_category'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @sql := (
+    SELECT IF(
+        COUNT(*) = 0,
+        'ALTER TABLE repair_task_library ADD COLUMN score_method VARCHAR(20) NULL AFTER task_category',
+        'SELECT 1'
+    )
+    FROM information_schema.COLUMNS
+    WHERE table_schema = DATABASE()
+      AND table_name = 'repair_task_library'
+      AND column_name = 'score_method'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+-- 临时工作任务汇总表：积分字段改为单位积分
+SET @sql := (
+    SELECT IF(
+        COUNT(*) = 0,
+        'ALTER TABLE temporary_task_library ADD COLUMN unit_points INT NOT NULL DEFAULT 0 COMMENT ''单位积分'' AFTER standard_hours',
+        'SELECT 1'
+    )
+    FROM information_schema.COLUMNS
+    WHERE table_schema = DATABASE()
+      AND table_name = 'temporary_task_library'
+      AND column_name = 'unit_points'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @sql := (
+    SELECT IF(
+        COUNT(*) > 0,
+        'UPDATE temporary_task_library SET unit_points = points WHERE unit_points IS NULL OR unit_points = 0',
+        'SELECT 1'
+    )
+    FROM information_schema.COLUMNS
+    WHERE table_schema = DATABASE()
+      AND table_name = 'temporary_task_library'
+      AND column_name = 'points'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @sql := (
+    SELECT IF(
+        COUNT(*) > 0,
+        'ALTER TABLE temporary_task_library DROP COLUMN points',
+        'SELECT 1'
+    )
+    FROM information_schema.COLUMNS
+    WHERE table_schema = DATABASE()
+      AND table_name = 'temporary_task_library'
+      AND column_name = 'points'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @sql := (
+    SELECT IF(
+        COUNT(*) = 0,
+        'ALTER TABLE temporary_task_library ADD COLUMN task_category VARCHAR(50) NULL COMMENT ''任务类别'' AFTER unit_points',
+        'SELECT 1'
+    )
+    FROM information_schema.COLUMNS
+    WHERE table_schema = DATABASE()
+      AND table_name = 'temporary_task_library'
+      AND column_name = 'task_category'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @sql := (
+    SELECT IF(
+        COUNT(*) = 0,
+        'ALTER TABLE temporary_task_library ADD COLUMN score_method VARCHAR(20) NULL COMMENT ''给分方式'' AFTER task_category',
+        'SELECT 1'
+    )
+    FROM information_schema.COLUMNS
+    WHERE table_schema = DATABASE()
+      AND table_name = 'temporary_task_library'
+      AND column_name = 'score_method'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @sql := (
+    SELECT IF(
+        COUNT(*) = 0,
+        'ALTER TABLE temporary_task_library ADD COLUMN quantity INT NOT NULL DEFAULT 1 COMMENT ''数量'' AFTER score_method',
+        'SELECT 1'
+    )
+    FROM information_schema.COLUMNS
+    WHERE table_schema = DATABASE()
+      AND table_name = 'temporary_task_library'
+      AND column_name = 'quantity'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @sql := (
+    SELECT IF(
+        COUNT(*) = 0,
+        'ALTER TABLE temporary_task_library ADD COLUMN points_rule TEXT NULL COMMENT ''积分规则'' AFTER quantity',
+        'SELECT 1'
+    )
+    FROM information_schema.COLUMNS
+    WHERE table_schema = DATABASE()
+      AND table_name = 'temporary_task_library'
+      AND column_name = 'points_rule'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @sql := (
+    SELECT IF(
+        COUNT(*) = 0,
+        'ALTER TABLE temporary_task_library ADD COLUMN quantity_editable TINYINT NOT NULL DEFAULT 0 COMMENT ''数量是否可修改'' AFTER points_rule',
+        'SELECT 1'
+    )
+    FROM information_schema.COLUMNS
+    WHERE table_schema = DATABASE()
+      AND table_name = 'temporary_task_library'
+      AND column_name = 'quantity_editable'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @sql := (
+    SELECT IF(
+        COUNT(*) = 0,
+        'ALTER TABLE temporary_task_library ADD COLUMN dispatch_review_required TINYINT NOT NULL DEFAULT 0 COMMENT ''派发任务是否强制审核'' AFTER quantity_editable',
+        'SELECT 1'
+    )
+    FROM information_schema.COLUMNS
+    WHERE table_schema = DATABASE()
+      AND table_name = 'temporary_task_library'
+      AND column_name = 'dispatch_review_required'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @sql := (
+    SELECT IF(
+        COUNT(*) > 0,
+        'ALTER TABLE temporary_task_library MODIFY COLUMN station_id INT NULL COMMENT ''场站ID''',
+        'SELECT 1'
+    )
+    FROM information_schema.COLUMNS
+    WHERE table_schema = DATABASE()
+      AND table_name = 'temporary_task_library'
+      AND column_name = 'station_id'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @sql := (
+    SELECT IF(
+        COUNT(*) = 0,
+        'ALTER TABLE repair_task_library ADD COLUMN points_rule TEXT NULL AFTER quantity',
+        'SELECT 1'
+    )
+    FROM information_schema.COLUMNS
+    WHERE table_schema = DATABASE()
+      AND table_name = 'repair_task_library'
+      AND column_name = 'points_rule'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @sql := (
+    SELECT IF(
+        COUNT(*) = 0,
+        'ALTER TABLE repair_task_library ADD COLUMN points_editable TINYINT NOT NULL DEFAULT 0 COMMENT ''points editable'' AFTER quantity_editable',
+        'SELECT 1'
+    )
+    FROM information_schema.COLUMNS
+    WHERE table_schema = DATABASE()
+      AND table_name = 'repair_task_library'
+      AND column_name = 'points_editable'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @sql := (
+    SELECT IF(
+        COUNT(*) = 0,
+        'ALTER TABLE position_jobs ADD COLUMN sort_order INT NOT NULL DEFAULT 1 COMMENT ''sort order'' AFTER job_name',
+        'SELECT 1'
+    )
+    FROM information_schema.COLUMNS
+    WHERE table_schema = DATABASE()
+      AND table_name = 'position_jobs'
+      AND column_name = 'sort_order'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+
+SET @sql := (
+    SELECT IF(
+        COUNT(*) = 0,
+        'ALTER TABLE repair_task_library ADD COLUMN is_active TINYINT DEFAULT 1 AFTER points_editable',
+        'SELECT 1'
+    )
+    FROM information_schema.COLUMNS
+    WHERE table_schema = DATABASE()
+      AND table_name = 'repair_task_library'
+      AND column_name = 'is_active'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @sql := (
+    SELECT IF(
+        COUNT(*) = 0,
+        'ALTER TABLE repair_task_library ADD COLUMN created_at DATETIME DEFAULT CURRENT_TIMESTAMP AFTER is_active',
+        'SELECT 1'
+    )
+    FROM information_schema.COLUMNS
+    WHERE table_schema = DATABASE()
+      AND table_name = 'repair_task_library'
+      AND column_name = 'created_at'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @sql := (
+    SELECT IF(
+        COUNT(*) = 0,
+        'ALTER TABLE repair_task_library ADD COLUMN updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP AFTER created_at',
+        'SELECT 1'
+    )
+    FROM information_schema.COLUMNS
+    WHERE table_schema = DATABASE()
+      AND table_name = 'repair_task_library'
+      AND column_name = 'updated_at'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @sql := (
+    SELECT IF(
+        COUNT(*) = 0,
         'ALTER TABLE safety_other_inspections ADD COLUMN points INT DEFAULT 0',
         'SELECT 1'
     )
@@ -194,3 +466,98 @@ SET @sql := (
 PREPARE stmt FROM @sql;
 EXECUTE stmt;
 DEALLOCATE PREPARE stmt;
+
+
+SET @sql := (
+    SELECT IF(
+        COUNT(*) = 0,
+        'ALTER TABLE maintenance_plan_library ADD COLUMN is_deleted TINYINT NOT NULL DEFAULT 0 COMMENT ''soft delete flag''',
+        'SELECT 1'
+    )
+    FROM information_schema.COLUMNS
+    WHERE table_schema = DATABASE()
+      AND table_name = 'maintenance_plan_library'
+      AND column_name = 'is_deleted'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+-- ??????????? + ??/??/??
+SET @sql := (
+    SELECT IF(
+        COUNT(*) = 0,
+        'ALTER TABLE equipment ADD COLUMN specification VARCHAR(100) NULL COMMENT ''??'' AFTER installation_location',
+        'SELECT 1'
+    )
+    FROM information_schema.COLUMNS
+    WHERE table_schema = DATABASE()
+      AND table_name = 'equipment'
+      AND column_name = 'specification'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @sql := (
+    SELECT IF(
+        COUNT(*) = 0,
+        'ALTER TABLE equipment ADD COLUMN model VARCHAR(100) NULL COMMENT ''??'' AFTER specification',
+        'SELECT 1'
+    )
+    FROM information_schema.COLUMNS
+    WHERE table_schema = DATABASE()
+      AND table_name = 'equipment'
+      AND column_name = 'model'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @sql := (
+    SELECT IF(
+        COUNT(*) = 0,
+        'ALTER TABLE equipment ADD COLUMN material VARCHAR(100) NULL COMMENT ''??'' AFTER model',
+        'SELECT 1'
+    )
+    FROM information_schema.COLUMNS
+    WHERE table_schema = DATABASE()
+      AND table_name = 'equipment'
+      AND column_name = 'material'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @sql := (
+    SELECT IF(
+        COUNT(*) > 0,
+        'UPDATE equipment SET installation_location = '''' WHERE installation_location IS NULL',
+        'SELECT 1'
+    )
+    FROM information_schema.COLUMNS
+    WHERE table_schema = DATABASE()
+      AND table_name = 'equipment'
+      AND column_name = 'installation_location'
+      AND IS_NULLABLE = 'YES'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @sql := (
+    SELECT IF(
+        COUNT(*) > 0,
+        'ALTER TABLE equipment MODIFY COLUMN installation_location VARCHAR(200) NOT NULL COMMENT ''????''',
+        'SELECT 1'
+    )
+    FROM information_schema.COLUMNS
+    WHERE table_schema = DATABASE()
+      AND table_name = 'equipment'
+      AND column_name = 'installation_location'
+      AND IS_NULLABLE = 'YES'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+

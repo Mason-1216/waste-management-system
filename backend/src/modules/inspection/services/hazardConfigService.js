@@ -1,6 +1,29 @@
 import { HazardCategory, HazardRootCause } from '../../../models/index.js';
 import { Op } from 'sequelize';
 
+const decodeMojibake = (value) => {
+  if (value === null || value === undefined) return value;
+  const text = String(value);
+  if (/[\u4E00-\u9FFF]/.test(text)) return text;
+  if (/[\u00C0-\u00FF]/.test(text)) {
+    try {
+      return Buffer.from(text, 'latin1').toString('utf8');
+    } catch {
+      return text;
+    }
+  }
+  return text;
+};
+
+const mapDecodedRows = (rows, field) => rows.map((row) => {
+  const data = typeof row?.toJSON === 'function' ? row.toJSON() : { ...row };
+  const rawValue = typeof row?.getDataValue === 'function' ? row.getDataValue(field) : data?.[field];
+  return {
+    ...data,
+    [field]: decodeMojibake(rawValue)
+  };
+});
+
 // =============== 隐患类别管理 ===============
 
 // 获取隐患类别列表
@@ -20,7 +43,7 @@ export const getHazardCategories = async (ctx) => {
 
     ctx.body = {
       code: 200,
-      data: categories,
+      data: mapDecodedRows(categories, 'category_name'),
       message: '获取成功'
     };
   } catch (error) {
@@ -165,26 +188,9 @@ export const getHazardRootCauses = async (ctx) => {
       order: [['sort_order', 'ASC'], ['id', 'ASC']]
     });
 
-    const decodeMojibake = (value) => {
-      if (!value) return value;
-      const text = String(value);
-      if (/[\u4E00-\u9FFF]/.test(text)) return text;
-      if (/[\u00C0-\u00FF]/.test(text)) {
-        try {
-          return Buffer.from(text, 'latin1').toString('utf8');
-        } catch {
-          return text;
-        }
-      }
-      return text;
-    };
-
     ctx.body = {
       code: 200,
-      data: causes.map(cause => ({
-        ...cause.toJSON(),
-        cause_name: decodeMojibake(cause.cause_name)
-      })),
+      data: mapDecodedRows(causes, 'cause_name'),
       message: '获取成功'
     };
   } catch (error) {

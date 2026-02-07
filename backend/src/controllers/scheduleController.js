@@ -8,7 +8,6 @@ export const getMySchedule = scheduleService.getMySchedule;
 export const getTodayScheduledUsers = scheduleService.getTodayScheduledUsers;
 export const deleteSchedule = scheduleService.deleteSchedule;
 export const batchDeleteSchedules = scheduleService.batchDeleteSchedules;
-export const exportMySchedule = scheduleService.exportMySchedule;
 
 export default {
   getSchedules,
@@ -19,5 +18,4 @@ export default {
   getTodayScheduledUsers,
   deleteSchedule,
   batchDeleteSchedules,
-  exportMySchedule
 };

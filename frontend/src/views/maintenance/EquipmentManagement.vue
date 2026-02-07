@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div class="equipment-management">
     <div class="page-header">
       <h3>设备管理</h3>
@@ -12,6 +12,7 @@
           :disabled="selectedEquipmentIds.length === 0"
           @click="handleBatchDelete"
         >
+          <el-icon><Delete /></el-icon>
           批量删除
         </el-button>
         <BaseUpload
@@ -23,27 +24,30 @@
           accept=".xlsx,.xls"
           :before-upload="beforeUpload"
         >
-          <el-button type="primary" plain>
+          <el-button type="success">
             <el-icon><Download /></el-icon>
             批量导入
           </el-button>
         </BaseUpload>
-        <el-button @click="downloadTemplate" type="primary" plain>
+        <el-button @click="downloadTemplate" type="info">
           <el-icon><Download /></el-icon>
           下载模板
         </el-button>
       </div>
     </div>
 
-    <!-- 搜索筛选 -->
-    <el-card class="search-card">
-      <el-form :model="searchForm" inline>
-        <el-form-item label="场站">
-          <el-select
+    <!-- 筛选 -->
+    <el-card class="filter-card">
+      <FilterBar>
+        <div class="filter-item">
+          <span class="filter-label">场站</span>
+          <FilterSelect
             v-model="searchForm.stationId"
-            placeholder="请选择场站"
+            placeholder="全部"
+            filterable
             clearable
-            style="width: 200px;"
+            @change="search"
+            @clear="search"
           >
             <el-option
               v-for="station in stations"
@@ -51,41 +55,52 @@
               :label="station.station_name"
               :value="station.id"
             />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="设备编号">
-          <el-input
+          </FilterSelect>
+        </div>
+        <div class="filter-item">
+          <span class="filter-label">设备编号</span>
+          <FilterAutocomplete
             v-model="searchForm.equipmentCode"
-            placeholder="请输入设备编号"
+            :fetch-suggestions="fetchEquipmentCodeSuggestions"
+            trigger-on-focus
+            placeholder="全部"
             clearable
-            style="width: 200px;"
+            @select="search"
+            @input="search"
+            @clear="search"
           />
-        </el-form-item>
-        <el-form-item label="设备名称">
-          <el-input
+        </div>
+        <div class="filter-item">
+          <span class="filter-label">设备名称</span>
+          <FilterAutocomplete
             v-model="searchForm.equipmentName"
-            placeholder="请输入设备名称"
+            :fetch-suggestions="fetchEquipmentNameSuggestions"
+            trigger-on-focus
+            placeholder="全部"
             clearable
-            style="width: 200px;"
+            @select="search"
+            @input="search"
+            @clear="search"
           />
-        </el-form-item>
-        <el-form-item label="安装地点">
-          <el-input
+        </div>
+        <div class="filter-item">
+          <span class="filter-label">安装地点</span>
+          <FilterAutocomplete
             v-model="searchForm.installationLocation"
-            placeholder="请输入安装地点"
+            :fetch-suggestions="fetchInstallationLocationSuggestions"
+            trigger-on-focus
+            placeholder="全部"
             clearable
-            style="width: 200px;"
+            @select="search"
+            @input="search"
+            @clear="search"
           />
-        </el-form-item>
-        <el-form-item>
-          <el-button type="primary" @click="search">搜索</el-button>
-          <el-button @click="resetSearch">重置</el-button>
-        </el-form-item>
-      </el-form>
+        </div>
+      </FilterBar>
     </el-card>
 
     <!-- 设备列表 -->
-    <TableCard>
+    <TableWrapper>
       <el-table
         ref="equipmentTable"
         :data="equipmentPageList"
@@ -101,11 +116,26 @@
             {{ row.station?.station_name || '-' }}
           </template>
         </el-table-column>
-        <el-table-column prop="equipment_code" label="设备编号" width="180" />
-        <el-table-column prop="equipment_name" label="设备名称" width="200" />
-        <el-table-column prop="installation_location" label="安装地点" min-width="200">
+        <el-table-column prop="installation_location" label="安装地点" width="200">
           <template #default="{ row }">
             {{ row.installation_location || '-' }}
+          </template>
+        </el-table-column>
+        <el-table-column prop="equipment_code" label="设备编号" width="180" />
+        <el-table-column prop="equipment_name" label="设备名称" width="200" />
+        <el-table-column prop="specification" label="规格" width="140">
+          <template #default="{ row }">
+            {{ row.specification || '-' }}
+          </template>
+        </el-table-column>
+        <el-table-column prop="model" label="型号" width="140">
+          <template #default="{ row }">
+            {{ row.model || '-' }}
+          </template>
+        </el-table-column>
+        <el-table-column prop="material" label="材质" width="140">
+          <template #default="{ row }">
+            {{ row.material || '-' }}
           </template>
         </el-table-column>
         <el-table-column label="操作" width="150">
@@ -127,18 +157,19 @@
           </template>
         </el-table-column>
       </el-table>
-      <div class="pagination-wrapper">
-        <el-pagination
-          v-model:current-page="pagination.page"
-          v-model:page-size="pagination.pageSize"
-          :total="pagination.total"
-          :page-sizes="pagination.pageSizes"
-          layout="total, sizes, prev, pager, next"
-          @current-change="handlePageChange"
-          @size-change="handlePageSizeChange"
-        />
-      </div>
-    </TableCard>
+    </TableWrapper>
+
+    <div class="pagination-wrapper">
+      <el-pagination
+        v-model:current-page="pagination.page"
+        v-model:page-size="pagination.pageSize"
+        :total="pagination.total"
+        :page-sizes="pagination.pageSizes"
+        layout="total, sizes, prev, pager, next"
+        @current-change="handlePageChange"
+        @size-change="handlePageSizeChange"
+      />
+    </div>
 
     <!-- 新增/编辑对话框 -->
     <FormDialog
@@ -169,6 +200,12 @@
             />
           </el-select>
         </el-form-item>
+        <el-form-item label="安装地点" prop="installationLocation">
+          <el-input
+            v-model="equipmentForm.installationLocation"
+            placeholder="请输入安装地点"
+          />
+        </el-form-item>
         <el-form-item label="设备编号" prop="equipmentCode">
           <el-input
             v-model="equipmentForm.equipmentCode"
@@ -181,10 +218,22 @@
             placeholder="请输入设备名称"
           />
         </el-form-item>
-        <el-form-item label="安装地点">
+        <el-form-item label="规格">
           <el-input
-            v-model="equipmentForm.installationLocation"
-            placeholder="请输入安装地点"
+            v-model="equipmentForm.specification"
+            placeholder="请输入规格"
+          />
+        </el-form-item>
+        <el-form-item label="型号">
+          <el-input
+            v-model="equipmentForm.model"
+            placeholder="请输入型号"
+          />
+        </el-form-item>
+        <el-form-item label="材质">
+          <el-input
+            v-model="equipmentForm.material"
+            placeholder="请输入材质"
           />
         </el-form-item>
       </el-form>
@@ -196,6 +245,8 @@
 import { ref, reactive, computed, onMounted, watch } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { Upload, Download, Plus } from '@element-plus/icons-vue';
+
+import { createListSuggestionFetcher } from '@/utils/filterAutocomplete';
 import {
   getEquipment,
   createEquipment,
@@ -203,7 +254,7 @@ import {
   deleteEquipment as deleteEquipmentApi,
   downloadEquipmentTemplate
 } from '@/api/equipment';
-import { getStations } from '@/api/station';
+import { getAllStations } from '@/api/station';
 import { useUserStore } from '@/store/modules/user';
 import { useUpload } from '@/composables/useUpload';
 import FormDialog from '@/components/system/FormDialog.vue';
@@ -221,6 +272,20 @@ const loading = ref(false);
 const equipmentList = ref([]);
 const equipmentTable = ref(null);
 const selectedEquipmentIds = ref([]);
+
+const fetchEquipmentCodeSuggestions = createListSuggestionFetcher(
+  () => equipmentList.value,
+  (row) => row.equipment_code
+);
+const fetchEquipmentNameSuggestions = createListSuggestionFetcher(
+  () => equipmentList.value,
+  (row) => row.equipment_name
+);
+const fetchInstallationLocationSuggestions = createListSuggestionFetcher(
+  () => equipmentList.value,
+  (row) => row.installation_location
+);
+
 const stations = ref([]);
 const isActiveStatus = (status) => status === undefined || status === null || status === '' || status === 'active' || status === 1 || status === '1' || status === true;
 const activeStationList = computed(() => stations.value.filter(station => isActiveStatus(station.status)));
@@ -239,6 +304,9 @@ const searchForm = reactive({
   stationId: null,
   equipmentCode: '',
   equipmentName: '',
+  specification: '',
+  model: '',
+  material: '',
   installationLocation: ''
 });
 
@@ -253,12 +321,15 @@ const equipmentForm = reactive({
   stationId: null,
   equipmentCode: '',
   equipmentName: '',
+  specification: '',
+  model: '',
+  material: '',
   installationLocation: ''
 });
 const pagination = reactive({
   page: 1,
-  pageSize: 10,
-  pageSizes: [10, 20, 50],
+  pageSize: 5,
+  pageSizes: [5, 10, 20, 50],
   total: 0
 });
 
@@ -279,6 +350,10 @@ const equipmentRules = {
   ],
   equipmentName: [
     { required: true, message: '请输入设备名称', trigger: 'blur' }
+  ]
+,
+  installationLocation: [
+    { required: true, message: '请输入安装地点', trigger: 'blur' }
   ]
 };
 
@@ -312,7 +387,7 @@ const loadEquipmentList = async (resetPage = false) => {
 // 获取场站列表
 const loadStations = async () => {
   try {
-    const res = await getStations({ pageSize: 200 });
+    const res = await getAllStations();
     stations.value = res.list || res || [];
   } catch (error) {
     
@@ -340,6 +415,9 @@ const addEquipment = () => {
     stationId: null,
     equipmentCode: '',
     equipmentName: '',
+    specification: '',
+    model: '',
+    material: '',
     installationLocation: ''
   });
   dialogTitle.value = '新增设备';
@@ -353,6 +431,9 @@ const editEquipment = (row) => {
     stationId: row.station_id,
     equipmentCode: row.equipment_code,
     equipmentName: row.equipment_name,
+    specification: row.specification ?? '',
+    model: row.model ?? '',
+    material: row.material ?? '',
     installationLocation: row.installation_location
   });
   dialogTitle.value = '编辑设备';
@@ -368,6 +449,9 @@ const saveEquipment = async () => {
       stationId: equipmentForm.stationId,
       equipmentCode: equipmentForm.equipmentCode,
       equipmentName: equipmentForm.equipmentName,
+      specification: equipmentForm.specification,
+      model: equipmentForm.model,
+      material: equipmentForm.material,
       installationLocation: equipmentForm.installationLocation
     };
 
@@ -561,14 +645,8 @@ watch(
     }
   }
 
-  .search-card {
-    margin-bottom: 20px;
-  }
-
-  .table-card {
-    .el-table {
-      margin-bottom: 20px;
-    }
+  .filter-card {
+    margin-bottom: 16px;
   }
 
   .pagination-wrapper {

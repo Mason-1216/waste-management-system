@@ -39,11 +39,113 @@ const parseInspectionItems = (items) => {
   return [];
 };
 
+const isMetaInspectionItem = (item) => {
+  const itemId = item?.itemId ?? item?.item_id;
+  const itemType = item?.itemType ?? item?.item_type;
+  const itemName = item?.itemName ?? item?.item_name;
+  if (itemId === 'remark') return true;
+  if (itemType === 'remark' || itemType === 'area_photo') return true;
+  return itemName === '不合格说明' || itemName === '责任区照片';
+};
+
+const getItemStatusValue = (item) => {
+  if (item?.status === 0 || item?.status === 1) return item.status;
+  if (item?.checked === true) return 1;
+  if (item?.checked === false) return 0;
+  if (item?.result === 'pass') return 1;
+  if (item?.result === 'fail') return 0;
+  return null;
+};
+
+const resolveItemResult = (item) => {
+  if (item?.result === 'pass' || item?.result === 'fail') return item.result;
+  if (item?.result === 1 || item?.result === 0) return item.result === 1 ? 'pass' : 'fail';
+  const numericResult = Number(item?.result);
+  if (Number.isFinite(numericResult) && (numericResult === 1 || numericResult === 0)) {
+    return numericResult === 1 ? 'pass' : 'fail';
+  }
+  const status = getItemStatusValue(item);
+  if (status === 1) return 'pass';
+  if (status === 0) return 'fail';
+  return null;
+};
+
+const getSelfInspectionResultValue = (row) => {
+  const rawItems = parseInspectionItems(row?.inspection_items ?? row?.inspectionItems);
+  const items = row?.inspection_type === 'hygiene'
+    ? rawItems.filter(item => !isMetaInspectionItem(item))
+    : rawItems;
+  if (items.length === 0) return 'unchecked';
+  const statuses = items.map(item => getItemStatusValue(item));
+  if (statuses.some(value => value === null)) return 'incomplete';
+  if (statuses.some(value => value === 0)) return 'fail';
+  return 'pass';
+};
+
+const getOtherInspectionResultValue = (row) => {
+  if (row?.is_qualified === 1 || row?.is_qualified === true) return 'pass';
+  if (row?.is_qualified === 0 || row?.is_qualified === false) return 'fail';
+  return 'unchecked';
+};
+
+const getInspectionResultValue = (row) => {
+  if (row?.inspection_kind === 'self') {
+    return getSelfInspectionResultValue(row);
+  }
+  return getOtherInspectionResultValue(row);
+};
+
 const isTextCorrupted = (value) => {
   if (typeof value !== 'string') return true;
   const trimmed = value.trim();
   if (!trimmed) return true;
   return /^[?\uFF1F]+$/.test(trimmed);
+};
+
+const decodeMojibake = (value) => {
+  if (value === null || value === undefined) return value;
+  const text = String(value);
+  if (/[\u4E00-\u9FFF]/.test(text)) return text;
+  if (/[\u00C0-\u00FF]/.test(text)) {
+    try {
+      return Buffer.from(text, 'latin1').toString('utf8');
+    } catch {
+      return text;
+    }
+  }
+  return text;
+};
+
+const resolveEnumValue = (value, enumValues, referenceValues) => {
+  if (value === null || value === undefined || value === '') return value;
+  if (!Array.isArray(enumValues) || enumValues.length === 0) return value;
+  const text = String(value);
+  if (enumValues.includes(text)) return text;
+
+  const decoded = decodeMojibake(text);
+  if (enumValues.includes(decoded)) return decoded;
+
+  const decodedMap = new Map(enumValues.map((item) => [decodeMojibake(item), item]));
+  if (decodedMap.has(text)) return decodedMap.get(text);
+  if (decodedMap.has(decoded)) return decodedMap.get(decoded);
+  if (Array.isArray(referenceValues) && referenceValues.length === enumValues.length) {
+    const index = referenceValues.indexOf(text);
+    if (index >= 0) return enumValues[index];
+    const decodedIndex = referenceValues.indexOf(decoded);
+    if (decodedIndex >= 0) return enumValues[decodedIndex];
+  }
+  return text;
+};
+
+const resolveEnumIndex = (value, referenceValues) => {
+  if (value === null || value === undefined || value === '') return null;
+  if (!Array.isArray(referenceValues) || referenceValues.length === 0) return null;
+  const text = String(value);
+  let index = referenceValues.indexOf(text);
+  if (index >= 0) return index + 1;
+  const decoded = decodeMojibake(text);
+  index = referenceValues.indexOf(decoded);
+  return index >= 0 ? index + 1 : null;
 };
 
 const normalizeSafetyInspectionItems = async (records) => {
@@ -109,6 +211,8 @@ const normalizeSafetyInspectionItems = async (records) => {
       const itemStandard = item.itemStandard ?? item.item_standard;
       const currentWorkTypeName = item.workTypeName ?? item.work_type_name;
 
+      const resolvedResult = resolveItemResult(item);
+
       return {
         ...item,
         itemId: itemId ?? item.itemId ?? item.item_id,
@@ -117,7 +221,8 @@ const normalizeSafetyInspectionItems = async (records) => {
         itemStandard: isTextCorrupted(itemStandard) ? (refItem?.item_standard ?? itemStandard) : itemStandard,
         workTypeName: isTextCorrupted(currentWorkTypeName)
           ? (workTypeName ?? currentWorkTypeName)
-          : currentWorkTypeName
+          : currentWorkTypeName,
+        result: resolvedResult !== null && resolvedResult !== undefined ? resolvedResult : item.result
       };
     });
 
@@ -192,6 +297,7 @@ const normalizeHygieneInspectionItems = async (records) => {
       const itemStandard = item.itemStandard ?? item.item_standard ?? item.workRequirements ?? item.work_requirements;
       const currentWorkTypeName = item.workTypeName ?? item.work_type_name ?? rawWorkTypeName;
 
+      const resolvedResult = resolveItemResult(item);
       const nextItem = {
         ...item,
         itemId: itemId ?? item.itemId ?? item.item_id,
@@ -200,7 +306,8 @@ const normalizeHygieneInspectionItems = async (records) => {
         itemStandard: isTextCorrupted(itemStandard) ? (refPoint?.work_requirements ?? itemStandard) : itemStandard,
         workTypeName: isTextCorrupted(currentWorkTypeName)
           ? (refArea?.area_name ?? currentWorkTypeName)
-          : currentWorkTypeName
+          : currentWorkTypeName,
+        result: resolvedResult !== null && resolvedResult !== undefined ? resolvedResult : item.result
       };
 
       if ((rawWorkTypeId !== nextItem.workTypeId) || (rawItemId !== nextItem.itemId)) {
@@ -257,6 +364,181 @@ const normalizeInspectionItems = async (records) => {
   ]);
 };
 
+const normalizeWorkTypeIds = (row) => {
+  if (!row) return [];
+  const raw =
+    row.work_type_ids ??
+    row.workTypeIds ??
+    row.work_type_id ??
+    row.workTypeId ??
+    [];
+  if (Array.isArray(raw)) return raw;
+  if (typeof raw === 'string') {
+    return raw
+      .split(',')
+      .map(value => value.trim())
+      .filter(Boolean);
+  }
+  if (raw === null || raw === undefined) return [];
+  return [raw];
+};
+
+const normalizeWorkTypeIdList = (ids) => ids
+  .map(id => {
+    const num = Number(id);
+    if (Number.isNaN(num)) return id;
+    return num;
+  })
+  .filter(id => id !== null && id !== undefined && id !== '');
+
+const isAfterTime = (current, next) => {
+  if (!current) return true;
+  if (!next) return false;
+  const currentTime = dayjs(current);
+  const nextTime = dayjs(next);
+  if (currentTime.isValid() && nextTime.isValid()) {
+    return nextTime.isAfter(currentTime);
+  }
+  return String(next) > String(current);
+};
+
+const mergeSelfInspectionRecords = (records) => {
+  const merged = new Map();
+  records.forEach(record => {
+    const plain = typeof record?.toJSON === 'function' ? record.toJSON() : record;
+    const key = `${plain.filler_id}-${plain.inspection_date}-${plain.station_id}`;
+    const workTypeIds = normalizeWorkTypeIdList(normalizeWorkTypeIds(plain));
+    const inspectionItems = parseInspectionItems(plain.inspection_items ?? plain.inspectionItems);
+    if (merged.has(key)) {
+      const existing = merged.get(key);
+      const existingIds = new Set(normalizeWorkTypeIds(existing).map(id => String(id)));
+      workTypeIds.forEach(id => existingIds.add(String(id)));
+      existing.work_type_ids = normalizeWorkTypeIdList(Array.from(existingIds));
+      const existingItems = parseInspectionItems(existing.inspection_items ?? existing.inspectionItems);
+      existing.inspection_items = [...existingItems, ...inspectionItems];
+      if (isAfterTime(existing.submit_time, plain.submit_time)) {
+        existing.submit_time = plain.submit_time;
+        existing.id = plain.id;
+        existing.record_code = plain.record_code;
+      }
+    } else {
+      merged.set(key, {
+        ...plain,
+        work_type_ids: workTypeIds,
+        inspection_items: inspectionItems
+      });
+    }
+  });
+  return Array.from(merged.values());
+};
+
+const filterSelfInspectionRecords = (records, workTypeId, inspectionResult) => {
+  let filtered = records;
+  if (workTypeId !== undefined && workTypeId !== null && workTypeId !== '') {
+    const targetId = String(workTypeId);
+    filtered = filtered.filter(record => {
+      const ids = normalizeWorkTypeIds(record).map(id => String(id));
+      return ids.includes(targetId);
+    });
+  }
+  if (inspectionResult) {
+    const normalizedResult = String(inspectionResult).toLowerCase();
+    const validResults = ['pass', 'fail', 'incomplete', 'unchecked'];
+    if (validResults.includes(normalizedResult)) {
+      filtered = filtered.filter(record => getSelfInspectionResultValue(record) === normalizedResult);
+    }
+  }
+  return filtered;
+};
+
+const sortSelfInspectionRecords = (records, sortOrder) => {
+  const normalizedOrder = typeof sortOrder === 'string' ? sortOrder.toLowerCase() : '';
+  const direction = normalizedOrder === 'asc' ? 1 : -1;
+  return records.sort((a, b) => {
+    const aDate = dayjs(a.inspection_date);
+    const bDate = dayjs(b.inspection_date);
+    if (aDate.isValid() && bDate.isValid()) {
+      if (!aDate.isSame(bDate)) return (aDate.valueOf() - bDate.valueOf()) * direction;
+    } else if (String(a.inspection_date) !== String(b.inspection_date)) {
+      return String(a.inspection_date).localeCompare(String(b.inspection_date)) * direction;
+    }
+
+    const aSubmit = dayjs(a.submit_time);
+    const bSubmit = dayjs(b.submit_time);
+    if (aSubmit.isValid() && bSubmit.isValid()) {
+      return (aSubmit.valueOf() - bSubmit.valueOf()) * direction;
+    }
+    return String(a.submit_time || '').localeCompare(String(b.submit_time || '')) * direction;
+  });
+};
+
+const hydrateOtherInspectionStations = async (rows) => {
+  if (!rows || rows.length === 0) return;
+  const missingRows = rows.filter(row =>
+    !row.station_id && row.inspected_user_id && row.inspection_date
+  );
+  if (missingRows.length === 0) return;
+
+  const yearMonthMap = new Map();
+  missingRows.forEach(row => {
+    const inspectionDay = dayjs(row.inspection_date);
+    const year = inspectionDay.year();
+    const month = inspectionDay.month() + 1;
+    const key = `${year}-${month}`;
+    if (!yearMonthMap.has(key)) {
+      yearMonthMap.set(key, { year, month, userIds: new Set() });
+    }
+    yearMonthMap.get(key).userIds.add(row.inspected_user_id);
+  });
+
+  const scheduleBuckets = new Map();
+  for (const [key, data] of yearMonthMap) {
+    const schedules = await Schedule.findAll({
+      where: {
+        user_id: { [Op.in]: Array.from(data.userIds) },
+        year: data.year,
+        month: data.month
+      },
+      attributes: ['user_id', 'station_id', 'schedules', 'year', 'month']
+    });
+    scheduleBuckets.set(key, schedules);
+  }
+
+  const resolvedStationIds = new Set();
+  missingRows.forEach(row => {
+    const inspectionDay = dayjs(row.inspection_date);
+    const year = inspectionDay.year();
+    const month = inspectionDay.month() + 1;
+    const dateKey = inspectionDay.format('YYYY-MM-DD');
+    const dayKey = String(inspectionDay.date());
+    const key = `${year}-${month}`;
+    const schedules = scheduleBuckets.get(key) || [];
+    for (const schedule of schedules) {
+      if (schedule.user_id !== row.inspected_user_id) continue;
+      const schedulesData = parseSchedulesData(schedule.schedules);
+      if (hasScheduleForDate(schedulesData, dateKey, dayKey)) {
+        row.setDataValue('station_id', schedule.station_id);
+        resolvedStationIds.add(schedule.station_id);
+        break;
+      }
+    }
+  });
+
+  if (resolvedStationIds.size > 0) {
+    const stations = await Station.findAll({
+      where: { id: { [Op.in]: Array.from(resolvedStationIds) } },
+      attributes: ['id', 'station_name']
+    });
+    const stationMap = new Map(stations.map(s => [s.id, s]));
+    missingRows.forEach(row => {
+      const resolvedId = row.getDataValue('station_id');
+      if (resolvedId && stationMap.has(resolvedId)) {
+        row.setDataValue('station', stationMap.get(resolvedId));
+      }
+    });
+  }
+};
+
 // ============================================
 // 安全/卫生自检
 // ============================================
@@ -274,7 +556,7 @@ export const getSelfInspections = async (ctx) => {
   const fillerWhere = {};
 
   const user = ctx.state.user;
-  const privilegedRoles = ['safety_inspector', 'station_manager', 'deputy_manager', 'department_manager', 'admin'];
+  const privilegedRoles = ['safety_inspector', 'station_manager', 'deputy_manager', 'department_manager', 'admin', 'dev_test'];
   const rectificationInclude = { model: SafetyRectification, as: 'rectification' };
   if (!privilegedRoles.includes(user.roleCode)) {
     rectificationInclude.where = { punished_person_id: user.id };
@@ -698,7 +980,10 @@ export const createSelfInspection = async (ctx) => {
  * GET /api/self-inspections/my
  */
 export const getMySelfInspections = async (ctx) => {
-  const { inspectionType, startDate, endDate } = ctx.query;
+  const { inspectionType, startDate, endDate, workTypeId, inspectionResult, merge, sortOrder } = ctx.query;
+  const hasPagination = Object.prototype.hasOwnProperty.call(ctx.query, 'page')
+    || Object.prototype.hasOwnProperty.call(ctx.query, 'pageSize');
+  const { page, pageSize, offset, limit } = getPagination(ctx.query);
   const userId = ctx.state.user.id;
 
   const where = { filler_id: userId };
@@ -714,11 +999,31 @@ export const getMySelfInspections = async (ctx) => {
   });
 
   await normalizeInspectionItems(inspections);
+  const useMerged = ['1', 'true'].includes(String(merge ?? '').toLowerCase());
+  const sourceList = useMerged ? mergeSelfInspectionRecords(inspections) : inspections.map(record => record.toJSON());
+  const filteredList = filterSelfInspectionRecords(sourceList, workTypeId, inspectionResult);
+  const sortedList = sortSelfInspectionRecords(filteredList, sortOrder);
+
+  if (hasPagination) {
+    const total = sortedList.length;
+    const pagedList = sortedList.slice(offset, offset + limit);
+    ctx.body = {
+      code: 200,
+      message: 'success',
+      data: {
+        list: pagedList,
+        total,
+        page,
+        pageSize
+      }
+    };
+    return;
+  }
 
   ctx.body = {
     code: 200,
     message: 'success',
-    data: inspections
+    data: sortedList
   };
 };
 
@@ -763,21 +1068,22 @@ export const getOverdueUsers = async (ctx) => {
  */
 export const getOtherInspections = async (ctx) => {
   const { page, pageSize, offset, limit } = getPagination(ctx.query);
-  const { stationId, inspectionType, startDate, endDate, workTypeIds } = ctx.query;
+  const { stationId, inspectionType, startDate, endDate, workTypeIds, includeSelf, inspectedUserName, inspectionKind, inspectionResult, sortOrder } = ctx.query;
   const dataFilter = ctx.state.dataFilter;
 
-  const where = {};
-
   const user = ctx.state.user;
-  const privilegedRoles = ['safety_inspector', 'station_manager', 'deputy_manager', 'department_manager', 'admin'];
-  const rectificationInclude = { model: SafetyRectification, as: 'rectification' };
-  if (!privilegedRoles.includes(user.roleCode)) {
-    rectificationInclude.where = { punished_person_id: user.id };
-    rectificationInclude.required = true;
-  }
-  if (stationId) where.station_id = stationId;
-  if (inspectionType) where.inspection_type = inspectionType;
-  if (startDate && endDate) where.inspection_date = { [Op.between]: [startDate, endDate] };
+  const includeSelfInspections = ['1', 'true'].includes(String(includeSelf ?? '').toLowerCase());
+  const nameKeyword = typeof inspectedUserName === 'string' ? inspectedUserName.trim() : '';
+  const kindFilter = ['self', 'other'].includes(String(inspectionKind)) ? String(inspectionKind) : '';
+  const rawResultFilter = String(inspectionResult ?? '').toLowerCase();
+  const resultFilter = ['pass', 'fail', 'incomplete', 'unchecked'].includes(rawResultFilter) ? rawResultFilter : '';
+  const normalizedSortOrder = String(sortOrder ?? '').toLowerCase() === 'asc' ? 'ASC' : 'DESC';
+  const sortDirection = normalizedSortOrder === 'ASC' ? 1 : -1;
+
+  const baseWhere = {};
+  if (stationId) baseWhere.station_id = stationId;
+  if (inspectionType) baseWhere.inspection_type = inspectionType;
+  if (startDate && endDate) baseWhere.inspection_date = { [Op.between]: [startDate, endDate] };
   if (workTypeIds) {
     const ids = String(workTypeIds)
       .split(',')
@@ -787,8 +1093,8 @@ export const getOtherInspections = async (ctx) => {
       const orConditions = ids
         .map(id => `JSON_CONTAINS(work_type_ids, CAST(${id} AS JSON))`)
         .join(' OR ');
-      where[Op.and] = where[Op.and] || [];
-      where[Op.and].push(literal(`(${orConditions})`));
+      baseWhere[Op.and] = baseWhere[Op.and] || [];
+      baseWhere[Op.and].push(literal(`(${orConditions})`));
     }
   }
 
@@ -798,91 +1104,162 @@ export const getOtherInspections = async (ctx) => {
     if (stationId) {
       const parsedStationId = Number(stationId);
       if (!allowedStationIds.includes(parsedStationId)) {
-        where.station_id = -1;
+        baseWhere.station_id = -1;
       } else {
-        where.station_id = parsedStationId;
+        baseWhere.station_id = parsedStationId;
       }
     } else {
-      where.station_id = { [Op.in]: allowedStationIds };
+      baseWhere.station_id = { [Op.in]: allowedStationIds };
+    }
+  }
+
+  const otherWhere = { ...baseWhere };
+  if (nameKeyword) {
+    otherWhere.inspected_user_name = { [Op.like]: `%${nameKeyword}%` };
+  }
+
+  if (includeSelfInspections) {
+    const includeSelfRows = kindFilter !== 'other';
+    const includeOtherRows = kindFilter !== 'self';
+    const selfWhere = { ...baseWhere };
+    if (nameKeyword) {
+      selfWhere.filler_name = { [Op.like]: `%${nameKeyword}%` };
+    }
+
+    const [otherRows, selfRows] = await Promise.all([
+      includeOtherRows
+        ? SafetyOtherInspection.findAll({
+          where: otherWhere,
+          include: [
+            { model: User, as: 'inspector', attributes: ['id', 'real_name'] },
+            { model: Station, as: 'station', attributes: ['id', 'station_name'] }
+          ],
+          order: [['inspection_date', normalizedSortOrder], ['created_at', normalizedSortOrder]]
+        })
+        : Promise.resolve([]),
+      includeSelfRows
+        ? SafetySelfInspection.findAll({
+          where: selfWhere,
+          include: [
+            { model: User, as: 'filler', attributes: ['id', 'real_name'] },
+            { model: Station, as: 'station', attributes: ['id', 'station_name'] }
+          ],
+          order: [['inspection_date', normalizedSortOrder], ['submit_time', normalizedSortOrder]]
+        })
+        : Promise.resolve([])
+    ]);
+
+    await hydrateOtherInspectionStations(otherRows);
+    await normalizeInspectionItems([...otherRows, ...selfRows]);
+
+    const mapOtherRow = (row) => {
+      const data = row.get({ plain: true });
+      return { ...data, inspection_kind: 'other' };
+    };
+
+    const mapSelfRow = (row) => {
+      const data = row.get({ plain: true });
+      const filler = data.filler;
+      const inspector = filler ? { id: filler.id, real_name: filler.real_name } : null;
+      const inspectionResult = getSelfInspectionResultValue(data);
+      return {
+        ...data,
+        inspection_kind: 'self',
+        inspector,
+        inspector_name: filler?.real_name || data.filler_name || data.filler?.real_name,
+        inspected_user_id: data.filler_id ?? filler?.id,
+        inspected_user_name: data.filler_name || filler?.real_name || data.filler?.real_name,
+        is_qualified: inspectionResult === 'pass' ? 1 : 0
+      };
+    };
+
+    const attachSortKeys = (row) => {
+      const inspectionDate = row.inspection_date || row.inspectionDate;
+      const dateValue = inspectionDate ? dayjs(inspectionDate).valueOf() : 0;
+      const timeSource = row.submit_time || row.submitTime || row.created_at || row.createdAt || inspectionDate;
+      const timeValue = timeSource ? dayjs(timeSource).valueOf() : dateValue;
+      return { ...row, _sortDate: dateValue, _sortTime: timeValue };
+    };
+
+    const combined = [
+      ...otherRows.map(mapOtherRow),
+      ...selfRows.map(mapSelfRow)
+    ].map(attachSortKeys);
+
+    combined.sort((a, b) => {
+      if (a._sortDate !== b._sortDate) return (a._sortDate - b._sortDate) * sortDirection;
+      return (a._sortTime - b._sortTime) * sortDirection;
+    });
+
+    const filteredCombined = combined.filter(row => {
+      if (kindFilter && row.inspection_kind !== kindFilter) return false;
+      if (resultFilter && getInspectionResultValue(row) !== resultFilter) return false;
+      return true;
+    });
+
+    const total = filteredCombined.length;
+    const list = filteredCombined
+      .slice(offset, offset + limit)
+      .map(({ _sortDate, _sortTime, ...rest }) => rest);
+
+    ctx.body = {
+      code: 200,
+      message: 'success',
+      data: {
+        list,
+        total,
+        page,
+        pageSize
+      }
+    };
+    return;
+  }
+
+  if (kindFilter === 'self') {
+    ctx.body = {
+      code: 200,
+      message: 'success',
+      data: {
+        list: [],
+        total: 0,
+        page,
+        pageSize
+      }
+    };
+    return;
+  }
+
+  if (resultFilter) {
+    if (resultFilter === 'pass') {
+      otherWhere.is_qualified = 1;
+    } else if (resultFilter === 'fail') {
+      otherWhere.is_qualified = 0;
+    } else {
+      ctx.body = {
+        code: 200,
+        message: 'success',
+        data: {
+          list: [],
+          total: 0,
+          page,
+          pageSize
+        }
+      };
+      return;
     }
   }
 
   const result = await SafetyOtherInspection.findAndCountAll({
-    where,
+    where: otherWhere,
     include: [
       { model: User, as: 'inspector', attributes: ['id', 'real_name'] },
       { model: Station, as: 'station', attributes: ['id', 'station_name'] }
     ],
     offset, limit,
-    order: [['inspection_date', 'DESC']]
+    order: [['inspection_date', normalizedSortOrder], ['created_at', normalizedSortOrder]]
   });
 
-  if (result.rows.length > 0) {
-    const missingRows = result.rows.filter(row =>
-      !row.station_id && row.inspected_user_id && row.inspection_date
-    );
-    if (missingRows.length > 0) {
-      const yearMonthMap = new Map();
-      missingRows.forEach(row => {
-        const inspectionDay = dayjs(row.inspection_date);
-        const year = inspectionDay.year();
-        const month = inspectionDay.month() + 1;
-        const key = `${year}-${month}`;
-        if (!yearMonthMap.has(key)) {
-          yearMonthMap.set(key, { year, month, userIds: new Set() });
-        }
-        yearMonthMap.get(key).userIds.add(row.inspected_user_id);
-      });
-
-      const scheduleBuckets = new Map();
-      for (const [key, data] of yearMonthMap) {
-        const schedules = await Schedule.findAll({
-          where: {
-            user_id: { [Op.in]: Array.from(data.userIds) },
-            year: data.year,
-            month: data.month
-          },
-          attributes: ['user_id', 'station_id', 'schedules', 'year', 'month']
-        });
-        scheduleBuckets.set(key, schedules);
-      }
-
-      const resolvedStationIds = new Set();
-      missingRows.forEach(row => {
-        const inspectionDay = dayjs(row.inspection_date);
-        const year = inspectionDay.year();
-        const month = inspectionDay.month() + 1;
-        const dateKey = inspectionDay.format('YYYY-MM-DD');
-        const dayKey = String(inspectionDay.date());
-        const key = `${year}-${month}`;
-        const schedules = scheduleBuckets.get(key) || [];
-        for (const schedule of schedules) {
-          if (schedule.user_id !== row.inspected_user_id) continue;
-          const schedulesData = parseSchedulesData(schedule.schedules);
-          if (hasScheduleForDate(schedulesData, dateKey, dayKey)) {
-            row.setDataValue('station_id', schedule.station_id);
-            resolvedStationIds.add(schedule.station_id);
-            break;
-          }
-        }
-      });
-
-      if (resolvedStationIds.size > 0) {
-        const stations = await Station.findAll({
-          where: { id: { [Op.in]: Array.from(resolvedStationIds) } },
-          attributes: ['id', 'station_name']
-        });
-        const stationMap = new Map(stations.map(s => [s.id, s]));
-        missingRows.forEach(row => {
-          const resolvedId = row.getDataValue('station_id');
-          if (resolvedId && stationMap.has(resolvedId)) {
-            row.setDataValue('station', stationMap.get(resolvedId));
-          }
-        });
-      }
-    }
-  }
-
+  await hydrateOtherInspectionStations(result.rows);
   await normalizeInspectionItems(result.rows);
 
   ctx.body = {
@@ -1042,8 +1419,8 @@ export const getHazardInspections = async (ctx) => {
   const where = {};
 
   const user = ctx.state.user;
-  const privilegedRoles = ['safety_inspector', 'station_manager', 'deputy_manager', 'department_manager', 'admin'];
-  const allAccessRoles = ['safety_inspector', 'deputy_manager', 'department_manager', 'senior_management', 'admin'];
+  const privilegedRoles = ['safety_inspector', 'station_manager', 'deputy_manager', 'department_manager', 'admin', 'dev_test'];
+  const allAccessRoles = ['safety_inspector', 'deputy_manager', 'department_manager', 'senior_management', 'admin', 'dev_test'];
   const roleCode = user?.baseRoleCode || user?.roleCode;
   const rectificationInclude = { model: SafetyRectification, as: 'rectification' };
   if (!privilegedRoles.includes(user.roleCode)) {
@@ -1228,7 +1605,7 @@ export const getSafetyRectifications = async (ctx) => {
   const where = {};
 
   const user = ctx.state.user;
-  const privilegedRoles = ['safety_inspector', 'station_manager', 'deputy_manager', 'department_manager', 'admin'];
+  const privilegedRoles = ['safety_inspector', 'station_manager', 'deputy_manager', 'department_manager', 'admin', 'dev_test'];
   // 非特权角色只能看到自己被处罚的记录
   if (!privilegedRoles.includes(user.roleCode)) {
     where.punished_person_id = user.id;
@@ -1264,6 +1641,23 @@ export const createSafetyRectification = async (ctx) => {
   const inspection = await SafetyHazardInspection.findByPk(inspectionId);
   if (!inspection) throw createError(404, '安全隐患检查记录不存在');
 
+  const isCompletedValues = Array.isArray(SafetyRectification.rawAttributes?.is_completed?.values)
+    ? SafetyRectification.rawAttributes.is_completed.values
+    : [];
+  const rootCauseCategoryValues = Array.isArray(SafetyRectification.rawAttributes?.root_cause_category?.values)
+    ? SafetyRectification.rawAttributes.root_cause_category.values
+    : [];
+  const isCompletedReference = ['是', '否'];
+  const rootCauseCategoryReference = ['组织措施', '管理措施', '技术措施', '经济措施'];
+  const normalizedIsCompleted = resolveEnumValue(isCompleted, isCompletedValues, isCompletedReference);
+  if (!normalizedIsCompleted) throw createError(400, '涓€娆℃槸鍚﹀凡瀹屾垚鏁存敼涓嶈兘涓虹┖');
+  const normalizedRootCauseCategory = resolveEnumValue(rootCauseCategory, rootCauseCategoryValues, rootCauseCategoryReference);
+  const resolvedRootCauseCategory = normalizedRootCauseCategory === '' ? null : normalizedRootCauseCategory;
+  const rootCauseCategoryIndex = resolvedRootCauseCategory
+    ? resolveEnumIndex(resolvedRootCauseCategory, rootCauseCategoryReference)
+    : null;
+  const isCompletedIndex = resolveEnumIndex(normalizedIsCompleted, isCompletedReference);
+
   const rectification = await SafetyRectification.create({
     record_code: generateRecordCode('SR'),
     inspection_id: inspectionId,
@@ -1276,9 +1670,11 @@ export const createSafetyRectification = async (ctx) => {
     punished_person_id: punishedPersonId,
     punished_person_name: punishedPersonName,
     punishment_result: punishmentResult,
-    is_completed: isCompleted,
+    is_completed: isCompletedIndex ? sequelize.literal(isCompletedIndex) : normalizedIsCompleted,
     completion_photos: JSON.stringify(completionPhotos || []),
-    root_cause_category: rootCauseCategory || null,
+    root_cause_category: rootCauseCategoryIndex
+      ? sequelize.literal(rootCauseCategoryIndex)
+      : (resolvedRootCauseCategory ?? null),
     status: 'pending'  // 待复核
   });
 
@@ -1338,14 +1734,38 @@ export const updateSafetyRectification = async (ctx) => {
   const rectification = await SafetyRectification.findByPk(id);
   if (!rectification) throw createError(404, '整改审批单不存在');
 
+  const isCompletedValues = Array.isArray(SafetyRectification.rawAttributes?.is_completed?.values)
+    ? SafetyRectification.rawAttributes.is_completed.values
+    : [];
+  const rootCauseCategoryValues = Array.isArray(SafetyRectification.rawAttributes?.root_cause_category?.values)
+    ? SafetyRectification.rawAttributes.root_cause_category.values
+    : [];
+
+  const isCompletedReference = ['是', '否'];
+  const rootCauseCategoryReference = ['组织措施', '管理措施', '技术措施', '经济措施'];
+
   const updateData = {};
   if (rootCause !== undefined) updateData.root_cause = rootCause;
-  if (rootCauseCategory !== undefined) updateData.root_cause_category = rootCauseCategory;
+  if (rootCauseCategory !== undefined) {
+    const normalizedRootCauseCategory = resolveEnumValue(rootCauseCategory, rootCauseCategoryValues, rootCauseCategoryReference);
+    const resolvedRootCauseCategory = normalizedRootCauseCategory === '' ? null : normalizedRootCauseCategory;
+    const rootCauseCategoryIndex = resolvedRootCauseCategory
+      ? resolveEnumIndex(resolvedRootCauseCategory, rootCauseCategoryReference)
+      : null;
+    updateData.root_cause_category = rootCauseCategoryIndex
+      ? sequelize.literal(rootCauseCategoryIndex)
+      : resolvedRootCauseCategory;
+  }
   if (rectificationMeasures !== undefined) updateData.rectification_measures = rectificationMeasures;
   if (punishedPersonId !== undefined) updateData.punished_person_id = punishedPersonId;
   if (punishedPersonName !== undefined) updateData.punished_person_name = punishedPersonName;
   if (punishmentResult !== undefined) updateData.punishment_result = punishmentResult;
-  if (isCompleted !== undefined) updateData.is_completed = isCompleted;
+  if (isCompleted !== undefined) {
+    const normalizedIsCompleted = resolveEnumValue(isCompleted, isCompletedValues, isCompletedReference);
+    if (!normalizedIsCompleted) throw createError(400, '涓€娆℃槸鍚﹀凡瀹屾垚鏁存敼涓嶈兘涓虹┖');
+    const isCompletedIndex = resolveEnumIndex(normalizedIsCompleted, isCompletedReference);
+    updateData.is_completed = isCompletedIndex ? sequelize.literal(isCompletedIndex) : normalizedIsCompleted;
+  }
   if (completionPhotos !== undefined) updateData.completion_photos = JSON.stringify(completionPhotos || []);
 
   await rectification.update(updateData);

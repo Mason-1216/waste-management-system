@@ -3,7 +3,7 @@
     <div class="page-header">
       <h3>安全检查项目管理</h3>
       <div class="header-actions">
-        <el-button @click="downloadTemplate">
+        <el-button type="info" @click="downloadTemplate">
           <el-icon><Download /></el-icon>
           下载模板
         </el-button>
@@ -19,7 +19,7 @@
         >
           <el-button type="success">
             <el-icon><Download /></el-icon>
-            导入
+            批量导入
           </el-button>
         </BaseUpload>
         <el-button type="primary" @click="addWorkType">

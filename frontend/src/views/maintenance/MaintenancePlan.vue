@@ -7,7 +7,11 @@
       </el-button>
     </div>
 
-    <el-table :data="planList" stripe border>
+    <el-card class="filter-card">
+      <FilterBar />
+    </el-card>
+
+    <el-table :data="planTableRows" stripe border>
       <el-table-column prop="equipmentName" label="设备名称" min-width="150" />
       <el-table-column prop="planType" label="计划类型" width="120">
         <template #default="{ row }">
@@ -30,6 +34,18 @@
         </template>
       </el-table-column>
     </el-table>
+
+    <div class="pagination-wrapper">
+      <el-pagination
+        v-model:current-page="pagination.page"
+        v-model:page-size="pagination.pageSize"
+        :page-sizes="[5, 10, 20, 50]"
+        :total="pagination.total"
+        layout="total, sizes, prev, pager, next"
+        @current-change="handlePageChange"
+        @size-change="handlePageSizeChange"
+      />
+    </div>
 
     <FormDialog
       v-model="dialogVisible"
@@ -61,12 +77,15 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue';
+import { ref, onMounted, computed, watch } from 'vue';
 import { ElMessage } from 'element-plus';
+
+import FilterBar from '@/components/common/FilterBar.vue';
 import request from '@/api/request';
 import FormDialog from '@/components/system/FormDialog.vue';
 
 const planList = ref([]);
+const pagination = ref({ page: 1, pageSize: 5, total: 0 });
 const dialogVisible = ref(false);
 const isEdit = ref(false);
 const form = ref({ equipmentName: '', planType: 'monthly', nextDate: '' });
@@ -80,7 +99,25 @@ const loadList = async () => {
   try {
     const res = await request.get('/maintenance-plans');
     planList.value = res.list || [];
+    pagination.value.page = 1;
+    pagination.value.total = planList.value.length;
   } catch (e) {  }
+};
+
+const planTableRows = computed(() => {
+  const list = Array.isArray(planList.value) ? planList.value : [];
+  const startIndex = (pagination.value.page - 1) * pagination.value.pageSize;
+  const endIndex = startIndex + pagination.value.pageSize;
+  return list.slice(startIndex, endIndex);
+});
+
+const handlePageChange = (page) => {
+  pagination.value.page = page;
+};
+
+const handlePageSizeChange = (size) => {
+  pagination.value.pageSize = size;
+  pagination.value.page = 1;
 };
 
 const showAddDialog = () => {
@@ -107,6 +144,16 @@ const deletePlan = (row) => {
 };
 
 onMounted(() => loadList());
+
+watch(
+  () => planList.value.length,
+  (total) => {
+    pagination.value.total = total;
+    const size = pagination.value.pageSize;
+    const maxPage = Math.max(1, Math.ceil(total / size));
+    if (pagination.value.page > maxPage) pagination.value.page = maxPage;
+  }
+);
 </script>
 
 <style lang="scss" scoped>

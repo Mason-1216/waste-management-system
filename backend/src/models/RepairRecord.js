@@ -129,7 +129,7 @@ const RepairRecord = sequelize.define('RepairRecord', {
   },
   repair_tasks: {
     type: DataTypes.JSON,
-    comment: '维修任务库选择'
+    comment: '维修任务汇总表选择'
   },
   // 耗材明细 JSON [{name, model, unit, quantity, unitPrice, amount}]
   consumables_list: {

@@ -4,19 +4,38 @@ import { createError } from '../../../middlewares/error.js';
 import { getPagination, formatPaginationResponse, getOrderBy } from '../../../utils/helpers.js';
 
 /**
- * 获取临时工作任务库列表（共享，所有站长/部门经理/部门副经理可见）
+ * 获取临时工作任务汇总表列表（共享，所有站长/部门经理/部门副经理可见）
  * GET /api/temporary-task-library
  */
 export const getTemporaryTaskLibrary = async (ctx) => {
   const { page, pageSize, offset, limit } = getPagination(ctx.query);
   const order = getOrderBy(ctx.query);
-  const { keyword, stationId } = ctx.query;
+  const {
+    keyword,
+    stationId,
+    taskCategory,
+    scoreMethod,
+    quantityEditable,
+    dispatchReviewRequired
+  } = ctx.query;
 
   const where = {};
 
-  // 只按关键字过滤，不按场站过滤（共享任务库）
+  // 只按关键字过滤，不按场站过滤（共享任务汇总表）
   if (keyword) {
     where.task_name = { [Op.like]: `%${keyword}%` };
+  }
+  if (taskCategory) {
+    where.task_category = { [Op.like]: `%${taskCategory}%` };
+  }
+  if (scoreMethod) {
+    where.score_method = scoreMethod;
+  }
+  if (quantityEditable !== undefined) {
+    where.quantity_editable = Number(quantityEditable);
+  }
+  if (dispatchReviewRequired !== undefined) {
+    where.dispatch_review_required = Number(dispatchReviewRequired);
   }
   if (stationId) {
     where.station_id = Number(stationId);
@@ -42,11 +61,24 @@ export const getTemporaryTaskLibrary = async (ctx) => {
 };
 
 /**
- * 新建临时工作任务库（共享任务库，场站ID可选）
+ * 新建临时工作任务汇总表（共享任务汇总表，场站ID可选）
  * POST /api/temporary-task-library
  */
 export const createTemporaryTaskLibrary = async (ctx) => {
-  const { taskName, taskContent, standardHours, points, stationId } = ctx.request.body;
+  const {
+    taskName,
+    taskContent,
+    taskCategory,
+    scoreMethod,
+    standardHours,
+    unitPoints,
+    quantity,
+    pointsRule,
+    unitPointsEditable,
+    quantityEditable,
+    dispatchReviewRequired,
+    stationId
+  } = ctx.request.body;
   const user = ctx.state.user;
 
   if (!taskName || !taskContent) {
@@ -57,15 +89,27 @@ export const createTemporaryTaskLibrary = async (ctx) => {
     throw createError(400, '工时不能为空');
   }
 
-  if (points === undefined || points === null) {
-    throw createError(400, '积分不能为空');
+  if (unitPoints === undefined || unitPoints === null) {
+    throw createError(400, '单位积分不能为空');
+  }
+
+  const normalizedQuantity = Number.parseInt(quantity ?? 1, 10);
+  if (!Number.isInteger(normalizedQuantity) || normalizedQuantity < 1 || normalizedQuantity > 1000) {
+    throw createError(400, '数量必须是 1-1000 的整数');
   }
 
   const record = await TemporaryTaskLibrary.create({
     task_name: taskName,
     task_content: taskContent,
+    task_category: taskCategory ?? null,
+    score_method: scoreMethod ?? null,
     standard_hours: standardHours,
-    points,
+    unit_points: unitPoints,
+    quantity: normalizedQuantity,
+    points_rule: pointsRule ?? null,
+    unit_points_editable: Number(unitPointsEditable) === 1 ? 1 : 0,
+    quantity_editable: Number(quantityEditable) === 1 ? 1 : 0,
+    dispatch_review_required: Number(dispatchReviewRequired) === 1 ? 1 : 0,
     station_id: stationId ? parseInt(stationId) : null,
     created_by: user.id,
     created_by_name: user.realName
@@ -79,25 +123,62 @@ export const createTemporaryTaskLibrary = async (ctx) => {
 };
 
 /**
- * 更新临时工作任务库
+ * 更新临时工作任务汇总表
  * PUT /api/temporary-task-library/:id
  */
 export const updateTemporaryTaskLibrary = async (ctx) => {
   const { id } = ctx.params;
-  const { taskName, taskContent, standardHours, points, stationId } = ctx.request.body;
+  const {
+    taskName,
+    taskContent,
+    taskCategory,
+    scoreMethod,
+    standardHours,
+    unitPoints,
+    quantity,
+    pointsRule,
+    unitPointsEditable,
+    quantityEditable,
+    dispatchReviewRequired,
+    stationId
+  } = ctx.request.body;
 
   const record = await TemporaryTaskLibrary.findByPk(id);
   if (!record) {
     throw createError(404, '任务不存在');
   }
 
-  await record.update({
+  const updateData = {
     task_name: taskName ?? record.task_name,
     task_content: taskContent ?? record.task_content,
+    task_category: taskCategory ?? record.task_category,
+    score_method: scoreMethod ?? record.score_method,
     standard_hours: standardHours ?? record.standard_hours,
-    points: points ?? record.points,
-    station_id: stationId ? parseInt(stationId) : record.station_id
-  });
+    unit_points: unitPoints ?? record.unit_points,
+    points_rule: pointsRule ?? record.points_rule,
+    unit_points_editable: unitPointsEditable !== undefined
+      ? (Number(unitPointsEditable) === 1 ? 1 : 0)
+      : record.unit_points_editable,
+    quantity_editable: quantityEditable !== undefined
+      ? (Number(quantityEditable) === 1 ? 1 : 0)
+      : record.quantity_editable,
+    dispatch_review_required: dispatchReviewRequired !== undefined
+      ? (Number(dispatchReviewRequired) === 1 ? 1 : 0)
+      : record.dispatch_review_required,
+    station_id: stationId !== undefined ? (stationId ? parseInt(stationId) : null) : record.station_id
+  };
+
+  if (quantity !== undefined) {
+    const normalizedQuantity = Number.parseInt(quantity ?? 1, 10);
+    if (!Number.isInteger(normalizedQuantity) || normalizedQuantity < 1 || normalizedQuantity > 1000) {
+      throw createError(400, '数量必须是 1-1000 的整数');
+    }
+    updateData.quantity = normalizedQuantity;
+  } else {
+    updateData.quantity = record.quantity;
+  }
+
+  await record.update(updateData);
 
   ctx.body = {
     code: 200,
@@ -107,7 +188,7 @@ export const updateTemporaryTaskLibrary = async (ctx) => {
 };
 
 /**
- * 删除临时工作任务库
+ * 删除临时工作任务汇总表
  * DELETE /api/temporary-task-library/:id
  */
 export const deleteTemporaryTaskLibrary = async (ctx) => {
@@ -128,7 +209,7 @@ export const deleteTemporaryTaskLibrary = async (ctx) => {
 };
 
 /**
- * 批量导入临时工作任务库（共享任务库，无需场站ID）
+ * 批量导入临时工作任务汇总表（共享任务汇总表，无需场站ID）
  * POST /api/temporary-task-library/batch-import
  */
 export const batchImportTemporaryTaskLibrary = async (ctx) => {
@@ -152,7 +233,7 @@ export const batchImportTemporaryTaskLibrary = async (ctx) => {
     try {
       if (!task.taskName || !task.taskName.trim()) {
         results.failed++;
-        results.errors.push(`第${rowNum}行: 工作名称不能为空`);
+        results.errors.push(`第${rowNum}行: 任务名称不能为空`);
         continue;
       }
 
@@ -169,14 +250,27 @@ export const batchImportTemporaryTaskLibrary = async (ctx) => {
         continue;
       }
 
-      const points = parseInt(task.points) || 0;
+      const unitPoints = parseInt(task.unitPoints) || 0;
+      const normalizedQuantity = Number.parseInt(task.quantity ?? 1, 10);
+      if (!Number.isInteger(normalizedQuantity) || normalizedQuantity < 1 || normalizedQuantity > 1000) {
+        results.failed++;
+        results.errors.push(`第${rowNum}行: 数量必须是 1-1000 的整数`);
+        continue;
+      }
 
       await TemporaryTaskLibrary.create({
         task_name: task.taskName.trim(),
         task_content: task.taskContent.trim(),
+        task_category: task.taskCategory ? String(task.taskCategory).trim() : null,
+        score_method: task.scoreMethod ? String(task.scoreMethod).trim() : null,
         standard_hours: standardHours,
-        points,
-        station_id: null,
+        unit_points: unitPoints,
+        quantity: normalizedQuantity,
+        points_rule: task.pointsRule ? String(task.pointsRule).trim() : null,
+        unit_points_editable: Number(task.unitPointsEditable) === 1 ? 1 : 0,
+        quantity_editable: Number(task.quantityEditable) === 1 ? 1 : 0,
+        dispatch_review_required: Number(task.dispatchReviewRequired) === 1 ? 1 : 0,
+        station_id: task.stationId ? parseInt(task.stationId) : null,
         created_by: user.id,
         created_by_name: user.realName
       });

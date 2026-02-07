@@ -130,6 +130,16 @@ const MaintenanceWorkRecord = sequelize.define('MaintenanceWorkRecord', {
     type: DataTypes.TEXT,
     allowNull: true,
     comment: '验收备注'
+  },
+  deduction_points: {
+    type: DataTypes.DECIMAL(10, 2),
+    allowNull: true,
+    comment: '验收不通过扣分（0或负数）'
+  },
+  deduction_remark: {
+    type: DataTypes.TEXT,
+    allowNull: true,
+    comment: '扣分说明'
   }
 }, {
   tableName: 'maintenance_work_records',

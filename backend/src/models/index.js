@@ -25,7 +25,6 @@ import SafetySelfInspection from './SafetySelfInspection.js';
 import SafetyOtherInspection from './SafetyOtherInspection.js';
 import SafetyHazardInspection from './SafetyHazardInspection.js';
 import SafetyRectification from './SafetyRectification.js';
-import PriceManagement from './PriceManagement.js';
 import SystemConfig from './SystemConfig.js';
 import Notification from './Notification.js';
 import OperationLog from './OperationLog.js';
@@ -77,7 +76,6 @@ export {
   SafetyOtherInspection,
   SafetyHazardInspection,
   SafetyRectification,
-  PriceManagement,
   SystemConfig,
   Notification,
   OperationLog,
@@ -144,7 +142,7 @@ export const defineAssociations = () => {
   TemporaryTask.belongsTo(User, { foreignKey: 'assigner_id', as: 'assigner' });
   TemporaryTask.belongsTo(User, { foreignKey: 'executor_id', as: 'executor' });
 
-  // 临时工作任务库关联
+  // 临时工作任务汇总表关联
   if (TemporaryTaskLibrary.associate) {
     TemporaryTaskLibrary.associate({ Station, User });
   } else {
@@ -306,7 +304,6 @@ export default {
   SafetyOtherInspection,
   SafetyHazardInspection,
   SafetyRectification,
-  PriceManagement,
   SystemConfig,
   Notification,
   OperationLog,

@@ -9,4 +9,6 @@ export const registerAccessRoutes = (router) => {
   router.put('/roles/:id', checkRole(['admin']), roleController.updateRole);
   router.delete('/roles/:id', checkRole(['admin']), roleController.deleteRole);
   router.get('/permissions', checkRole(['admin']), permissionController.getPermissions);
+  // Lightweight menu permission catalog for all logged-in users.
+  router.get('/permission-catalog', permissionController.getPermissionCatalog);
 };

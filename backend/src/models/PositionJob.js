@@ -17,6 +17,12 @@ const PositionJob = sequelize.define('PositionJob', {
     allowNull: false,
     comment: '任务名称'
   },
+  sort_order: {
+    type: DataTypes.INTEGER,
+    allowNull: false,
+    defaultValue: 1,
+    comment: '任务排序'
+  },
   task_category: {
     type: DataTypes.STRING(50),
     allowNull: true,

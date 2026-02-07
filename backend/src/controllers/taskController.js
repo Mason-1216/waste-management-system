@@ -13,8 +13,8 @@ export const submitDailyTasks = taskService.submitDailyTasks;
 export const getTemporaryTasks = taskService.getTemporaryTasks;
 export const createTemporaryTask = taskService.createTemporaryTask;
 export const updateTemporaryTask = taskService.updateTemporaryTask;
-export const startTemporaryTask = taskService.startTemporaryTask;
-export const completeTemporaryTask = taskService.completeTemporaryTask;
+export const submitTemporaryTask = taskService.submitTemporaryTask;
+export const reviewTemporaryTask = taskService.reviewTemporaryTask;
 export const deleteTemporaryTask = taskService.deleteTemporaryTask;
 
 export default {
@@ -31,7 +31,7 @@ export default {
   getTemporaryTasks,
   createTemporaryTask,
   updateTemporaryTask,
-  startTemporaryTask,
-  completeTemporaryTask,
+  submitTemporaryTask,
+  reviewTemporaryTask,
   deleteTemporaryTask
 };

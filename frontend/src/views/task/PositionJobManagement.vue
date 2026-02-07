@@ -1,7 +1,7 @@
-<template>
+﻿<template>
   <div class="position-job-management">
     <div class="page-header">
-      <h2>岗位工作任务库</h2>
+      <h2>岗位工作任务汇总表</h2>
       <div class="header-actions">
         <el-button type="primary" @click="addPositionJob">
           <el-icon><Plus /></el-icon>
@@ -17,12 +17,12 @@
           accept=".xlsx,.xls"
           :before-upload="beforeUpload"
         >
-          <el-button type="primary" plain>
+          <el-button type="success">
             <el-icon><Download /></el-icon>
             批量导入
           </el-button>
         </BaseUpload>
-        <el-button @click="downloadTemplate" type="primary" plain>
+        <el-button @click="downloadTemplate" type="info">
           <el-icon><Download /></el-icon>
           下载模板
         </el-button>
@@ -30,24 +30,33 @@
     </div>
 
     <!-- 搜索表单 -->
-    <el-card class="search-card">
-      <el-form :model="searchForm" inline>
-        <el-form-item label="岗位名称">
-          <el-input 
-            v-model="searchForm.positionName" 
+    <el-card class="filter-card">
+      <FilterBar>
+        <div class="filter-item">
+          <span class="filter-label">岗位名称</span>
+          <FilterAutocomplete
+            v-model="searchForm.positionName"
+            :fetch-suggestions="fetchPositionNameSuggestions"
+            trigger-on-focus
             placeholder="请输入岗位名称"
             clearable
+            style="width: 200px;"
           />
-        </el-form-item>
-        <el-form-item label="工作项目">
-          <el-input 
-            v-model="searchForm.jobName" 
+        </div>
+        <div class="filter-item">
+          <span class="filter-label">工作项目</span>
+          <FilterAutocomplete
+            v-model="searchForm.jobName"
+            :fetch-suggestions="fetchJobNameSuggestions"
+            trigger-on-focus
             placeholder="请输入工作项目"
             clearable
+            style="width: 200px;"
           />
-        </el-form-item>
-        <el-form-item label="场站">
-          <el-select 
+        </div>
+        <div class="filter-item">
+          <span class="filter-label">场站</span>
+          <FilterSelect 
             v-model="searchForm.stationId" 
             placeholder="请选择场站"
             clearable
@@ -59,17 +68,13 @@
               :label="station.stationName"
               :value="station.id"
             />
-          </el-select>
-        </el-form-item>
-        <el-form-item>
-          <el-button type="primary" @click="search">搜索</el-button>
-          <el-button @click="resetSearch">重置</el-button>
-        </el-form-item>
-      </el-form>
+          </FilterSelect>
+        </div>
+      </FilterBar>
     </el-card>
 
     <!-- 数据表格 -->
-    <TableCard>
+    <TableWrapper>
       <el-table
         :data="flattenedTableData"
         v-loading="loading"
@@ -115,19 +120,19 @@
           </template>
         </el-table-column>
       </el-table>
-      
-      <!-- 分页 -->
+    </TableWrapper>
+
+    <div class="pagination-wrapper">
       <el-pagination
         v-model:current-page="pagination.currentPage"
         v-model:page-size="pagination.pageSize"
-        :page-sizes="[10, 20, 50, 100]"
+        :page-sizes="[5, 10, 20, 50, 100]"
         :total="pagination.total"
         layout="total, sizes, prev, pager, next, jumper"
         @size-change="handleSizeChange"
         @current-change="handleCurrentChange"
-        style="margin-top: 20px; text-align: right;"
       />
-    </TableCard>
+    </div>
 
     <!-- 编辑对话框 -->
     <FormDialog
@@ -283,10 +288,12 @@ import { ref, reactive, computed, onMounted } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { Upload, Download, Plus } from '@element-plus/icons-vue';
 
+import FilterBar from '@/components/common/FilterBar.vue';
 import { addTemplateInstructionSheet, applyTemplateHeaderStyle } from '@/utils/excelTemplate';
 import { positionJobApi } from '@/api/positionJob';
 import { useUserStore } from '@/store/modules/user';
 import FormDialog from '@/components/system/FormDialog.vue';
+import { createListSuggestionFetcher } from '@/utils/filterAutocomplete';
 
 const userStore = useUserStore();
 
@@ -301,7 +308,18 @@ const uploadHeaders = computed(() => ({
 // 响应式数据
 const loading = ref(false);
 const tableData = ref([]);
+const suggestionList = ref([]);
 const stations = ref([]);
+
+const fetchPositionNameSuggestions = createListSuggestionFetcher(
+  () => suggestionList.value,
+  (row) => row.position_name
+);
+
+const fetchJobNameSuggestions = createListSuggestionFetcher(
+  () => suggestionList.value,
+  (row) => row.job_name
+);
 
 // 扁平化表格数据，按场站+岗位名称分组
 const flattenedTableData = computed(() => {
@@ -378,7 +396,7 @@ const searchForm = reactive({
 // 分页信息
 const pagination = reactive({
   currentPage: 1,
-  pageSize: 10,
+  pageSize: 5,
   total: 0
 });
 
@@ -433,6 +451,7 @@ const getList = async () => {
     const res = await positionJobApi.getPositionJobs(params);
     tableData.value = res.list || [];
     pagination.total = res.total || 0;
+    loadSuggestionList(params);
   } catch (error) {
     
   } finally {
@@ -440,10 +459,24 @@ const getList = async () => {
   }
 };
 
+const loadSuggestionList = async (baseParams) => {
+  try {
+    const params = {
+      ...baseParams,
+      page: 1,
+      pageSize: 5000
+    };
+    const res = await positionJobApi.getPositionJobs(params);
+    suggestionList.value = Array.isArray(res?.list) ? res.list : [];
+  } catch (error) {
+    suggestionList.value = [];
+  }
+};
+
 // 获取场站列表
 const getStations = async () => {
   try {
-    const res = await fetch(`${apiBaseUrl.value}/stations`, {
+    const res = await fetch(`${apiBaseUrl.value}/stations/all`, {
       method: 'GET',
       headers: {
         'Authorization': `Bearer ${userStore.token}`,
@@ -743,10 +776,5 @@ onMounted(() => {
     margin-bottom: 20px;
   }
 
-  .table-card {
-    .el-table {
-      margin-bottom: 20px;
-    }
-  }
 }
 </style>

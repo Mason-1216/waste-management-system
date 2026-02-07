@@ -80,17 +80,24 @@ export const getEquipmentByCode = async (ctx) => {
  * POST /api/equipment
  */
 export const createEquipment = async (ctx) => {
-  const { stationId, equipmentCode, equipmentName, installationLocation } = ctx.request.body;
+  const { stationId, equipmentCode, equipmentName, installationLocation, specification, model, material } = ctx.request.body;
 
   if (!stationId || !equipmentCode || !equipmentName) {
     throw createError(400, '场站、设备编号和设备名称不能为空');
   }
 
-  // 检查设备编号是否已存在
+  const normalizedInstallationLocation = typeof installationLocation === 'string' ? installationLocation.trim() : '';
+  if (!normalizedInstallationLocation) {
+    throw createError(400, '安装地点不能为空');
+  }
+
+  const normalizedCode = String(equipmentCode).trim();
+  const normalizedName = String(equipmentName).trim();
+
   const existing = await Equipment.findOne({
     where: {
       station_id: stationId,
-      equipment_code: equipmentCode
+      equipment_code: normalizedCode
     }
   });
 
@@ -100,9 +107,12 @@ export const createEquipment = async (ctx) => {
 
   const equipment = await Equipment.create({
     station_id: stationId,
-    equipment_code: equipmentCode,
-    equipment_name: equipmentName,
-    installation_location: installationLocation || null
+    equipment_code: normalizedCode,
+    equipment_name: normalizedName,
+    installation_location: normalizedInstallationLocation,
+    specification: (typeof specification === 'string' && specification.trim() ? specification.trim() : null),
+    model: (typeof model === 'string' && model.trim() ? model.trim() : null),
+    material: (typeof material === 'string' && material.trim() ? material.trim() : null)
   });
 
   ctx.body = {
@@ -111,6 +121,8 @@ export const createEquipment = async (ctx) => {
     data: { id: equipment.id }
   };
 };
+
+
 
 /**
  * 批量创建设备
@@ -129,31 +141,40 @@ export const batchCreateEquipment = async (ctx) => {
     const results = [];
 
     for (const item of equipmentList) {
-      const { stationId, equipmentCode, equipmentName, installationLocation } = item;
+      const { stationId, equipmentCode, equipmentName, installationLocation, specification, model, material } = item;
 
-      if (!stationId || !equipmentCode || !equipmentName) {
-        continue; // 跳过无效数据
+      const normalizedInstallationLocation = typeof installationLocation === 'string' ? installationLocation.trim() : '';
+      if (!stationId || !equipmentCode || !equipmentName || !normalizedInstallationLocation) {
+        continue;
       }
 
-      // 检查是否已存在
+      const normalizedCode = String(equipmentCode).trim();
+      const normalizedName = String(equipmentName).trim();
+
       const existing = await Equipment.findOne({
         where: {
           station_id: stationId,
-          equipment_code: equipmentCode
+          equipment_code: normalizedCode
         },
         transaction: t
       });
 
       if (existing) {
-        continue; // 跳过已存在的设备
+        continue;
       }
 
-      const equipment = await Equipment.create({
-        station_id: stationId,
-        equipment_code: equipmentCode,
-        equipment_name: equipmentName,
-        installation_location: installationLocation || null
-      }, { transaction: t });
+      const equipment = await Equipment.create(
+        {
+          station_id: stationId,
+          equipment_code: normalizedCode,
+          equipment_name: normalizedName,
+          installation_location: normalizedInstallationLocation,
+          specification: (typeof specification === 'string' && specification.trim() ? specification.trim() : null),
+          model: (typeof model === 'string' && model.trim() ? model.trim() : null),
+          material: (typeof material === 'string' && material.trim() ? material.trim() : null)
+        },
+        { transaction: t }
+      );
 
       results.push(equipment);
     }
@@ -171,25 +192,36 @@ export const batchCreateEquipment = async (ctx) => {
   }
 };
 
+
+
 /**
  * 更新设备
  * PUT /api/equipment/:id
  */
 export const updateEquipment = async (ctx) => {
   const { id } = ctx.params;
-  const { equipmentCode, equipmentName, installationLocation } = ctx.request.body;
+  const { equipmentCode, equipmentName, installationLocation, specification, model, material } = ctx.request.body;
 
   const equipment = await Equipment.findByPk(id);
   if (!equipment) {
     throw createError(404, '设备不存在');
   }
 
-  // 如果修改了设备编号，检查是否重复
-  if (equipmentCode && equipmentCode !== equipment.equipment_code) {
+  const normalizedCode = equipmentCode !== undefined ? String(equipmentCode).trim() : null;
+  const normalizedName = equipmentName !== undefined ? String(equipmentName).trim() : null;
+  const normalizedInstallationLocation = installationLocation !== undefined
+    ? (typeof installationLocation === 'string' ? installationLocation.trim() : '')
+    : null;
+
+  if (installationLocation !== undefined && !normalizedInstallationLocation) {
+    throw createError(400, '安装地点不能为空');
+  }
+
+  if (equipmentCode !== undefined && normalizedCode && normalizedCode !== equipment.equipment_code) {
     const existing = await Equipment.findOne({
       where: {
         station_id: equipment.station_id,
-        equipment_code: equipmentCode,
+        equipment_code: normalizedCode,
         id: { [Op.ne]: id }
       }
     });
@@ -200,9 +232,12 @@ export const updateEquipment = async (ctx) => {
   }
 
   await equipment.update({
-    equipment_code: equipmentCode || equipment.equipment_code,
-    equipment_name: equipmentName || equipment.equipment_name,
-    installation_location: installationLocation !== undefined ? installationLocation : equipment.installation_location
+    equipment_code: normalizedCode || equipment.equipment_code,
+    equipment_name: normalizedName || equipment.equipment_name,
+    installation_location: installationLocation !== undefined ? normalizedInstallationLocation : equipment.installation_location,
+    specification: specification !== undefined ? (typeof specification === 'string' && specification.trim() ? specification.trim() : null) : equipment.specification,
+    model: model !== undefined ? (typeof model === 'string' && model.trim() ? model.trim() : null) : equipment.model,
+    material: material !== undefined ? (typeof material === 'string' && material.trim() ? material.trim() : null) : equipment.material
   });
 
   ctx.body = {
@@ -211,6 +246,8 @@ export const updateEquipment = async (ctx) => {
     data: null
   };
 };
+
+
 
 /**
  * 删除设备
@@ -252,54 +289,45 @@ export const importEquipment = async (ctx) => {
     const worksheet = workbook.getWorksheet(1);
     const results = [];
 
-    // 获取所有场站
     const stations = await Station.findAll({
       attributes: ['id', 'station_name']
     });
 
-    // 从第二行开始读取数据（跳过标题行）
     for (let i = 2; i <= worksheet.rowCount; i++) {
       const row = worksheet.getRow(i);
-
-      // 检查是否是空行
       if (!row.hasValues) continue;
 
       const stationName = row.getCell(1).value?.toString().trim();
-      const equipmentCode = row.getCell(2).value?.toString().trim();
-      const equipmentName = row.getCell(3).value?.toString().trim();
-      const installationLocation = row.getCell(4).value?.toString().trim();
+      const installationLocation = row.getCell(2).value?.toString().trim();
+      const equipmentCode = row.getCell(3).value?.toString().trim();
+      const equipmentName = row.getCell(4).value?.toString().trim();
+      const specification = row.getCell(5).value?.toString().trim();
+      const model = row.getCell(6).value?.toString().trim();
+      const material = row.getCell(7).value?.toString().trim();
 
-      if (!equipmentCode || !equipmentName) {
-        results.push({
-          row: i,
-          stationName,
-          equipmentCode,
-          equipmentName,
-          status: 'error',
-          message: '设备编号和设备名称不能为空'
-        });
+      if (!stationName) {
+        results.push({ row: i, stationName, equipmentCode, equipmentName, status: 'error', message: '场站不能为空' });
         continue;
       }
 
-      // 根据场站名称查找场站ID
-      let stationId = null;
-      if (stationName) {
-        const station = stations.find(s => s.station_name === stationName);
-        if (!station) {
-          results.push({
-            row: i,
-            stationName,
-            equipmentCode,
-            equipmentName,
-            status: 'error',
-            message: `未找到场站"${stationName}"`
-          });
-          continue;
-        }
-        stationId = station.id;
+      if (!installationLocation) {
+        results.push({ row: i, stationName, equipmentCode, equipmentName, status: 'error', message: '安装地点不能为空' });
+        continue;
       }
 
-      // 检查是否已存在相同的设备
+      if (!equipmentCode || !equipmentName) {
+        results.push({ row: i, stationName, equipmentCode, equipmentName, status: 'error', message: '设备编号和设备名称不能为空' });
+        continue;
+      }
+
+      const station = stations.find((s) => s.station_name === stationName);
+      if (!station) {
+        results.push({ row: i, stationName, equipmentCode, equipmentName, status: 'error', message: `未找到场站：${stationName}` });
+        continue;
+      }
+
+      const stationId = station.id;
+
       const existing = await Equipment.findOne({
         where: {
           station_id: stationId,
@@ -307,36 +335,27 @@ export const importEquipment = async (ctx) => {
         }
       });
 
-      if (!existing) {
-        await Equipment.create({
-          station_id: stationId,
-          equipment_code: equipmentCode,
-          equipment_name: equipmentName,
-          installation_location: installationLocation || null
-        });
-
-        results.push({
-          row: i,
-          stationName,
-          equipmentCode,
-          equipmentName,
-          status: 'success'
-        });
-      } else {
-        results.push({
-          row: i,
-          stationName,
-          equipmentCode,
-          equipmentName,
-          status: 'duplicate',
-          message: '该场站已存在相同编号的设备'
-        });
+      if (existing) {
+        results.push({ row: i, stationName, equipmentCode, equipmentName, status: 'duplicate', message: '该场站已存在相同编号的设备' });
+        continue;
       }
+
+      await Equipment.create({
+        station_id: stationId,
+        equipment_code: equipmentCode,
+        equipment_name: equipmentName,
+        installation_location: installationLocation,
+        specification: specification || null,
+        model: model || null,
+        material: material || null
+      });
+
+      results.push({ row: i, stationName, equipmentCode, equipmentName, status: 'success' });
     }
 
-    const successCount = results.filter(r => r.status === 'success').length;
-    const errorCount = results.filter(r => r.status === 'error').length;
-    const duplicateCount = results.filter(r => r.status === 'duplicate').length;
+    const successCount = results.filter((r) => r.status === 'success').length;
+    const errorCount = results.filter((r) => r.status === 'error').length;
+    const duplicateCount = results.filter((r) => r.status === 'duplicate').length;
 
     ctx.body = {
       code: 200,
@@ -344,7 +363,6 @@ export const importEquipment = async (ctx) => {
       data: results
     };
   } catch (error) {
-    
     ctx.body = {
       code: 500,
       message: `导入失败: ${error.message}`,
@@ -352,6 +370,8 @@ export const importEquipment = async (ctx) => {
     };
   }
 };
+
+
 
 /**
  * 获取设备导入模板
@@ -361,46 +381,47 @@ export const getEquipmentTemplate = async (ctx) => {
   try {
     const ExcelJS = (await import('exceljs')).default;
 
-    // 创建工作簿
     const workbook = new ExcelJS.Workbook();
-    const worksheet = workbook.addWorksheet('设备信息');
+    const worksheet = workbook.addWorksheet('场站设备名称');
 
-    // 设置列标题
     worksheet.columns = [
       { header: '场站', key: 'stationName', width: 20 },
+      { header: '安装地点', key: 'installationLocation', width: 25 },
       { header: '设备编号', key: 'equipmentCode', width: 20 },
       { header: '设备名称', key: 'equipmentName', width: 25 },
-      { header: '安装地点', key: 'installationLocation', width: 30 }
+      { header: '规格', key: 'specification', width: 15 },
+      { header: '型号', key: 'model', width: 15 },
+      { header: '材质', key: 'material', width: 15 }
     ];
 
-    // 添加示例数据
     worksheet.addRow({
       stationName: '示例场站',
+      installationLocation: '一楼车间',
       equipmentCode: 'EQ-001',
       equipmentName: '示例设备',
-      installationLocation: '一楼车间'
+      specification: 'S1',
+      model: 'M1',
+      material: '钢'
     });
 
-    // 设置标题行样式
     applyTemplateHeaderStyle(worksheet, 1);
     addTemplateInstructionSheet(workbook, [
-      ['场站', '必填，系统已有场站名称。'],
-      ['设备编号', '必填，设备唯一编号。'],
-      ['设备名称', '必填，设备名称。'],
-      ['安装地点', '选填，设备安装位置说明。']
+      ['场站', '必填，系统已有的场站名称。'],
+      ['安装地点', '必填。'],
+      ['设备编号', '必填，设备唯一编号（同一场站内唯一）。'],
+      ['设备名称', '必填。'],
+      ['规格', '选填。'],
+      ['型号', '选填。'],
+      ['材质', '选填。']
     ]);
 
-    // 将工作簿写入Buffer
     const buffer = await workbook.xlsx.writeBuffer();
 
-    // 设置响应头
     ctx.set('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     ctx.set('Content-Disposition', 'attachment; filename="equipment_template.xlsx"');
 
-    // 设置响应体
     ctx.body = buffer;
   } catch (error) {
-    
     ctx.body = {
       code: 500,
       message: '生成模板失败',
@@ -408,6 +429,8 @@ export const getEquipmentTemplate = async (ctx) => {
     };
   }
 };
+
+
 
 export default {
   getEquipment,

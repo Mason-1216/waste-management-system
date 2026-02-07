@@ -9,6 +9,6 @@ export const reportRoutes = [
     path: '/points-summary',
     name: 'PointsSummary',
     component: () => import('@/views/reports/PointsSummary.vue'),
-    meta: { title: '积分统计', roles: ['dev_test'] }
+    meta: { title: '积分统计', roles: ['dev_test', 'operator', 'maintenance', 'station_manager', 'deputy_manager', 'department_manager', 'senior_management', 'client'] }
   }
 ];

@@ -15,6 +15,11 @@ export const markAsRead = (id) => {
   return request.put(`/notifications/${id}/read`);
 };
 
+// 按条件批量标记为已读（不删除）
+export const markByFilterAsRead = (params) => {
+  return request.put('/notifications/read-by-filter', {}, { params });
+};
+
 // 全部标记为已读
 export const markAllAsRead = () => {
   return request.put('/notifications/read-all');

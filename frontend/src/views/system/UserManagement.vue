@@ -1,10 +1,10 @@
-<template>
+﻿<template>
   <div class="user-management-page">
     <div class="page-header">
       <h2>用户管理</h2>
       <div v-if="canEditUser" class="header-actions">
-        <el-button @click="downloadTemplate">
-          <el-icon><Download /></el-icon>下载导入模板
+        <el-button type="info" @click="downloadTemplate">
+          <el-icon><Download /></el-icon>下载模板
         </el-button>
         <BaseUpload
           ref="uploadRef"
@@ -23,95 +23,124 @@
       </div>
     </div>
 
-    <FilterBar>
-      <el-input
-        v-model="filters.keyword"
-        placeholder="搜索用户名/姓名/手机号"
-        clearable
-        style="width: 250px"
-        @keyup.enter="loadList"
-      />
-      <el-input
-        v-model="filters.companyName"
-        placeholder="公司"
-        clearable
-        style="width: 180px"
-        @keyup.enter="loadList"
-      />
-      <el-select v-model="filters.roleCode" placeholder="角色" clearable @change="loadList">
-        <el-option-group v-for="group in positionGroups" :key="group.label" :label="group.label">
-          <el-option
-            v-for="item in group.options"
-            :key="item.value"
-            :label="item.label"
-            :value="item.value"
+    <el-card class="filter-card">
+      <FilterBar>
+        <div class="filter-item">
+          <span class="filter-label">姓名</span>
+          <FilterAutocomplete
+            v-model="filters.keyword"
+            :fetch-suggestions="fetchRealNameSuggestions"
+            trigger-on-focus
+            placeholder="全部"
+            clearable
+            @select="loadList"
+            @input="loadList"
+            @clear="loadList"
+            @keyup.enter="loadList"
           />
-        </el-option-group>
-      </el-select>
-      <el-select v-model="filters.departmentName" placeholder="部门" clearable @change="loadList">
-        <el-option v-for="dept in departmentList" :key="dept.id" :label="getDepartmentName(dept)" :value="getDepartmentName(dept)" />
-      </el-select>
-      <el-select v-model="filters.stationId" placeholder="场站" clearable @change="loadList">
-        <el-option v-for="s in stationList" :key="s.id" :label="s.stationName" :value="s.id" />
-      </el-select>
-      <el-select v-model="filters.status" placeholder="状态" clearable @change="loadList">
-        <el-option label="启用" :value="1" />
-        <el-option label="禁用" :value="0" />
-      </el-select>
-      <el-button type="primary" @click="loadList">搜索</el-button>
-    </FilterBar>
+        </div>
+        <div class="filter-item">
+          <span class="filter-label">公司</span>
+          <FilterAutocomplete
+            v-model="filters.companyName"
+            :fetch-suggestions="fetchCompanyNameSuggestions"
+            trigger-on-focus
+            placeholder="全部"
+            clearable
+            @select="loadList"
+            @input="loadList"
+            @clear="loadList"
+            @keyup.enter="loadList"
+          />
+        </div>
+        <div class="filter-item">
+          <span class="filter-label">角色</span>
+          <FilterSelect v-model="filters.roleCode" placeholder="全部" filterable clearable @change="loadList" @clear="loadList">
+            <el-option label="全部" value="all" />
+            <el-option
+              v-for="item in roleFilterOptions"
+              :key="item.value"
+              :label="item.label"
+              :value="item.value"
+            />
+          </FilterSelect>
+        </div>
+        <div class="filter-item">
+          <span class="filter-label">部门</span>
+          <FilterSelect v-model="filters.departmentName" placeholder="全部" filterable clearable @change="loadList" @clear="loadList">
+            <el-option label="全部" value="all" />
+            <el-option v-for="dept in departmentList" :key="dept.id" :label="getDepartmentName(dept)" :value="getDepartmentName(dept)" />
+          </FilterSelect>
+        </div>
+        <div class="filter-item">
+          <span class="filter-label">场站</span>
+          <FilterSelect v-model="filters.stationId" placeholder="全部" filterable clearable @change="loadList" @clear="loadList">
+            <el-option label="全部" value="all" />
+            <el-option v-for="s in stationList" :key="s.id" :label="s.stationName" :value="s.id" />
+          </FilterSelect>
+        </div>
+        <div class="filter-item">
+          <span class="filter-label">状态</span>
+          <FilterSelect v-model="filters.status" placeholder="全部" filterable clearable @change="loadList" @clear="loadList">
+            <el-option label="全部" value="all" />
+            <el-option label="启用" :value="1" />
+            <el-option label="禁用" :value="0" />
+          </FilterSelect>
+        </div>
+      </FilterBar>
+    </el-card>
 
     <el-table ref="tableRef" :data="userList" stripe border v-loading="loading">
-      <el-table-column prop="username" label="用户名" width="120" />
-      <el-table-column label="密码" width="120">
-        <template #default>
-          ******
-        </template>
-      </el-table-column>
-      <el-table-column prop="realName" label="姓名" width="100" />
-      <el-table-column label="部门" width="120">
-        <template #default="{ row }">
-          {{ row.departmentName || row.department_name || '-' }}
-        </template>
-      </el-table-column>
-      <el-table-column label="公司" width="140">
-        <template #default="{ row }">
-          {{ row.companyName || row.company_name || '-' }}
-        </template>
-      </el-table-column>
-      <el-table-column label="角色" width="140">
-        <template #default="{ row }">
-          {{ getPositionLabel(row.roleCode) }}
-        </template>
-      </el-table-column>
-      <el-table-column prop="phone" label="手机号" width="130" />
-      <el-table-column prop="email" label="邮箱" width="180" show-overflow-tooltip />
-      <el-table-column label="所属场站" width="150" show-overflow-tooltip>
-        <template #default="{ row }">
-          {{ row.scheduleStations?.map(s => s.stationName).join(', ') || '-' }}
-        </template>
-      </el-table-column>
-      <el-table-column label="创建时间" width="160">
-        <template #default="{ row }">
-          {{ formatDateTime(row.createdAt) }}
-        </template>
-      </el-table-column>
-      <el-table-column label="状态" width="100">
-        <template #default="{ row }">
-          <el-tag :type="row.status === 1 ? 'success' : 'info'" size="small">
-            {{ row.status === 1 ? '启用' : '禁用' }}
-          </el-tag>
-        </template>
-      </el-table-column>
-      <el-table-column v-if="canEditUser" label="操作" width="240">
-        <template #default="{ row }">
-          <div class="action-buttons">
-          <el-button link type="primary" @click="editUser(row)">编辑</el-button>
-          <el-button link type="warning" @click="resetPassword(row)">重置密码</el-button>
-          <el-button link type="danger" @click="deleteUser(row)">删除</el-button>
-                  </div>
-        </template>
-      </el-table-column>
+        <el-table-column prop="username" label="用户名" width="120" />
+        <el-table-column label="密码" width="120">
+          <template #default>
+            ******
+          </template>
+        </el-table-column>
+        <el-table-column prop="realName" label="姓名" width="100" />
+        <el-table-column label="部门" width="120">
+          <template #default="{ row }">
+            {{ row.departmentName || row.department_name || '-' }}
+          </template>
+        </el-table-column>
+        <el-table-column label="公司" width="140">
+          <template #default="{ row }">
+            {{ row.companyName || row.company_name || '-' }}
+          </template>
+        </el-table-column>
+        <el-table-column label="角色" width="140">
+          <template #default="{ row }">
+            {{ getPositionLabel(row.roleCode) }}
+          </template>
+        </el-table-column>
+        <el-table-column prop="phone" label="手机号" width="130" />
+        <el-table-column prop="email" label="邮箱" width="180" show-overflow-tooltip />
+        <el-table-column label="所属场站" width="150" show-overflow-tooltip>
+          <template #default="{ row }">
+            {{ row.scheduleStations?.map(s => s.stationName).join(', ') || '-' }}
+          </template>
+        </el-table-column>
+        <el-table-column label="创建时间" width="160">
+          <template #default="{ row }">
+            {{ formatDateTime(row.createdAt) }}
+          </template>
+        </el-table-column>
+        <el-table-column label="状态" width="100">
+          <template #default="{ row }">
+            <el-tag :type="row.status === 1 ? 'success' : 'info'" size="small">
+              {{ row.status === 1 ? '启用' : '禁用' }}
+            </el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column v-if="canEditUser" label="操作" width="240">
+          <template #default="{ row }">
+            <div class="action-buttons">
+            <el-button link type="primary" @click="editUser(row)">编辑</el-button>
+            <el-button link type="warning" @click="resetPassword(row)">重置密码</el-button>
+            <el-button link type="danger" @click="deleteUser(row)">删除</el-button>
+                    </div>
+          </template>
+        </el-table-column>
     </el-table>
 
     <div class="pagination-wrapper">
@@ -119,7 +148,7 @@
         v-model:current-page="pagination.page"
         v-model:page-size="pagination.pageSize"
         :total="pagination.total"
-        :page-sizes="[10, 20, 50]"
+        :page-sizes="[5, 10, 20, 50]"
         layout="total, sizes, prev, pager, next"
         @current-change="loadList"
         @size-change="loadList"
@@ -168,12 +197,6 @@
           <el-select v-model="userForm.stationIds" multiple placeholder="请选择场站" style="width: 100%;">
             <el-option v-for="s in stationOptionsForForm" :key="s.id" :label="s.stationName" :value="s.id" />
           </el-select>
-        </el-form-item>
-        <el-form-item label="单价管理员">
-          <el-radio-group v-model="userForm.isPriceAdmin">
-            <el-radio :value="1">是</el-radio>
-            <el-radio :value="0">否</el-radio>
-          </el-radio-group>
         </el-form-item>
         <el-form-item label="手机号" prop="phone">
           <el-input v-model="userForm.phone" placeholder="请输入手机号" />
@@ -270,6 +293,7 @@ import FormDialog from '@/components/system/FormDialog.vue';
 import { useUserStore } from '@/store/modules/user';
 
 const userStore = useUserStore();
+const DEV_TEST_USERNAME = 'sum';
 
 // 权限检查
 const hasPermission = (code) => userStore.permissionCodes.includes(code);
@@ -304,6 +328,37 @@ const permissionCodeById = ref(new Map());
 const permissionIdByCode = ref(new Map());
 const menuTreeRef = ref(null);
 
+const toAutocompleteValues = (list) => {
+  if (!Array.isArray(list)) {
+    return [];
+  }
+  return list
+    .map((value) => ({ value: String(value) }))
+    .filter((item) => item.value.trim());
+};
+
+const fetchRealNameSuggestions = async (queryString, callback) => {
+  try {
+    const res = await request.get('/users/real-name-suggestions', {
+      params: { q: queryString }
+    });
+    callback(toAutocompleteValues(res));
+  } catch {
+    callback([]);
+  }
+};
+
+const fetchCompanyNameSuggestions = async (queryString, callback) => {
+  try {
+    const res = await request.get('/users/company-name-suggestions', {
+      params: { q: queryString }
+    });
+    callback(toAutocompleteValues(res));
+  } catch {
+    callback([]);
+  }
+};
+
 const isActiveStatus = (status) => status === undefined || status === null || status === '' || status === 'active' || status === 1 || status === '1' || status === true;
 const getDepartmentName = (dept) => dept?.name || dept?.dept_name || dept?.departmentName || '';
 
@@ -323,15 +378,10 @@ const positionOptions = computed(() => roleOptionsForForm.value.map(role => ({
   label: role.roleName
 })));
 
-const positionGroups = computed(() => ([
-  {
-    label: '角色',
-    options: roleList.value.map(role => ({
-      value: role.roleCode,
-      label: role.roleName
-    }))
-  }
-]));
+const roleFilterOptions = computed(() => roleList.value.map(role => ({
+  value: role.roleCode,
+  label: role.roleName
+})));
 
 const positionLabelMap = computed(() => {
   const map = {};
@@ -416,18 +466,19 @@ const expandModulesWithChildren = (ids = []) => {
   return Array.from(idSet);
 };
 
-const filters = ref({
+const defaultFilters = {
   keyword: '',
-  roleCode: '',
-  departmentName: '',
+  roleCode: 'all',
+  departmentName: 'all',
   companyName: '',
-  stationId: '',
-  status: ''
-});
+  stationId: 'all',
+  status: 'all'
+};
+const filters = ref({ ...defaultFilters });
 
 const pagination = ref({
   page: 1,
-  pageSize: 10,
+  pageSize: 5,
   total: 0
 });
 
@@ -442,7 +493,6 @@ const userForm = ref({
   phone: '',
   email: '',
   stationIds: [],
-  isPriceAdmin: 0,
   status: 1
 });
 
@@ -468,21 +518,37 @@ const loadList = async () => {
     const params = {
       page: pagination.value.page,
       pageSize: pagination.value.pageSize,
-      keyword: filters.value.keyword || undefined,
-      companyName: filters.value.companyName || undefined,
-      roleCode: mapPositionToRoleCode(filters.value.roleCode) || undefined,
-      departmentName: filters.value.departmentName || undefined,
-      stationId: filters.value.stationId || undefined,
-      status: filters.value.status !== '' ? filters.value.status : undefined
+      keyword: filters.value.keyword?.trim() || undefined,
+      companyName: filters.value.companyName?.trim() || undefined,
+      roleCode: filters.value.roleCode === 'all' ? undefined : (mapPositionToRoleCode(filters.value.roleCode) || undefined),
+      departmentName: filters.value.departmentName === 'all' ? undefined : filters.value.departmentName,
+      stationId: filters.value.stationId === 'all' ? undefined : filters.value.stationId,
+      status: filters.value.status === 'all' ? undefined : filters.value.status
     };
     const res = await request.get('/users', { params });
-    userList.value = (res.list || []).map(normalizeUser);
-    pagination.value.total = res.total || 0;
+    const list = Array.isArray(res.list) ? res.list.map(normalizeUser) : [];
+    const filteredList = list.filter(item => item.username !== DEV_TEST_USERNAME);
+    const removedCount = list.length - filteredList.length;
+    userList.value = filteredList;
+    const totalValue = Number.isFinite(res.total) ? res.total : 0;
+    const adjustedTotal = totalValue - removedCount;
+    pagination.value.total = adjustedTotal > 0 ? adjustedTotal : 0;
   } catch (e) {
     
   } finally {
     loading.value = false;
   }
+};
+
+const handleSearch = () => {
+  pagination.value.page = 1;
+  loadList();
+};
+
+const resetFilters = () => {
+  filters.value = { ...defaultFilters };
+  pagination.value.page = 1;
+  loadList();
 };
 
 const refreshTableLayout = async () => {
@@ -520,8 +586,8 @@ const departmentOptionsForForm = computed(() => {
 
 const loadStations = async () => {
   try {
-    const res = await request.get('/stations', { params: { pageSize: 100 } });
-    const list = (res.list || []).map(normalizeStation);
+    const res = await request.get('/stations/all');
+    const list = (res.list || res || []).map(normalizeStation);
     stationList.value = list.length > 0 ? list : [];
   } catch (e) {
     stationList.value = [];
@@ -530,7 +596,7 @@ const loadStations = async () => {
 
 const loadDepartments = async () => {
   try {
-    const res = await request.get('/departments', { params: { pageSize: 100 } });
+    const res = await request.get('/departments', { params: { pageSize: 50 } });
     departmentList.value = res.list || [];
   } catch (e) {
     departmentList.value = [];
@@ -586,7 +652,6 @@ const showAddDialog = () => {
     phone: '',
     email: '',
     stationIds: [],
-    isPriceAdmin: 0,
     status: 1
   };
   allowPermissionIds.value = [];
@@ -677,7 +742,6 @@ const editUser = async (row) => {
       phone: normalized.phone,
       email: normalized.email,
       stationIds: normalized.stations?.map(s => s.id) || [],
-      isPriceAdmin: normalized.isPriceAdmin || 0,
       status: normalized.status
     };
     allowPermissionIds.value = res.allowPermissionIds || [];
@@ -729,7 +793,6 @@ const saveUser = async () => {
       ...diff
     };
     delete data.positionPath;
-
     if (isEdit.value) {
       await request.put(`/users/${userForm.value.id}`, data);
     } else {
@@ -847,7 +910,6 @@ const handleFileChange = (file) => {
         }
 
         item.roleCode = positionNameToCode[item.positionName];
-        item.isPriceAdmin = 0;
 
         return item;
       });
@@ -879,7 +941,6 @@ const confirmImport = async () => {
       departmentName: item.departmentName,
       companyName: item.companyName,
       stationName: item.stationName,
-      isPriceAdmin: item.isPriceAdmin,
       phone: item.phone,
       email: item.email,
       password: '123456'
@@ -916,6 +977,8 @@ onActivated(async () => {
 
 <style lang="scss" scoped>
 .user-management-page {
+  overflow-x: hidden;
+
   .page-header {
     display: flex;
     justify-content: space-between;
@@ -936,12 +999,11 @@ onActivated(async () => {
   .filter-bar {
     display: flex;
     gap: 12px;
-    margin-bottom: 20px;
-    background: #fff;
-    padding: 16px;
-    border-radius: 8px;
-    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.1);
     flex-wrap: wrap;
+  }
+
+  .filter-card {
+    margin-bottom: 20px;
   }
 
   .el-table {
@@ -984,10 +1046,6 @@ onActivated(async () => {
 
   .user-management-page :deep(.el-table__fixed-right-patch) {
     display: none !important;
-  }
-
-  .user-management-page :deep(.el-table .el-table__body-wrapper) {
-    overflow-x: auto !important;
   }
 
   .user-management-page :deep(.el-table__cell.is-right),

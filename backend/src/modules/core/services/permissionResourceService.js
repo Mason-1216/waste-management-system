@@ -22,6 +22,27 @@ export const getPermissions = async (ctx) => {
   };
 };
 
+// Returns a lightweight menu permission catalog for building navigation and route guards.
+// This endpoint is intended for all logged-in users, so it must not be admin-only.
+export const getPermissionCatalog = async (ctx) => {
+  // Role permissions are already ensured during login (/auth/login) and /auth/me.
+  // Avoid running ensurePermissions() here to prevent extra DB writes on every page load.
+  const list = await Permission.findAll({
+    where: { resource_type: 'menu' },
+    attributes: ['permission_code'],
+    order: [['id', 'ASC']]
+  });
+
+  ctx.body = {
+    code: 200,
+    message: 'success',
+    data: {
+      menuCodes: list.map(item => item.permission_code).filter(Boolean)
+    }
+  };
+};
+
 export default {
-  getPermissions
+  getPermissions,
+  getPermissionCatalog
 };

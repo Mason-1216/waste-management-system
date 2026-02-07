@@ -1,4 +1,4 @@
-import { Op } from 'sequelize';
+import { Op, literal } from 'sequelize';
 import dayjs from 'dayjs';
 import { FaultReport, Notification, RepairRecord, Station, User } from '../../../models/index.js';
 import { createError } from '../../../middlewares/error.js';
@@ -43,6 +43,47 @@ export const getRepairRecords = async ({ query, dataFilter, user }) => {
   const { page, pageSize, offset, limit } = getPagination(query);
   const order = getOrderBy(query);
   const { status, stationId, repairPersonId, reporterId, equipmentName, urgencyLevel, repairPersonName } = query;
+  const roleCode = user?.baseRoleCode || user?.roleCode;
+
+  const hasCustomSort = Boolean(query?.sortBy) || Boolean(query?.sortOrder);
+  const prioritizedManagerRoles = ['station_manager', 'department_manager', 'deputy_manager'];
+
+  const buildPrioritizedOrder = () => {
+    // Only apply when caller didn't request an explicit sort, otherwise keep client sort behavior unchanged.
+    if (hasCustomSort) return order;
+
+    if (roleCode === 'maintenance') {
+      // "退回重做" is rendered by frontend when status=repairing and verify_result=fail
+      return [
+        [
+          literal(`CASE
+            WHEN \`RepairRecord\`.\`status\` = 'repairing' AND \`RepairRecord\`.\`verify_result\` = 'fail' THEN 0
+            WHEN \`RepairRecord\`.\`status\` = 'dispatched' THEN 1
+            ELSE 2
+          END`),
+          'ASC'
+        ],
+        ['created_at', 'DESC']
+      ];
+    }
+
+    if (prioritizedManagerRoles.includes(roleCode)) {
+      // "已上报" should be above "待验收" per product requirement.
+      return [
+        [
+          literal(`CASE
+            WHEN \`RepairRecord\`.\`status\` = 'submitted_report' THEN 0
+            WHEN \`RepairRecord\`.\`status\` = 'repaired_submitted' THEN 1
+            ELSE 2
+          END`),
+          'ASC'
+        ],
+        ['created_at', 'DESC']
+      ];
+    }
+
+    return order;
+  };
 
   const where = {};
   if (status) {
@@ -67,7 +108,7 @@ export const getRepairRecords = async ({ query, dataFilter, user }) => {
     });
   }
 
-  if (user?.roleCode === 'maintenance') {
+  if (roleCode === 'maintenance') {
     const allowedStatuses = ['dispatched', 'repairing', 'repaired_submitted', 'accepted', 'archived'];
     if (status) {
       const statusList = status.includes(',') ? status.split(',') : [status];
@@ -81,7 +122,11 @@ export const getRepairRecords = async ({ query, dataFilter, user }) => {
     ];
   }
 
-  if (!dataFilter.all && dataFilter.stationIds?.length > 0) {
+  if (roleCode === 'operator') {
+    where.reporter_id = user.id;
+  }
+
+  if (roleCode !== 'maintenance' && !dataFilter?.all && Array.isArray(dataFilter?.stationIds)) {
     where.station_id = { [Op.in]: dataFilter.stationIds };
   }
 
@@ -94,7 +139,7 @@ export const getRepairRecords = async ({ query, dataFilter, user }) => {
     ],
     offset,
     limit,
-    order: order.length ? order : [['created_at', 'DESC']]
+    order: buildPrioritizedOrder()
   });
 
   await fillDispatchByNames(result.rows);
@@ -314,20 +359,26 @@ export const completeRepair = async ({ id, body, user }) => {
 export const verifyRepairRecord = async ({ id, body, user }) => {
   const { verifyResult, verifyComment, rating, ratingComment, verifyAttitude, verifyQuality, verifyDate, verifyTime } = body;
 
+  const normalizedResult = verifyResult === 'reject' ? 'fail' : verifyResult;
+
+  if (!['pass', 'fail'].includes(normalizedResult)) {
+    throw createError(400, '???????');
+  }
+
   const record = await RepairRecord.findByPk(id, {
     include: [{ model: FaultReport, as: 'faultReport' }]
   });
   if (!record) throw createError(404, '维修记录不存在');
   if (record.status !== 'repaired_submitted') throw createError(400, '只有待验收状态可以验收');
 
-  const isPass = verifyResult === 'pass';
+  const isPass = normalizedResult === 'pass';
   await record.update({
     status: isPass ? 'accepted' : 'repairing',
     verifier_id: user.id,
     verifier_name: user.realName,
     verify_date: verifyDate || dayjs().format('YYYY-MM-DD'),
     verify_time: verifyTime || dayjs().format('HH:mm:ss'),
-    verify_result: verifyResult,
+    verify_result: normalizedResult,
     verify_attitude: verifyAttitude,
     verify_quality: verifyQuality,
     verify_comment: verifyComment,

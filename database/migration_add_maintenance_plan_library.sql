@@ -9,6 +9,7 @@ CREATE TABLE IF NOT EXISTS maintenance_plan_library (
   install_location VARCHAR(200) COMMENT 'install location',
   cycle_type ENUM('daily','weekly','monthly','yearly') NOT NULL DEFAULT 'monthly' COMMENT 'cycle type',
   maintenance_standards JSON DEFAULT NULL COMMENT 'standards list [{name, specification}]',
+  is_deleted TINYINT NOT NULL DEFAULT 0 COMMENT 'soft delete flag',
   created_by INT COMMENT 'created by id',
   created_by_name VARCHAR(50) COMMENT 'created by name',
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,

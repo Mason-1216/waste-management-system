@@ -14,6 +14,6 @@ export const scheduleRoutes = [
     path: '/schedule/manage',
     name: 'ScheduleManagement',
     component: () => import('@/views/schedule/Index.vue'),
-    meta: { title: '排班管理', scheduleView: 'manage', roles: ['admin', 'station_manager', 'department_manager', 'deputy_manager', 'dev_test'] }
+    meta: { title: '排班管理', scheduleView: 'manage', roles: ['admin', 'station_manager', 'department_manager', 'deputy_manager', 'senior_management', 'dev_test'] }
   }
 ];

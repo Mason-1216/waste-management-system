@@ -15,7 +15,8 @@ import * as materialService from '../modules/maintenance/services/materialServic
 export const getMaintenancePlans = async (ctx) => {
   const data = await planService.getMaintenancePlans({
     query: ctx.query,
-    dataFilter: ctx.state.dataFilter
+    dataFilter: ctx.state.dataFilter,
+    user: ctx.state.user
   });
 
   ctx.body = {
@@ -75,7 +76,8 @@ export const deleteMaintenancePlan = async (ctx) => {
 export const getMaintenanceRecords = async (ctx) => {
   const data = await recordService.getMaintenanceRecords({
     query: ctx.query,
-    dataFilter: ctx.state.dataFilter
+    dataFilter: ctx.state.dataFilter,
+    user: ctx.state.user
   });
 
   ctx.body = {
@@ -113,7 +115,8 @@ export const createMaintenanceRecord = async (ctx) => {
 export const getFaultReports = async (ctx) => {
   const data = await faultService.getFaultReports({
     query: ctx.query,
-    dataFilter: ctx.state.dataFilter
+    dataFilter: ctx.state.dataFilter,
+    user: ctx.state.user
   });
   ctx.body = {
     code: 200,

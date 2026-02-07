@@ -3,25 +3,22 @@
     <div class="page-header">
       <h2 v-if="showScheduleTable">排班管理</h2>
       <div class="header-actions">
-        <el-date-picker
-          v-model="currentMonth"
-          type="month"
-          placeholder="选择月份"
-          format="YYYY年MM月"
-          value-format="YYYY-MM"
-          @change="loadSchedule"
-        />
         <el-button type="primary" @click="showAddDialog" v-if="showScheduleTable">
           <el-icon><Plus /></el-icon>新增排班
         </el-button>
-        <el-button @click="handleImport" v-if="showScheduleTable">
-          <el-icon><Download /></el-icon>导入
+        <el-button type="success" @click="handleImport" v-if="showScheduleTable">
+          <el-icon><Download /></el-icon>批量导入
         </el-button>
-        <el-button @click="downloadTemplate" v-if="showScheduleTable">
-          下载模板
+        <el-button type="info" @click="downloadTemplate" v-if="showScheduleTable">
+          <el-icon><Download /></el-icon>下载模板
         </el-button>
-        <el-button @click="exportSchedule">
-          <el-icon><Upload /></el-icon>导出我的排班
+        <el-button
+          v-if="showScheduleTable && canAddSchedule && selectedSchedules.length > 0"
+          type="danger"
+          @click="batchDelete"
+        >
+          <el-icon><Delete /></el-icon>
+          批量删除 ({{ selectedSchedules.length }})
         </el-button>
       </div>
     </div>
@@ -70,101 +67,136 @@
       <h3 v-if="showMyCalendar">{{ viewTitle }}</h3>
 
       <!-- 筛选栏 -->
+      <el-card class="filter-card">
       <FilterBar>
-        <el-select
-          v-model="filters.stationId"
-          placeholder="选择场站"
-          clearable
-          style="width: 200px"
-          @change="applyFilters"
-        >
-          <el-option
-            v-for="station in stationList"
-            :key="station.id"
-            :label="station.station_name"
-            :value="station.id"
+        <div class="filter-item">
+          <span class="filter-label">排班月份</span>
+          <el-date-picker
+            v-model="currentMonth"
+            type="month"
+            placeholder="全部"
+            format="YYYY年MM月"
+            value-format="YYYY-MM"
+            @change="loadSchedule"
           />
-        </el-select>
-        <el-select
-          v-model="filters.positionName"
-          placeholder="选择岗位"
-          clearable
-          filterable
-          style="width: 200px"
-          @change="applyFilters"
-        >
-          <el-option
-            v-for="position in allPositionList"
-            :key="position"
-            :label="position"
-            :value="position"
+        </div>
+        <div class="filter-item">
+          <span class="filter-label">场站</span>
+          <FilterSelect
+            v-model="filters.stationId"
+            placeholder="全部"
+            clearable
+            filterable
+            style="width: 200px"
+            @change="applyFilters"
+            @clear="applyFilters"
+          >
+            <el-option label="全部" value="all" />
+            <el-option
+              v-for="station in stationList"
+              :key="station.id"
+              :label="station.station_name"
+              :value="station.id"
+            />
+          </FilterSelect>
+        </div>
+        <div class="filter-item">
+          <span class="filter-label">岗位</span>
+          <FilterSelect
+            v-model="filters.positionName"
+            placeholder="全部"
+            clearable
+            filterable
+            style="width: 200px"
+            @change="applyFilters"
+            @clear="applyFilters"
+          >
+            <el-option label="全部" value="all" />
+            <el-option
+              v-for="position in allPositionList"
+              :key="position"
+              :label="position"
+              :value="position"
+            />
+          </FilterSelect>
+        </div>
+        <div class="filter-item">
+          <span class="filter-label">姓名</span>
+          <FilterAutocomplete
+            v-model="filters.userName"
+            :fetch-suggestions="fetchUserNameSuggestions"
+            trigger-on-focus
+            placeholder="全部"
+            clearable
+            style="width: 200px"
+            @select="applyFilters"
+            @input="applyFilters"
+            @keyup.enter="applyFilters"
+            @clear="applyFilters"
           />
-        </el-select>
-        <el-input
-          v-model="filters.userName"
-          placeholder="输入员工姓名"
-          clearable
-          style="width: 200px"
-          @keyup.enter="applyFilters"
-          @clear="applyFilters"
-        />
-        <el-button type="primary" @click="applyFilters">
-          <el-icon><Search /></el-icon>
-          搜索
-        </el-button>
-        <el-button @click="resetFilters">重置</el-button>
+        </div>
       </FilterBar>
+      </el-card>
 
       <!-- 批量操作按钮 -->
-      <div v-if="canAddSchedule && selectedSchedules.length > 0" class="batch-actions" style="margin-bottom: 10px;">
-        <el-button type="danger" @click="batchDelete">
-          批量删除 ({{ selectedSchedules.length }})
-        </el-button>
+      <TableWrapper>
+        <el-table ref="scheduleTableRef" :data="scheduleData" border stripe style="width: 100%" @selection-change="handleSelectionChange">
+          <el-table-column type="selection" width="55" v-if="canAddSchedule" />
+          <el-table-column prop="stationName" label="场站名称" width="120" />
+          <el-table-column prop="positionName" label="岗位" width="100" />
+          <el-table-column prop="userName" label="姓名" width="80" >
+            <template #default="{ row }">
+              <el-button link type="primary" @click="showUserCalendar(row)">
+                {{ row.userName }}
+              </el-button>
+            </template>
+          </el-table-column>
+          <el-table-column
+            v-for="day in daysInMonth"
+            :key="day"
+            :label="formatDayLabel(day)"
+            width="60"
+            align="center"
+          >
+            <template #header>
+              <div class="day-header">
+                <div>{{ day }}</div>
+                <div class="weekday-label">{{ getWeekDay(day) }}</div>
+              </div>
+            </template>
+            <template #default="{ row }">
+              <div
+                class="schedule-cell"
+                :class="getCellClass(row, day)"
+              >
+                {{ getCellDisplay(row, day).text }}
+              </div>
+            </template>
+          </el-table-column>
+          <el-table-column label="操作" width="140" v-if="canAddSchedule">
+            <template #default="{ row }">
+              <el-button link type="primary" size="small" @click="editUserSchedule(row)">
+                编辑
+              </el-button>
+              <el-button link type="danger" size="small" @click="deleteOne(row)">
+                删除
+              </el-button>
+            </template>
+          </el-table-column>
+        </el-table>
+      </TableWrapper>
+
+      <div class="pagination-wrapper">
+        <el-pagination
+          v-model:current-page="schedulePagination.page"
+          v-model:page-size="schedulePagination.pageSize"
+          :total="schedulePagination.total"
+          :page-sizes="[5, 10, 20, 50]"
+          layout="total, sizes, prev, pager, next"
+          @current-change="handlePageChange"
+          @size-change="handlePageSizeChange"
+        />
       </div>
-      <el-table :data="scheduleData" border stripe style="width: 100%" max-height="500" @selection-change="handleSelectionChange">
-        <el-table-column type="selection" width="55" v-if="canAddSchedule" />
-        <el-table-column prop="stationName" label="场站名称" width="120" />
-        <el-table-column prop="positionName" label="岗位" width="100" />
-        <el-table-column prop="userName" label="姓名" width="80" >
-          <template #default="{ row }">
-            <el-button link type="primary" @click="showUserCalendar(row)">
-              {{ row.userName }}
-            </el-button>
-          </template>
-        </el-table-column>
-        <el-table-column
-          v-for="day in daysInMonth"
-          :key="day"
-          :label="formatDayLabel(day)"
-          width="60"
-          align="center"
-        >
-          <template #header>
-            <div class="day-header">
-              <div>{{ day }}</div>
-              <div class="weekday-label">{{ getWeekDay(day) }}</div>
-            </div>
-          </template>
-          <template #default="{ row }">
-            <div
-              class="schedule-cell"
-              :class="getCellClass(row, day)"
-            >
-              {{ getCellDisplay(row, day).text }}
-            </div>
-          </template>
-        </el-table-column>
-        <el-table-column label="操作" width="140" v-if="canAddSchedule">
-          <template #default="{ row }">
-            <el-button link type="primary" size="small" @click="editUserSchedule(row)">
-              编辑
-            </el-button>
-            <el-button link type="danger" size="small" @click="deleteOne(row)">
-              删除
-            </el-button>
-          </template>
-        </el-table-column>
-      </el-table>
     </div>
 
     <!-- 新增/编辑排班对话框 -->
@@ -634,6 +666,7 @@ import { ArrowLeft, ArrowRight, Briefcase, Warning, Brush, Operation, Tools } fr
 import dayjs from 'dayjs';
 
 import { addTemplateInstructionSheet, applyTemplateHeaderStyle } from '@/utils/excelTemplate';
+import { createListSuggestionFetcher } from '@/utils/filterAutocomplete';
 import request from '@/api/request';
 import { getPositionNames } from '@/api/positionJob';
 import { useUserStore } from '@/store/modules/user';
@@ -643,7 +676,13 @@ const userStore = useUserStore();
 const route = useRoute();
 
 const currentMonth = ref(dayjs().format('YYYY-MM'));
+const scheduleTableRef = ref(null);
 const scheduleData = ref([]);
+const fetchUserNameSuggestions = createListSuggestionFetcher(
+  () => filteredScheduleData.value,
+  (row) => row.userName
+);
+const filteredScheduleData = ref([]);
 const allScheduleData = ref([]); // 存储未筛选的完整数据
 const mySchedule = ref(null);
 const userList = ref([]);
@@ -671,9 +710,14 @@ const uploadRef = ref(null);
 const importFile = ref(null);
 const selectedSchedules = ref([]);
 const filters = ref({
-  stationId: null,
-  positionName: '',
+  stationId: 'all',
+  positionName: 'all',
   userName: ''
+});
+const schedulePagination = ref({
+  page: 1,
+  pageSize: 5,
+  total: 0
 });
 
 // 员工月历相关
@@ -783,7 +827,7 @@ const effectiveRole = computed(() => userStore.baseRoleCode || userStore.roleCod
 const isManagerRole = computed(() => {
   const role = effectiveRole.value;
   const roleName = userStore.roleName || '';
-  return ['admin', 'dev_test', 'station_manager', 'department_manager', 'deputy_manager'].includes(role)
+  return ['admin', 'dev_test', 'station_manager', 'department_manager', 'deputy_manager', 'senior_management'].includes(role)
     || roleName.includes('经理');
 });
 
@@ -1251,7 +1295,7 @@ const loadUsers = async () => {
 // 加载场站列表
 const loadStations = async () => {
   try {
-    const res = await request.get('/stations');
+    const res = await request.get('/stations/all');
     stationList.value = res.list || res || [];
   } catch (e) {
     
@@ -1304,17 +1348,41 @@ const loadAllPositions = async () => {
   }
 };
 
+const clearScheduleSelection = () => {
+  selectedSchedules.value = [];
+  scheduleTableRef.value?.clearSelection?.();
+};
+
+const updateSchedulePage = () => {
+  const total = filteredScheduleData.value.length;
+  schedulePagination.value.total = total;
+  const pageSize = schedulePagination.value.pageSize;
+  const maxPage = Math.max(1, Math.ceil(total / pageSize));
+  if (schedulePagination.value.page > maxPage) {
+    schedulePagination.value.page = maxPage;
+  }
+  const start = (schedulePagination.value.page - 1) * pageSize;
+  const end = start + pageSize;
+  scheduleData.value = filteredScheduleData.value.slice(start, end);
+  clearScheduleSelection();
+};
+
+const shouldResetPage = (value) => {
+  if (value === false) return false;
+  return true;
+};
+
 // 应用筛选
-const applyFilters = () => {
+const applyFilters = (resetPage = true) => {
   let filtered = [...allScheduleData.value];
 
   // 按场站筛选
-  if (filters.value.stationId) {
+  if (filters.value.stationId && filters.value.stationId !== 'all') {
     filtered = filtered.filter(item => item.stationId === filters.value.stationId);
   }
 
   // 按岗位筛选
-  if (filters.value.positionName) {
+  if (filters.value.positionName && filters.value.positionName !== 'all') {
     filtered = filtered.filter(item => item.positionName === filters.value.positionName);
   }
 
@@ -1326,14 +1394,29 @@ const applyFilters = () => {
     );
   }
 
-  scheduleData.value = filtered;
+  filteredScheduleData.value = filtered;
+  if (shouldResetPage(resetPage)) {
+    schedulePagination.value.page = 1;
+  }
+  updateSchedulePage();
+};
+
+const handlePageChange = (page) => {
+  schedulePagination.value.page = page;
+  updateSchedulePage();
+};
+
+const handlePageSizeChange = (size) => {
+  schedulePagination.value.pageSize = size;
+  schedulePagination.value.page = 1;
+  updateSchedulePage();
 };
 
 // 重置筛选
 const resetFilters = () => {
   filters.value = {
-    stationId: null,
-    positionName: '',
+    stationId: 'all',
+    positionName: 'all',
     userName: ''
   };
   applyFilters();
@@ -1683,35 +1766,6 @@ const confirmImport = async () => {
   }
 };
 
-// 导出我的排班
-const exportSchedule = async () => {
-  try {
-    const [year, month] = currentMonth.value.split('-');
-
-    const response = await request.get('/schedules/export-my', {
-      params: { year, month },
-      responseType: 'blob'
-    });
-
-    // 创建一个临时的URL来下载文件
-    const blob = new Blob([response], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${userStore.realName || userStore.username}_${year}年${month}月排班表.xlsx`;
-    document.body.appendChild(a);
-    a.click();
-    window.URL.revokeObjectURL(url);
-    document.body.removeChild(a);
-
-    ElMessage.success('导出成功');
-  } catch (e) {
-    
-    ElMessage.error('导出失败');
-  }
-};
-
-// 处理表格多选
 const handleSelectionChange = (selection) => {
   selectedSchedules.value = selection;
 };
@@ -2273,31 +2327,45 @@ const loadTemporaryTaskItems = async (dateStr, userId, stationId) => {
 // 加载保养任务数据
 const loadMaintenanceTaskItems = async (dateStr, userId, stationId) => {
   try {
-    // 如果是查看当前用户的数据，使用today-tasks接口
-    if (userId === userStore.userId) {
-      const res = await request.get('/maintenance-work-records/today-tasks');
-      const tasks = res.list || res || [];
-
-      // 如果不是今天，需要筛选
-      const todayStr = dayjs().format('YYYY-MM-DD');
-      if (dateStr !== todayStr) {
-        maintenanceTaskItems.value = [];
-        return;
-      }
-
-      maintenanceTaskItems.value = tasks.map(task => ({
-        id: task.id || task.plan_id,
-        equipmentName: task.equipment_name || task.plan?.equipment_name || '',
-        maintenanceItem: task.maintenance_item || task.plan?.maintenance_item || '',
-        cycleType: task.cycle_type || task.plan?.cycle_type || '',
-        isCompleted: !!task.is_completed || task.status === 'completed',
-        completedTime: task.completed_time || task.completed_at || '',
-        remark: task.remark || ''
-      }));
-    } else {
-      // 查看其他用户数据时，暂时显示空列表（需要后端支持）
-      maintenanceTaskItems.value = [];
+    const params = { workDate: dateStr };
+    if (stationId) {
+      params.stationId = stationId;
     }
+    if (userId && userId !== userStore.userId) {
+      params.userId = userId;
+    }
+    const res = await request.get('/maintenance-work-records/today-tasks', { params });
+    const tasks = Array.isArray(res.list) ? res.list : (Array.isArray(res) ? res : []);
+
+    maintenanceTaskItems.value = tasks.map(task => {
+      const record = task.existingRecord || {};
+      const status = record.status || task.status || '';
+      const rawCompletedTime = record.submitTime || record.submit_time || task.completed_time || task.completed_at || '';
+      const completedTime = rawCompletedTime ? dayjs(rawCompletedTime).format('YYYY-MM-DD HH:mm:ss') : '';
+      const standardsSource = Array.isArray(task.maintenanceStandards)
+        ? task.maintenanceStandards
+        : Array.isArray(task.maintenance_standards)
+          ? task.maintenance_standards
+          : [];
+      const standardTexts = standardsSource
+        .map(item => {
+          const name = String(item?.name ?? '').trim();
+          const specification = String(item?.specification ?? '').trim();
+          return [name, specification].filter(Boolean).join(' ');
+        })
+        .filter(Boolean);
+      const maintenanceItem = standardTexts.length ? standardTexts.join('、') : '-';
+
+      return {
+        id: task.id || task.plan_id,
+        equipmentName: task.equipmentName ?? task.equipment_name ?? task.plan?.equipment_name ?? '',
+        maintenanceItem,
+        cycleType: task.cycleType ?? task.cycle_type ?? task.plan?.cycle_type ?? '',
+        isCompleted: status === 'completed' || status === 'verified',
+        completedTime,
+        remark: record.remark || task.remark || ''
+      };
+    });
   } catch (error) {
     maintenanceTaskItems.value = [];
   }
@@ -2357,14 +2425,14 @@ onMounted(() => {
     color: #303133;
   }
 
+  .filter-card {
+    margin-bottom: 16px;
+  }
+
   .filter-bar {
     display: flex;
     gap: 12px;
-    margin-bottom: 16px;
-    padding: 16px;
-    background: #fff;
-    border-radius: 8px;
-    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.1);
+    flex-wrap: wrap;
     align-items: center;
   }
 
@@ -2464,10 +2532,16 @@ onMounted(() => {
   }
 
 .schedule-table-section {
-    background: #fff;
-    border-radius: 8px;
-    padding: 20px;
-    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.1);
+    background: transparent;
+    border-radius: 0;
+    padding: 0;
+    box-shadow: none;
+
+    .pagination-wrapper {
+      display: flex;
+      justify-content: flex-end;
+      margin-top: 16px;
+    }
 
     .day-header {
       .weekday-label {
@@ -2909,7 +2983,7 @@ onMounted(() => {
 
     // 表格容器支持水平滚动
     .schedule-table-section {
-      padding: 12px;
+      padding: 0;
       overflow-x: hidden;
 
       .el-table {

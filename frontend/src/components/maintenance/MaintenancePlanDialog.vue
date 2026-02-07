@@ -31,14 +31,17 @@
         <div class="standards-container">
           <div v-for="(std, idx) in planForm.cycleStandards.daily" :key="`daily-${idx}`" class="standard-item">
             <el-row :gutter="12" align="middle">
-              <el-col :span="8">
+              <el-col :span="7">
                 <el-input v-model="std.name" placeholder="保养标准名称" />
               </el-col>
-              <el-col :span="10">
+              <el-col :span="9">
                 <el-input v-model="std.specification" placeholder="保养规范" />
               </el-col>
-              <el-col :span="4">
-                <el-input-number v-model="std.points" :min="0" :step="1" placeholder="积分" controls-position="right" style="width: 100%;" />
+              <el-col :span="6">
+                <div class="points-field">
+                  <span class="points-label">积分</span>
+                  <el-input-number v-model="std.points" :min="0" :step="1" placeholder="积分" controls-position="right" />
+                </div>
               </el-col>
               <el-col :span="2">
                 <el-button type="danger" :icon="Delete" circle size="small" @click="handleRemove('daily', idx)" />
@@ -67,14 +70,17 @@
           </div>
           <div v-for="(std, idx) in planForm.cycleStandards.weekly" :key="`weekly-${idx}`" class="standard-item">
             <el-row :gutter="12" align="middle">
-              <el-col :span="8">
+              <el-col :span="7">
                 <el-input v-model="std.name" placeholder="保养标准名称" />
               </el-col>
-              <el-col :span="10">
+              <el-col :span="9">
                 <el-input v-model="std.specification" placeholder="保养规范" />
               </el-col>
-              <el-col :span="4">
-                <el-input-number v-model="std.points" :min="0" :step="1" placeholder="积分" controls-position="right" style="width: 100%;" />
+              <el-col :span="6">
+                <div class="points-field">
+                  <span class="points-label">积分</span>
+                  <el-input-number v-model="std.points" :min="0" :step="1" placeholder="积分" controls-position="right" />
+                </div>
               </el-col>
               <el-col :span="2">
                 <el-button type="danger" :icon="Delete" circle size="small" @click="handleRemove('weekly', idx)" />
@@ -95,14 +101,17 @@
           </div>
           <div v-for="(std, idx) in planForm.cycleStandards.monthly" :key="`monthly-${idx}`" class="standard-item">
             <el-row :gutter="12" align="middle">
-              <el-col :span="8">
+              <el-col :span="7">
                 <el-input v-model="std.name" placeholder="保养标准名称" />
               </el-col>
-              <el-col :span="10">
+              <el-col :span="9">
                 <el-input v-model="std.specification" placeholder="保养规范" />
               </el-col>
-              <el-col :span="4">
-                <el-input-number v-model="std.points" :min="0" :step="1" placeholder="积分" controls-position="right" style="width: 100%;" />
+              <el-col :span="6">
+                <div class="points-field">
+                  <span class="points-label">积分</span>
+                  <el-input-number v-model="std.points" :min="0" :step="1" placeholder="积分" controls-position="right" />
+                </div>
               </el-col>
               <el-col :span="2">
                 <el-button type="danger" :icon="Delete" circle size="small" @click="handleRemove('monthly', idx)" />
@@ -125,14 +134,17 @@
           </div>
           <div v-for="(std, idx) in planForm.cycleStandards.yearly" :key="`yearly-${idx}`" class="standard-item">
             <el-row :gutter="12" align="middle">
-              <el-col :span="8">
+              <el-col :span="7">
                 <el-input v-model="std.name" placeholder="保养标准名称" />
               </el-col>
-              <el-col :span="10">
+              <el-col :span="9">
                 <el-input v-model="std.specification" placeholder="保养规范" />
               </el-col>
-              <el-col :span="4">
-                <el-input-number v-model="std.points" :min="0" :step="1" placeholder="积分" controls-position="right" style="width: 100%;" />
+              <el-col :span="6">
+                <div class="points-field">
+                  <span class="points-label">积分</span>
+                  <el-input-number v-model="std.points" :min="0" :step="1" placeholder="积分" controls-position="right" />
+                </div>
               </el-col>
               <el-col :span="2">
                 <el-button type="danger" :icon="Delete" circle size="small" @click="handleRemove('yearly', idx)" />
@@ -188,3 +200,21 @@ const validate = () => formRef.value?.validate();
 
 defineExpose({ validate });
 </script>
+
+<style scoped>
+.points-field {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.points-label {
+  color: #606266;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.points-field :deep(.el-input-number) {
+  flex: 1 1 auto;
+}
+</style>

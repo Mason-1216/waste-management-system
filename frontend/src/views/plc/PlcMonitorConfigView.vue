@@ -1,46 +1,63 @@
-<template>
+﻿<template>
   <div class="config-management">
     <div class="page-header">
       <h2>监控点配置</h2>
       <div class="header-actions">
         <el-button type="primary" @click="handleAdd">新增配置</el-button>
-        <el-button @click="handleImport">批量导入</el-button>
-        <el-button @click="handleDownloadTemplate">下载模板</el-button>
+        <el-button type="success" @click="handleImport">
+          <el-icon><Download /></el-icon>批量导入
+        </el-button>
+        <el-button type="info" @click="handleDownloadTemplate">
+          <el-icon><Download /></el-icon>下载模板
+        </el-button>
       </div>
     </div>
 
-    <FilterBar>
-      <el-select v-model="filterForm.stationId" placeholder="场站" clearable style="width: 180px">
-        <el-option
-          v-for="station in stations"
-          :key="station.id"
-          :label="station.station_name"
-          :value="station.id"
-        />
-      </el-select>
-      <el-select v-model="filterForm.categoryId" placeholder="分类" clearable style="width: 180px">
-        <el-option
-          v-for="cat in categories"
-          :key="cat.id"
-          :label="cat.category_name"
-          :value="cat.id"
-        />
-      </el-select>
-      <el-select v-model="filterForm.isActive" placeholder="状态" clearable style="width: 180px">
-        <el-option label="启用" value="true" />
-        <el-option label="禁用" value="false" />
-      </el-select>
-      <el-button type="primary" @click="fetchData">查询</el-button>
-      <el-button @click="resetFilter">重置</el-button>
-    </FilterBar>
+    <el-card class="filter-card">
+      <FilterBar>
+      <div class="filter-item">
+        <span class="filter-label">场站</span>
+        <FilterSelect v-model="filterForm.stationId" placeholder="全部" filterable clearable style="width: 180px" @change="handleSearch" @clear="handleSearch">
+          <el-option label="全部" value="all" />
+          <el-option
+            v-for="station in stations"
+            :key="station.id"
+            :label="station.station_name"
+            :value="station.id"
+          />
+        </FilterSelect>
+      </div>
+      <div class="filter-item">
+        <span class="filter-label">分类</span>
+        <FilterSelect v-model="filterForm.categoryId" placeholder="全部" filterable clearable style="width: 180px" @change="handleSearch" @clear="handleSearch">
+          <el-option label="全部" value="all" />
+          <el-option
+            v-for="cat in categories"
+            :key="cat.id"
+            :label="cat.category_name"
+            :value="cat.id"
+          />
+        </FilterSelect>
+      </div>
+      <div class="filter-item">
+        <span class="filter-label">状态</span>
+        <FilterSelect v-model="filterForm.isActive" placeholder="全部" filterable clearable style="width: 180px" @change="handleSearch" @clear="handleSearch">
+          <el-option label="全部" value="all" />
+          <el-option label="启用" value="true" />
+          <el-option label="禁用" value="false" />
+        </FilterSelect>
+      </div>
+      </FilterBar>
+    </el-card>
 
-    <el-table
-      v-loading="loading"
-      :data="tableData"
-      stripe
-      border
-      style="width: 100%"
-    >
+    <TableWrapper>
+      <el-table
+        v-loading="loading"
+        :data="tableData"
+        stripe
+        border
+        style="width: 100%"
+      >
         <el-table-column prop="name" label="监控点名称" min-width="150" />
         <el-table-column prop="station.station_name" label="场站" width="120">
           <template #default="{ row }">
@@ -73,13 +90,14 @@
             <el-button type="danger" link @click="handleDelete(row)">删除</el-button>
           </template>
         </el-table-column>
-    </el-table>
+      </el-table>
+    </TableWrapper>
 
     <div class="pagination-wrapper">
       <el-pagination
         v-model:current-page="pagination.page"
         v-model:page-size="pagination.pageSize"
-        :page-sizes="[10, 20, 50, 100]"
+        :page-sizes="[5, 10, 20, 50, 100]"
         :total="pagination.total"
         layout="total, sizes, prev, pager, next, jumper"
         @size-change="handleSizeChange"
@@ -217,6 +235,7 @@ import {
   getConfigs, createConfig, updateConfig, deleteConfig,
   importConfigFile, getCategories, downloadConfigTemplate
 } from '@/api/plcMonitor';
+import TableWrapper from '@/components/common/TableWrapper.vue';
 import request from '@/utils/request';
 
 const loading = ref(false);
@@ -233,14 +252,14 @@ const uploadRef = ref(null);
 const uploadFile = ref(null);
 
 const filterForm = reactive({
-  stationId: '',
-  categoryId: '',
-  isActive: ''
+  stationId: 'all',
+  categoryId: 'all',
+  isActive: 'all'
 });
 
 const pagination = reactive({
   page: 1,
-  pageSize: 10,
+  pageSize: 5,
   total: 0
 });
 
@@ -311,9 +330,9 @@ const fetchData = async () => {
       page: pagination.page,
       pageSize: pagination.pageSize
     };
-    if (filterForm.stationId) params.stationId = filterForm.stationId;
-    if (filterForm.categoryId) params.categoryId = filterForm.categoryId;
-    if (filterForm.isActive) params.isActive = filterForm.isActive;
+    if (filterForm.stationId && filterForm.stationId !== 'all') params.stationId = filterForm.stationId;
+    if (filterForm.categoryId && filterForm.categoryId !== 'all') params.categoryId = filterForm.categoryId;
+    if (filterForm.isActive && filterForm.isActive !== 'all') params.isActive = filterForm.isActive;
 
     const res = await getConfigs(params);
     tableData.value = res?.list || [];
@@ -326,10 +345,15 @@ const fetchData = async () => {
   }
 };
 
-const resetFilter = () => {
-  filterForm.stationId = '';
-  filterForm.categoryId = '';
-  filterForm.isActive = '';
+const handleSearch = () => {
+  pagination.page = 1;
+  fetchData();
+};
+
+const resetFilters = () => {
+  filterForm.stationId = 'all';
+  filterForm.categoryId = 'all';
+  filterForm.isActive = 'all';
   pagination.page = 1;
   fetchData();
 };
@@ -487,14 +511,13 @@ onMounted(() => {
     }
   }
 
+  .filter-card {
+    margin-bottom: 20px;
+  }
+
   .filter-bar {
     display: flex;
     gap: 12px;
-    margin-bottom: 20px;
-    background: #fff;
-    padding: 16px;
-    border-radius: 8px;
-    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.1);
     flex-wrap: wrap;
   }
 

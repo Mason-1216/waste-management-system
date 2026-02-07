@@ -5,21 +5,6 @@
       <p>{{ currentDate }} {{ weekDay }}</p>
     </div>
 
-    <!-- 待办事项统计 - 根据角色显示不同内容 -->
-    <el-row v-if="visibleStats.length > 0" :gutter="20" class="stat-row">
-      <el-col :xs="12" :sm="8" v-for="stat in visibleStats" :key="stat.key">
-        <div class="stat-card" @click="goTo(stat.path)">
-          <div class="stat-icon" :style="{ backgroundColor: stat.color }">
-            <el-icon><component :is="stat.icon" /></el-icon>
-          </div>
-          <div class="stat-info">
-            <div class="stat-value">{{ stats[stat.key] }}</div>
-            <div class="stat-title">{{ stat.title }}</div>
-          </div>
-        </div>
-      </el-col>
-    </el-row>
-
     <!-- 快捷操作 -->
     <div class="quick-actions">
       <div class="section-header">
@@ -91,33 +76,16 @@
 import { ref, computed, onMounted, onActivated, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { useUserStore } from '@/store/modules/user';
+import { usePermissionCatalogStore } from '@/store/modules/permissionCatalog';
 import { getNotifications, markAsRead as markRead } from '@/api/notification';
-import { getPendingApprovals } from '@/api/approval';
-import request from '@/api/request';
-import { menuConfig } from '@/config/menuConfig';
+import { menuConfig, getMenuCatalogItemByPath } from '@/config/menuConfig';
+import { buildAugmentedMenus, filterMenusByMenuCodes } from '@/utils/menuBuilder';
 import dayjs from 'dayjs';
 import FormDialog from '@/components/system/FormDialog.vue';
 
 const router = useRouter();
 const userStore = useUserStore();
-
-const stats = ref({
-  inspectionCount: 0,
-  safetyCheckCount: 0,
-  hygieneCheckCount: 0,
-  scheduleCount: 0,
-  hazardCount: 0,
-  approvalCount: 0,
-  repairCount: 0,
-  taskCount: 0,
-  tempTaskCount: 0,
-  dispatchCount: 0,
-  verifyCount: 0,
-  maintenanceCount: 0,
-  reportCount: 0,
-  userCount: 0,
-  orgCount: 0
-});
+const permissionCatalogStore = usePermissionCatalogStore();
 
 const notifications = ref([]);
 
@@ -134,7 +102,7 @@ const getNotificationRoute = (notification) => {
     safety_rectification: '/safety-rectification',
     safety_other_inspection: '/safety-other-inspection',
     hygiene_other_inspection: '/hygiene-other-inspection',
-    temporary_task: '/temporary-tasks',
+    temporary_task: '/temporary-tasks/fill',
     repair_record: '/device-faults',
     fault_report: '/device-faults'
   };
@@ -155,60 +123,6 @@ const handleNotificationClick = async (notification) => {
     router.push(target).catch(() => {});
   }
 };
-
-// 统计卡片配置 - 根据角色显示不同内容
-const allStats = {
-  inspection: { key: 'inspectionCount', title: '今日自检', icon: 'Brush', color: '#409EFF', path: '/hygiene-self-inspection' },
-  safetyCheck: { key: 'safetyCheckCount', title: '安全检查', icon: 'Shield', color: '#409EFF', path: '/safety-self-inspection' },
-  hygieneCheck: { key: 'hygieneCheckCount', title: '卫生检查', icon: 'Brush', color: '#67C23A', path: '/hygiene-self-inspection' },
-  schedule: { key: 'scheduleCount', title: '排班表', icon: 'Calendar', color: '#909399', path: '/schedule/my' },
-  task: { key: 'taskCount', title: '固定任务', icon: 'Briefcase', color: '#409EFF', path: '/position-work' },
-  deviceFaults: { key: 'repairCount', title: '设备故障', icon: 'Warning', color: '#E6A23C', path: '/device-faults' },
-  safetyRectification: { key: 'hazardCount', title: '安全隐患', icon: 'Warning', color: '#F56C6C', path: '/safety-rectification' },
-  equipmentMaintenance: { key: 'maintenanceCount', title: '设备保养', icon: 'Tools', color: '#409EFF', path: '/maintenance-task/work' },
-  reports: { key: 'reportCount', title: '数据报表', icon: 'DataAnalysis', color: '#67C23A', path: '/reports' },
-  userManagement: { key: 'userCount', title: '用户管理', icon: 'User', color: '#409EFF', path: '/user-management' },
-  organization: { key: 'orgCount', title: '组织架构', icon: 'OfficeBuilding', color: '#67C23A', path: '/organization-management' }
-};
-
-// 根据角色显示不同的统计卡片
-const visibleStats = computed(() => {
-  const role = userStore.roleCode;
-  // 系统管理员：不显示统计卡片
-  if (role === 'admin') {
-    return [];
-  }
-  // 操作岗：今日自检、固定任务、排班表
-  if (role === 'operator') {
-    return [allStats.inspection, allStats.task, allStats.schedule];
-  }
-  // 维修岗：今日自检、设备故障
-  if (role === 'maintenance') {
-    return [allStats.inspection, allStats.deviceFaults];
-  }
-  // 站长：今日自检、岗位工作、设备故障
-  if (role === 'station_manager') {
-    return [allStats.inspection, allStats.task, allStats.deviceFaults];
-  }
-  // 部门经理/副经理：安全检查、卫生检查、排班表
-  if (role === 'deputy_manager' || role === 'department_manager') {
-    return [allStats.safetyCheck, allStats.hygieneCheck, allStats.schedule];
-  }
-  // 安全员：安全检查、卫生检查、安全隐患
-  if (role === 'safety_inspector') {
-    return [allStats.safetyCheck, allStats.hygieneCheck, allStats.safetyRectification];
-  }
-  // 高层：安全检查、卫生检查、排班表
-  if (role === 'senior_management') {
-    return [allStats.safetyCheck, allStats.hygieneCheck, allStats.schedule];
-  }
-  // 甲方：设备保养、数据报表
-  if (role === 'client') {
-    return [allStats.equipmentMaintenance, allStats.reports];
-  }
-  return [allStats.inspection];
-});
-
 
 // 快捷操作
 const quickActionDialogVisible = ref(false);
@@ -256,11 +170,23 @@ const filterMenusByPermissions = (items, allowedCodes) => {
 const allowedActions = computed(() => {
   const roleCode = userStore.roleCode;
   const baseRoleCode = userStore.baseRoleCode || roleCode;
-  const roleMenus = menuConfig[roleCode] || menuConfig[baseRoleCode] || [];
-  const allowedCodes = new Set(userStore.menuCodes || []);
-  const filteredMenus = allowedCodes.size > 0
-    ? filterMenusByPermissions(roleMenus, allowedCodes)
-    : roleMenus;
+  const roleMenus = menuConfig[roleCode] || menuConfig[baseRoleCode] || menuConfig['operator'] || [];
+  const allowedMenuCodes = userStore.menuCodes || [];
+  const allowedSet = new Set(allowedMenuCodes);
+
+  // Keep legacy logic until the global permission catalog is loaded.
+  const filteredMenus = permissionCatalogStore.loaded
+    ? filterMenusByMenuCodes({
+      menus: buildAugmentedMenus({
+        baseMenus: roleMenus,
+        allowedMenuCodes,
+        getCatalogItemByPath: getMenuCatalogItemByPath
+      }),
+      allowedMenuCodes,
+      isKnownMenuCode: permissionCatalogStore.hasMenuCode
+    })
+    : (allowedSet.size > 0 ? filterMenusByPermissions(roleMenus, allowedSet) : roleMenus);
+
   const list = buildAllowedActions(filteredMenus);
   const actionMap = new Map();
   list.forEach(action => {
@@ -281,7 +207,7 @@ const allowedActionMap = computed(() => {
 
 const defaultQuickActionPaths = computed(() => {
   const roleDefaults = {
-    // 操作岗：排班表、安全自检、卫生自检、固定任务、设备故障
+    // 操作岗：排班表、安全自检、卫生自检、固定任务填报、设备故障
     operator: ['/schedule/my', '/safety-self-inspection', '/hygiene-self-inspection', '/position-work', '/device-faults'],
     // 维修岗：安全自检、设备故障
     maintenance: ['/safety-self-inspection', '/device-faults'],
@@ -368,80 +294,6 @@ const formatTime = (time) => {
   return dayjs(time).format('MM-DD HH:mm');
 };
 
-const loadStats = async () => {
-  try {
-    const data = await getPendingApprovals();
-    stats.value.approvalCount = data.total || 0;
-    stats.value.repairCount = data.repairRecords || 0;
-    stats.value.dispatchCount = data.pendingDispatch || 0;
-    stats.value.verifyCount = data.pendingVerify || 0;
-    stats.value.taskCount = data.taskCount || 0;
-    stats.value.tempTaskCount = data.tempTaskCount || 0;
-
-    const today = dayjs().format('YYYY-MM-DD');
-    const stationId = userStore.currentStationId || userStore.stations?.[0]?.id || null;
-    const paramsBase = {
-      page: 1,
-      pageSize: 10,
-      fillerId: userStore.userId,
-      startDate: today,
-      endDate: today,
-      stationId
-    };
-
-    const currentYear = dayjs().year();
-    const currentMonth = dayjs().month() + 1;
-
-    const results = await Promise.allSettled([
-      request.get('/self-inspections', { params: { ...paramsBase, inspectionType: 'safety' } }),
-      request.get('/self-inspections', { params: { ...paramsBase, inspectionType: 'hygiene' } }),
-      request.get('/safety-work-types'),
-      request.get('/schedules/my', { params: { year: currentYear, month: currentMonth } }),
-      request.get('/safety-rectifications', { params: { page: 1, pageSize: 1 } })
-    ]);
-
-    const safetyRes = results[0].status === 'fulfilled' ? results[0].value : null;
-    const hygieneRes = results[1].status === 'fulfilled' ? results[1].value : null;
-    const workTypesRes = results[2].status === 'fulfilled' ? results[2].value : null;
-    const scheduleRes = results[3].status === 'fulfilled' ? results[3].value : null;
-    const hazardRes = results[4].status === 'fulfilled' ? results[4].value : null;
-
-    const safetyList = safetyRes?.list || [];
-    const hygieneList = hygieneRes?.list || [];
-    const workTypes = workTypesRes || [];
-    const defaultWorkTypeIds = workTypes
-      .filter(wt => wt.is_default === 1 || wt.is_default === true)
-      .map(wt => wt.id);
-
-    const safetyCompleted = safetyList.some(item => {
-      const workTypeIds = item.work_type_ids || item.workTypeIds || [];
-      if (!Array.isArray(workTypeIds)) return false;
-      if (defaultWorkTypeIds.length === 0) return true;
-      return defaultWorkTypeIds.every(id => workTypeIds.includes(id));
-    });
-
-    const hygieneCompleted = hygieneList.length > 0;
-
-    let remaining = 2;
-    if (safetyCompleted) remaining -= 1;
-    if (hygieneCompleted) remaining -= 1;
-    stats.value.inspectionCount = Math.max(0, remaining);
-
-    stats.value.safetyCheckCount = safetyCompleted ? 0 : 1;
-    stats.value.hygieneCheckCount = hygieneCompleted ? 0 : 1;
-
-    const scheduleMap = scheduleRes?.schedules ?? {};
-    const todaySchedule = scheduleMap?.[today];
-    const hasTodaySchedule = Array.isArray(todaySchedule)
-      ? todaySchedule.length > 0
-      : !!todaySchedule;
-    stats.value.scheduleCount = hasTodaySchedule ? 1 : 0;
-
-    stats.value.hazardCount = hazardRes?.total || 0;
-  } catch {
-    // 静默处理加载统计失败
-  }
-};
 const loadNotifications = async () => {
   try {
     const data = await getNotifications({ page: 1, pageSize: 5 });
@@ -452,13 +304,14 @@ const loadNotifications = async () => {
 };
 
 onMounted(() => {
-  loadStats();
+  if (userStore.isLoggedIn) {
+    permissionCatalogStore.ensureLoaded();
+  }
   loadNotifications();
   loadQuickActions();
 });
 
 onActivated(() => {
-  loadStats();
   loadNotifications();
   loadQuickActions();
 });
@@ -491,49 +344,6 @@ watch(
   }
 }
 
-.stat-row {
-  margin-bottom: 24px;
-}
-
-.stat-card {
-  background: #fff;
-  border-radius: 8px;
-  padding: 20px;
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.1);
-  cursor: pointer;
-  transition: transform 0.2s;
-
-  &:hover {
-    transform: translateY(-2px);
-  }
-
-  .stat-icon {
-    width: 48px;
-    height: 48px;
-    border-radius: 8px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: #fff;
-    font-size: 24px;
-  }
-
-  .stat-info {
-    .stat-value {
-      font-size: 28px;
-      font-weight: bold;
-      color: #303133;
-    }
-
-    .stat-title {
-      font-size: 14px;
-      color: #909399;
-    }
-  }
-}
 
 .quick-actions {
   background: #fff;
@@ -640,9 +450,4 @@ watch(
   }
 }
 
-@media screen and (max-width: 768px) {
-  .stat-card {
-    margin-bottom: 12px;
-  }
-}
 </style>

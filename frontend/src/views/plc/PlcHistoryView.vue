@@ -1,5 +1,16 @@
 <template>
   <div class="history-legacy">
+    <div class="page-header">
+      <h2>历史数据</h2>
+      <div class="header-actions">
+        <el-button type="info" @click="handleDownloadTemplate">
+          <el-icon><Download /></el-icon>下载模板
+        </el-button>
+        <el-button type="success" @click="importDialogVisible = true">
+          <el-icon><Download /></el-icon>批量导入
+        </el-button>
+      </div>
+    </div>
     <section class="section">
       <div class="stats">
         <div class="stat-card" v-for="card in statCards" :key="card.key">
@@ -9,42 +20,65 @@
       </div>
     </section>
 
-    <FilterBar>
-      <el-date-picker
-        v-model="filterForm.dateRange"
-        type="daterange"
-        range-separator="至"
-        start-placeholder="开始日期"
-        end-placeholder="结束日期"
-        value-format="YYYY-MM-DD"
-        style="width: 280px"
-      />
-      <el-select v-model="filterForm.stationId" placeholder="全部场站" clearable style="width: 180px">
-        <el-option
-          v-for="station in stations"
-          :key="station.id"
-          :label="station.station_name"
-          :value="station.id"
-        />
-      </el-select>
-      <el-select v-model="filterForm.categoryId" placeholder="全部分类" clearable style="width: 180px">
-        <el-option
-          v-for="cat in categories"
-          :key="cat.id"
-          :label="cat.category_name"
-          :value="cat.id"
-        />
-      </el-select>
-      <el-select v-model="summaryGroup" placeholder="汇总粒度" style="width: 180px">
-        <el-option label="按日" value="day" />
-        <el-option label="按月" value="month" />
-        <el-option label="按年" value="year" />
-      </el-select>
-      <el-button type="primary" @click="handleQuery">查询</el-button>
-      <el-button @click="resetFilter">重置</el-button>
-      <el-button type="success" @click="handleDownloadTemplate">下载模板</el-button>
-      <el-button type="warning" @click="importDialogVisible = true">导入数据</el-button>
-    </FilterBar>
+    <el-card class="filter-card">
+      <FilterBar>
+        <div class="filter-item">
+          <span class="filter-label">开始日期</span>
+          <el-date-picker
+            v-model="filterForm.startDate"
+            type="date"
+            placeholder="全部"
+            value-format="YYYY-MM-DD"
+            style="width: 140px"
+            @change="applyFilters"
+          />
+        </div>
+        <div class="filter-item">
+          <span class="filter-label">结束日期</span>
+          <el-date-picker
+            v-model="filterForm.endDate"
+            type="date"
+            placeholder="全部"
+            value-format="YYYY-MM-DD"
+            style="width: 140px"
+            @change="applyFilters"
+          />
+        </div>
+        <div class="filter-item">
+          <span class="filter-label">场站</span>
+          <FilterSelect v-model="filterForm.stationId" placeholder="全部" filterable clearable style="width: 180px" @change="applyFilters" @clear="applyFilters">
+            <el-option label="全部" value="all" />
+            <el-option
+              v-for="station in stations"
+              :key="station.id"
+              :label="station.station_name"
+              :value="station.id"
+            />
+          </FilterSelect>
+        </div>
+        <div class="filter-item">
+          <span class="filter-label">分类</span>
+          <FilterSelect v-model="filterForm.categoryId" placeholder="全部" filterable clearable style="width: 180px" @change="applyFilters" @clear="applyFilters">
+            <el-option label="全部" value="all" />
+            <el-option
+              v-for="cat in categories"
+              :key="cat.id"
+              :label="cat.category_name"
+              :value="cat.id"
+            />
+          </FilterSelect>
+        </div>
+        <div class="filter-item">
+          <span class="filter-label">汇总粒度</span>
+          <FilterSelect v-model="summaryGroup" placeholder="全部" filterable style="width: 180px" @change="applyFilters">
+            <el-option label="全部" value="all" />
+            <el-option label="按日" value="day" />
+            <el-option label="按月" value="month" />
+            <el-option label="按年" value="year" />
+          </FilterSelect>
+        </div>
+      </FilterBar>
+    </el-card>
 
     <el-dialog v-model="importDialogVisible" title="导入历史数据" width="500px">
       <BaseUpload
@@ -68,7 +102,7 @@
       </template>
     </el-dialog>
 
-    <section class="section">
+    <section class="section-block">
       <div class="section-title">场站分类汇总</div>
       <TableWrapper>
         <el-table :data="summaryData" stripe border style="width: 100%">
@@ -106,7 +140,7 @@
       </div>
     </section>
 
-    <section class="section">
+    <section class="section-block">
       <div class="section-title">
         历史数据
         <span class="sub-info">共 {{ pagination.total }} 条</span>
@@ -145,7 +179,7 @@
         <el-pagination
           v-model:current-page="pagination.page"
           v-model:page-size="pagination.pageSize"
-          :page-sizes="[10, 20, 50, 100]"
+          :page-sizes="[5, 10, 20, 50, 100]"
           :total="pagination.total"
           layout="total, sizes, prev, pager, next, jumper"
           @size-change="handleSizeChange"
@@ -169,7 +203,7 @@ const historyTable = ref([]);
 const summaryData = ref([]);
 const stations = ref([]);
 const categories = ref([]);
-const summaryGroup = ref('day');
+const summaryGroup = ref('all');
 const importDialogVisible = ref(false);
 const importing = ref(false);
 const uploadRef = ref(null);
@@ -180,20 +214,22 @@ const stats = reactive({
 });
 const summaryPagination = reactive({
   page: 1,
-  pageSize: 10,
+  pageSize: 5,
   total: 0
 });
 
 const pagination = reactive({
   page: 1,
-  pageSize: 10,
+  pageSize: 5,
   total: 0
 });
 
+const today = dayjs().format('YYYY-MM-DD');
 const filterForm = reactive({
-  stationId: '',
-  categoryId: '',
-  dateRange: []
+  stationId: 'all',
+  categoryId: 'all',
+  startDate: dayjs().subtract(5, 'day').format('YYYY-MM-DD'),
+  endDate: today
 });
 
 const valueTypeLabel = (val) => {
@@ -257,22 +293,20 @@ const buildParams = () => {
     page: pagination.page,
     pageSize: pagination.pageSize
   };
-  if (filterForm.stationId) params.stationId = filterForm.stationId;
-  if (filterForm.categoryId) params.categoryId = filterForm.categoryId;
-  if (filterForm.dateRange && filterForm.dateRange.length === 2) {
-    params.startDate = filterForm.dateRange[0];
-    params.endDate = filterForm.dateRange[1];
-  }
+  if (filterForm.stationId && filterForm.stationId !== 'all') params.stationId = filterForm.stationId;
+  if (filterForm.categoryId && filterForm.categoryId !== 'all') params.categoryId = filterForm.categoryId;
+  if (filterForm.startDate) params.startDate = filterForm.startDate;
+  if (filterForm.endDate) params.endDate = filterForm.endDate;
   return params;
 };
 
 const fetchSummary = async () => {
   const params = {
-    stationId: filterForm.stationId || undefined,
-    categoryId: filterForm.categoryId || undefined,
-    startDate: filterForm.dateRange?.[0],
-    endDate: filterForm.dateRange?.[1],
-    timeType: summaryGroup.value,
+    stationId: filterForm.stationId === 'all' ? undefined : filterForm.stationId,
+    categoryId: filterForm.categoryId === 'all' ? undefined : filterForm.categoryId,
+    startDate: filterForm.startDate,
+    endDate: filterForm.endDate,
+    timeType: summaryGroup.value === 'all' ? undefined : summaryGroup.value,
     page: summaryPagination.page,
     pageSize: summaryPagination.pageSize
   };
@@ -293,6 +327,12 @@ const fetchHistory = async () => {
   pagination.total = payload.total || 0;
 };
 
+const applyFilters = () => {
+  pagination.page = 1;
+  summaryPagination.page = 1;
+  handleQuery();
+};
+
 const handleQuery = async () => {
   loading.value = true;
   try {
@@ -306,9 +346,11 @@ const handleQuery = async () => {
 };
 
 const resetFilter = () => {
-  filterForm.stationId = '';
-  filterForm.categoryId = '';
-  filterForm.dateRange = [];
+  filterForm.stationId = 'all';
+  filterForm.categoryId = 'all';
+  filterForm.startDate = dayjs().subtract(5, 'day').format('YYYY-MM-DD');
+  filterForm.endDate = today;
+  summaryGroup.value = 'all';
   pagination.page = 1;
   summaryPagination.page = 1;
   handleQuery();
@@ -411,6 +453,10 @@ onMounted(() => {
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.08);
   }
 
+  .section-block {
+    margin-bottom: 20px;
+  }
+
   .section-title {
     font-size: 18px;
     font-weight: bold;
@@ -443,19 +489,14 @@ onMounted(() => {
     margin-top: 4px;
   }
 
+  .filter-card {
+    margin-bottom: 20px;
+  }
+
   .filter-bar {
     display: flex;
     gap: 12px;
-    margin-bottom: 20px;
-    background: #fff;
-    padding: 16px;
-    border-radius: 8px;
-    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.1);
     flex-wrap: wrap;
-  }
-
-  .table-wrapper {
-    overflow-x: auto;
   }
 
   .pagination-wrapper {

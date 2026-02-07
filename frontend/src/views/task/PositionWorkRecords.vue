@@ -7,121 +7,151 @@
       </div>
     </div>
 
-    <div class="filter-bar">
-      <el-input
-        v-model="filters.userName"
-        placeholder="用户名"
-        clearable
-        style="width: 140px"
-        @keyup.enter="loadRecords"
-      />
-      <el-input
-        v-model="filters.stationName"
-        placeholder="场站"
-        clearable
-        style="width: 140px"
-        @keyup.enter="loadRecords"
-      />
-      <el-input
-        v-model="filters.positionName"
-        placeholder="岗位"
-        clearable
-        style="width: 140px"
-        @keyup.enter="loadRecords"
-      />
-      <el-input
-        v-model="filters.workName"
-        placeholder="任务名称"
-        clearable
-        style="width: 160px"
-        @keyup.enter="loadRecords"
-      />
-      <el-input
-        v-model="filters.taskCategory"
-        placeholder="任务类别"
-        clearable
-        style="width: 140px"
-        @keyup.enter="loadRecords"
-      />
-      <el-select v-model="filters.scoreMethod" placeholder="给分方式" clearable style="width: 150px">
-        <el-option v-for="option in scoreMethodOptions" :key="option" :label="option" :value="option" />
-      </el-select>
-      <el-input
-        v-model="filters.unitPoints"
-        placeholder="单位积分"
-        clearable
-        type="number"
-        style="width: 120px"
-        @keyup.enter="loadRecords"
-      />
-      <el-input
-        v-model="filters.quantity"
-        placeholder="数量"
-        clearable
-        type="number"
-        style="width: 100px"
-        @keyup.enter="loadRecords"
-      />
-      <el-input
-        v-model="filters.calculatedPoints"
-        placeholder="积分"
-        clearable
-        type="number"
-        style="width: 110px"
-        @keyup.enter="loadRecords"
-      />
-      <el-select v-model="filters.taskSource" placeholder="任务来源" clearable style="width: 140px">
-        <el-option v-for="option in taskSourceOptions" :key="option.value" :label="option.label" :value="option.value" />
-      </el-select>
-      <el-select v-model="filters.isCompleted" placeholder="完成情况" clearable style="width: 120px">
-        <el-option v-for="option in completionOptions" :key="option.value" :label="option.label" :value="option.value" />
-      </el-select>
-      <el-date-picker
-        v-model="filters.submitRange"
-        type="daterange"
-        range-separator="至"
-        start-placeholder="提交开始"
-        end-placeholder="提交结束"
-        format="YYYY-MM-DD"
-        value-format="YYYY-MM-DD"
-      />
-      <el-select v-model="filters.reviewStatus" placeholder="审核状态" clearable style="width: 140px">
-        <el-option v-for="option in reviewStatusOptions" :key="option.value" :label="option.label" :value="option.value" />
-      </el-select>
-      <el-input
-        v-model="filters.approverName"
-        placeholder="审核人"
-        clearable
-        style="width: 140px"
-        @keyup.enter="loadRecords"
-      />
-      <el-date-picker
-        v-model="filters.approveRange"
-        type="daterange"
-        range-separator="至"
-        start-placeholder="审核开始"
-        end-placeholder="审核结束"
-        format="YYYY-MM-DD"
-        value-format="YYYY-MM-DD"
-      />
-      <el-input
-        v-model="filters.deductionReason"
-        placeholder="扣分原因"
-        clearable
-        style="width: 160px"
-        @keyup.enter="loadRecords"
-      />
-      <el-input
-        v-model="filters.deductionPoints"
-        placeholder="扣分值"
-        clearable
-        type="number"
-        style="width: 120px"
-        @keyup.enter="loadRecords"
-      />
-      <el-button type="primary" @click="loadRecords">查询</el-button>
-      <el-button @click="resetFilters">重置</el-button>
-    </div>
+    <el-card class="filter-card">
+      <FilterBar>
+        <div class="filter-item">
+          <span class="filter-label">用户名</span>
+          <FilterAutocomplete
+            v-model="filters.userName"
+            :fetch-suggestions="fetchUserNameSuggestions"
+            trigger-on-focus
+            placeholder="全部"
+            clearable
+            style="width: 140px"
+            @select="loadRecords"
+            @input="loadRecords"
+            @clear="loadRecords"
+            @keyup.enter="loadRecords"
+          />
+        </div>
+        <div class="filter-item">
+          <span class="filter-label">场站</span>
+          <FilterSelect
+            v-model="filters.stationId"
+            placeholder="全部"
+            clearable
+            filterable
+            style="width: 200px"
+            @change="handleFilterChange"
+            @clear="handleFilterChange"
+          >
+            <el-option label="全部" :value="null" />
+            <el-option
+              v-for="s in stations"
+              :key="s.id"
+              :label="s.stationName"
+              :value="s.id"
+            />
+          </FilterSelect>
+        </div>
+        <div class="filter-item">
+          <span class="filter-label">岗位</span>
+          <FilterAutocomplete
+            v-model="filters.positionName"
+            :fetch-suggestions="fetchPositionNameSuggestions"
+            trigger-on-focus
+            placeholder="全部"
+            clearable
+            style="width: 140px"
+            @select="loadRecords"
+            @input="loadRecords"
+            @clear="loadRecords"
+            @keyup.enter="loadRecords"
+          />
+        </div>
+        <div class="filter-item">
+          <span class="filter-label">任务名称</span>
+          <FilterAutocomplete
+            v-model="filters.workName"
+            :fetch-suggestions="fetchWorkNameSuggestions"
+            trigger-on-focus
+            placeholder="全部"
+            clearable
+            style="width: 160px"
+            @select="loadRecords"
+            @input="loadRecords"
+            @clear="loadRecords"
+            @keyup.enter="loadRecords"
+          />
+        </div>
+        <div class="filter-item">
+          <span class="filter-label">任务类别</span>
+          <FilterAutocomplete
+            v-model="filters.taskCategory"
+            :fetch-suggestions="fetchTaskCategorySuggestions"
+            trigger-on-focus
+            placeholder="全部"
+            clearable
+            style="width: 140px"
+            @select="loadRecords"
+            @input="loadRecords"
+            @clear="loadRecords"
+            @keyup.enter="loadRecords"
+          />
+        </div>
+        <div class="filter-item">
+          <span class="filter-label">给分方式</span>
+          <FilterSelect v-model="filters.scoreMethod" placeholder="全部" filterable clearable style="width: 150px" @change="loadRecords" @clear="loadRecords">
+            <el-option v-for="option in scoreMethodOptions" :key="option" :label="option" :value="option" />
+          </FilterSelect>
+        </div>
+        <div class="filter-item">
+          <span class="filter-label">任务来源</span>
+          <FilterSelect v-model="filters.taskSource" placeholder="全部" filterable clearable style="width: 140px" @change="loadRecords" @clear="loadRecords">
+            <el-option v-for="option in taskSourceOptions" :key="option.value" :label="option.label" :value="option.value" />
+          </FilterSelect>
+        </div>
+        <div class="filter-item">
+          <span class="filter-label">完成情况</span>
+          <FilterSelect v-model="filters.isCompleted" placeholder="全部" filterable clearable style="width: 120px" @change="loadRecords" @clear="loadRecords">
+            <el-option v-for="option in completionOptions" :key="option.value" :label="option.label" :value="option.value" />
+          </FilterSelect>
+        </div>
+        <div class="filter-item">
+          <span class="filter-label">提交开始</span>
+          <el-date-picker
+            v-model="filters.submitStartDate"
+            type="date"
+            placeholder="全部"
+            format="YYYY-MM-DD"
+            value-format="YYYY-MM-DD"
+            @change="loadRecords"
+          />
+        </div>
+        <div class="filter-item">
+          <span class="filter-label">提交结束</span>
+          <el-date-picker
+            v-model="filters.submitEndDate"
+            type="date"
+            placeholder="全部"
+            format="YYYY-MM-DD"
+            value-format="YYYY-MM-DD"
+            @change="loadRecords"
+          />
+        </div>
+        <div class="filter-item">
+          <span class="filter-label">审核状态</span>
+          <FilterSelect v-model="filters.reviewStatus" placeholder="全部" filterable clearable style="width: 140px" @change="loadRecords" @clear="loadRecords">
+            <el-option v-for="option in reviewStatusOptions" :key="option.value" :label="option.label" :value="option.value" />
+          </FilterSelect>
+        </div>
+        <div class="filter-item">
+          <span class="filter-label">审核人</span>
+          <FilterAutocomplete
+            v-model="filters.approverName"
+            :fetch-suggestions="fetchApproverNameSuggestions"
+            trigger-on-focus
+            placeholder="全部"
+            clearable
+            style="width: 140px"
+            @select="loadRecords"
+            @input="loadRecords"
+            @clear="loadRecords"
+            @keyup.enter="loadRecords"
+          />
+        </div>
+      </FilterBar>
+    </el-card>
 
     <el-table
       v-loading="loading"
@@ -289,6 +319,10 @@
 import { ref, reactive, computed, onMounted } from 'vue';
 import { ElMessage } from 'element-plus';
 import dayjs from 'dayjs';
+
+import FilterBar from '@/components/common/FilterBar.vue';
+import { createListSuggestionFetcher } from '@/utils/filterAutocomplete';
+import { getAllStations } from '@/api/station';
 import { useUserStore } from '@/store/modules/user';
 import * as positionWorkLogApi from '@/api/positionWorkLog';
 import FormDialog from '@/components/system/FormDialog.vue';
@@ -318,24 +352,20 @@ const reviewStatusOptions = [
   { value: 'rejected', label: '审核未通过' }
 ];
 
+const today = dayjs().format('YYYY-MM-DD');
 const filters = reactive({
   userName: '',
-  stationName: '',
+  stationId: null,
   positionName: '',
   workName: '',
   taskCategory: '',
   scoreMethod: '',
-  unitPoints: '',
-  quantity: '',
-  calculatedPoints: '',
   taskSource: '',
   isCompleted: '',
-  submitRange: [],
+  submitStartDate: dayjs().subtract(5, 'day').format('YYYY-MM-DD'),
+  submitEndDate: today,
   reviewStatus: '',
   approverName: '',
-  approveRange: [],
-  deductionReason: '',
-  deductionPoints: ''
 });
 
 const pagination = reactive({
@@ -344,8 +374,32 @@ const pagination = reactive({
   total: 0
 });
 
+
 const records = ref([]);
+const recordSuggestionList = ref([]);
 const loading = ref(false);
+const stations = ref([]);
+
+const fetchUserNameSuggestions = createListSuggestionFetcher(
+  () => recordSuggestionList.value,
+  (row) => row.user_name
+);
+const fetchPositionNameSuggestions = createListSuggestionFetcher(
+  () => recordSuggestionList.value,
+  (row) => row.position_name
+);
+const fetchWorkNameSuggestions = createListSuggestionFetcher(
+  () => recordSuggestionList.value,
+  (row) => row.work_name
+);
+const fetchTaskCategorySuggestions = createListSuggestionFetcher(
+  () => recordSuggestionList.value,
+  (row) => row.task_category
+);
+const fetchApproverNameSuggestions = createListSuggestionFetcher(
+  () => recordSuggestionList.value,
+  (row) => row.approver_name
+);
 
 const resolveTextValue = (value) => (typeof value === 'string' ? value.trim() : '');
 const hasValue = (value) => value !== undefined && value !== null && value !== '';
@@ -359,8 +413,9 @@ const buildParams = () => {
   const userName = resolveTextValue(filters.userName);
   if (userName) params.userName = userName;
 
-  const stationName = resolveTextValue(filters.stationName);
-  if (stationName) params.stationName = stationName;
+  if (hasValue(filters.stationId)) {
+    params.stationId = filters.stationId;
+  }
 
   const positionName = resolveTextValue(filters.positionName);
   if (positionName) params.positionName = positionName;
@@ -375,18 +430,6 @@ const buildParams = () => {
     params.scoreMethod = filters.scoreMethod;
   }
 
-  if (hasValue(filters.unitPoints)) {
-    params.unitPoints = filters.unitPoints;
-  }
-
-  if (hasValue(filters.quantity)) {
-    params.quantity = filters.quantity;
-  }
-
-  if (hasValue(filters.calculatedPoints)) {
-    params.calculatedPoints = filters.calculatedPoints;
-  }
-
   if (filters.taskSource) {
     params.taskSource = filters.taskSource;
   }
@@ -395,9 +438,11 @@ const buildParams = () => {
     params.isCompleted = filters.isCompleted;
   }
 
-  if (Array.isArray(filters.submitRange) && filters.submitRange.length === 2) {
-    params.submitStartDate = filters.submitRange[0];
-    params.submitEndDate = filters.submitRange[1];
+  if (filters.submitStartDate) {
+    params.submitStartDate = filters.submitStartDate;
+  }
+  if (filters.submitEndDate) {
+    params.submitEndDate = filters.submitEndDate;
   }
 
   if (filters.reviewStatus) {
@@ -407,39 +452,47 @@ const buildParams = () => {
   const approverName = resolveTextValue(filters.approverName);
   if (approverName) params.approverName = approverName;
 
-  if (Array.isArray(filters.approveRange) && filters.approveRange.length === 2) {
-    params.approveStartDate = filters.approveRange[0];
-    params.approveEndDate = filters.approveRange[1];
-  }
+  return params;
+};
 
-  const deductionReason = resolveTextValue(filters.deductionReason);
-  if (deductionReason) params.deductionReason = deductionReason;
-
-  if (hasValue(filters.deductionPoints)) {
-    params.deductionPoints = filters.deductionPoints;
-  }
-
+const buildSuggestionParams = () => {
+  const params = buildParams();
+  params.page = 1;
+  params.pageSize = 5000;
   return params;
 };
 
 const resetFilters = () => {
   filters.userName = '';
-  filters.stationName = '';
+  filters.stationId = null;
   filters.positionName = '';
   filters.workName = '';
   filters.taskCategory = '';
   filters.scoreMethod = '';
-  filters.unitPoints = '';
-  filters.quantity = '';
-  filters.calculatedPoints = '';
   filters.taskSource = '';
   filters.isCompleted = '';
-  filters.submitRange = [];
+  filters.submitStartDate = dayjs().subtract(5, 'day').format('YYYY-MM-DD');
+  filters.submitEndDate = today;
   filters.reviewStatus = '';
   filters.approverName = '';
-  filters.approveRange = [];
-  filters.deductionReason = '';
-  filters.deductionPoints = '';
+  pagination.page = 1;
+  loadRecords();
+};
+
+const loadStations = async () => {
+  try {
+    const res = await getAllStations();
+    const list = res?.data || res || [];
+    stations.value = (Array.isArray(list) ? list : []).map(item => ({
+      ...item,
+      stationName: item.stationName || item.station_name || item.name || ''
+    }));
+  } catch {
+    stations.value = [];
+  }
+};
+
+const handleFilterChange = () => {
   pagination.page = 1;
   loadRecords();
 };
@@ -450,10 +503,20 @@ const loadRecords = async () => {
     const result = await positionWorkLogApi.getWorkRecords(buildParams());
     records.value = result?.list ?? [];
     pagination.total = result?.total ?? 0;
+    loadRecordSuggestions();
   } catch (error) {
     ElMessage.error('加载记录失败');
   } finally {
     loading.value = false;
+  }
+};
+
+const loadRecordSuggestions = async () => {
+  try {
+    const result = await positionWorkLogApi.getWorkRecords(buildSuggestionParams());
+    recordSuggestionList.value = result?.list ?? [];
+  } catch (error) {
+    recordSuggestionList.value = [];
   }
 };
 
@@ -575,6 +638,7 @@ const submitReview = async () => {
 };
 
 onMounted(() => {
+  loadStations();
   loadRecords();
 });
 </script>
@@ -598,10 +662,7 @@ onMounted(() => {
     }
   }
 
-  .filter-bar {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 10px;
+  .filter-card {
     margin-bottom: 20px;
   }
 

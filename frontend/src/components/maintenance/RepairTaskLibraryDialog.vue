@@ -1,28 +1,36 @@
-<template>
+﻿<template>
   <el-dialog
     v-model="dialogVisible"
-    title="维修任务库"
+    title="维修任务汇总表"
     width="980px"
     append-to-body
     destroy-on-close
   >
     <div class="filter-bar">
-      <el-input
-        v-model="filters.taskCategory"
-        placeholder="任务类别"
-        clearable
-        style="width: 160px"
-        @keyup.enter="handleSearch"
-      />
-      <el-input
-        v-model="filters.taskName"
-        placeholder="任务名称"
-        clearable
-        style="width: 180px"
-        @keyup.enter="handleSearch"
-      />
-      <el-button type="primary" @click="handleSearch">查询</el-button>
-      <el-button @click="resetFilters">重置</el-button>
+      <div class="filter-item">
+        <span class="filter-label">任务类别</span>
+        <el-input
+          v-model="filters.taskCategory"
+          placeholder="全部"
+          clearable
+          style="width: 160px"
+          @input="handleSearch"
+          @clear="handleSearch"
+          @keyup.enter="handleSearch"
+        />
+      </div>
+      <div class="filter-item">
+        <span class="filter-label">任务名称</span>
+        <el-input
+          v-model="filters.taskName"
+          placeholder="全部"
+          clearable
+          style="width: 180px"
+          @input="handleSearch"
+          @clear="handleSearch"
+          @keyup.enter="handleSearch"
+        />
+      </div>
     </div>
 
     <el-table
@@ -84,7 +92,7 @@
         v-model:current-page="pagination.page"
         v-model:page-size="pagination.pageSize"
         :total="pagination.total"
-        :page-sizes="[10, 20, 50]"
+        :page-sizes="[5, 10, 20, 50]"
         layout="total, sizes, prev, pager, next"
         @current-change="loadTasks"
         @size-change="handlePageSizeChange"
@@ -125,7 +133,7 @@ const tasks = ref([]);
 const loading = ref(false);
 const pagination = reactive({
   page: 1,
-  pageSize: 10,
+  pageSize: 5,
   total: 0
 });
 const filters = reactive({
@@ -171,7 +179,7 @@ const loadTasks = async () => {
     await nextTick();
     applySelection();
   } catch (error) {
-    ElMessage.error('加载任务库失败');
+    ElMessage.error('加载任务汇总表失败');
   } finally {
     loading.value = false;
   }

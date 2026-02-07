@@ -1,40 +1,69 @@
-<template>
+﻿<template>
   <div class="fault-list-page">
     <div class="page-header">
       <h2>故障上报单</h2>
     </div>
 
     <!-- 筛选条件 -->
-    <FilterBar>
-      <el-select v-model="filters.status" placeholder="状态" clearable @change="loadList">
-        <el-option label="待处理" value="pending" />
-        <el-option label="已派发" value="assigned" />
-        <el-option label="维修中" value="in_progress" />
-        <el-option label="已完成" value="completed" />
-      </el-select>
-      <el-select v-model="filters.urgencyLevel" placeholder="紧急程度" clearable @change="loadList">
-        <el-option label="一般" value="low" />
-        <el-option label="较急" value="medium" />
-        <el-option label="紧急" value="high" />
-        <el-option label="非常紧急" value="critical" />
-      </el-select>
-      <el-date-picker
-        v-model="filters.dateRange"
-        type="daterange"
-        start-placeholder="开始日期"
-        end-placeholder="结束日期"
-        value-format="YYYY-MM-DD"
-        @change="loadList"
-      />
-      <el-input
-        v-model="filters.keyword"
-        placeholder="搜索设备名称"
-        clearable
-        style="width: 200px"
-        @keyup.enter="loadList"
-      />
-      <el-button type="primary" @click="loadList">搜索</el-button>
-    </FilterBar>
+    <el-card class="filter-card">
+      <FilterBar>
+        <div class="filter-item">
+          <span class="filter-label">状态</span>
+          <FilterSelect v-model="filters.status" placeholder="全部" filterable clearable @change="loadList">
+            <el-option label="全部" value="all" />
+            <el-option label="待处理" value="pending" />
+            <el-option label="已派发" value="assigned" />
+            <el-option label="维修中" value="in_progress" />
+            <el-option label="已完成" value="completed" />
+          </FilterSelect>
+        </div>
+        <div class="filter-item">
+          <span class="filter-label">紧急程度</span>
+          <FilterSelect v-model="filters.urgencyLevel" placeholder="全部" filterable clearable @change="loadList">
+            <el-option label="全部" value="all" />
+            <el-option label="一般" value="low" />
+            <el-option label="较急" value="medium" />
+            <el-option label="紧急" value="high" />
+            <el-option label="非常紧急" value="critical" />
+          </FilterSelect>
+        </div>
+        <div class="filter-item">
+          <span class="filter-label">开始日期</span>
+          <el-date-picker
+            v-model="filters.startDate"
+            type="date"
+            placeholder="全部"
+            value-format="YYYY-MM-DD"
+            @change="loadList"
+          />
+        </div>
+        <div class="filter-item">
+          <span class="filter-label">结束日期</span>
+          <el-date-picker
+            v-model="filters.endDate"
+            type="date"
+            placeholder="全部"
+            value-format="YYYY-MM-DD"
+            @change="loadList"
+          />
+        </div>
+        <div class="filter-item">
+          <span class="filter-label">设备名称</span>
+          <FilterAutocomplete
+            v-model="filters.keyword"
+            :fetch-suggestions="fetchEquipmentNameSuggestions"
+            trigger-on-focus
+            placeholder="全部"
+            clearable
+            style="width: 200px"
+            @select="loadList"
+            @input="loadList"
+            @clear="loadList"
+            @keyup.enter="loadList"
+          />
+        </div>
+      </FilterBar>
+    </el-card>
 
     <!-- 列表 -->
     <el-table :data="faultList" stripe border>
@@ -94,7 +123,7 @@
         v-model:current-page="pagination.page"
         v-model:page-size="pagination.pageSize"
         :total="pagination.total"
-        :page-sizes="[10, 20, 50]"
+        :page-sizes="[5, 10, 20, 50]"
         layout="total, sizes, prev, pager, next"
         @current-change="loadList"
         @size-change="loadList"
@@ -138,6 +167,9 @@
           fit="cover"
         />
       </div>
+      <template #footer>
+        <el-button @click="detailVisible = false">退出</el-button>
+      </template>
     </FormDialog>
 
     <!-- 派发维修对话框 -->
@@ -188,28 +220,40 @@ import { ref, computed, onMounted } from 'vue';
 import { useUserStore } from '@/store/modules/user';
 import { ElMessage } from 'element-plus';
 import dayjs from 'dayjs';
+
+import { createListSuggestionFetcher } from '@/utils/filterAutocomplete';
 import request from '@/api/request';
 import FormDialog from '@/components/system/FormDialog.vue';
 
 const userStore = useUserStore();
 
 const faultList = ref([]);
+const faultSuggestionList = ref([]);
+
+const fetchEquipmentNameSuggestions = createListSuggestionFetcher(
+  () => faultSuggestionList.value,
+  (row) => row.equipmentName
+);
+
 const repairers = ref([]);
 const currentFault = ref(null);
 const detailVisible = ref(false);
 const dispatchVisible = ref(false);
 const dispatching = ref(false);
 
-const filters = ref({
-  status: '',
-  urgencyLevel: '',
-  dateRange: [],
+const today = dayjs().format('YYYY-MM-DD');
+const defaultFilters = {
+  status: 'all',
+  urgencyLevel: 'all',
+  startDate: dayjs().subtract(5, 'day').format('YYYY-MM-DD'),
+  endDate: today,
   keyword: ''
-});
+};
+const filters = ref({ ...defaultFilters });
 
 const pagination = ref({
   page: 1,
-  pageSize: 10,
+  pageSize: 5,
   total: 0
 });
 
@@ -220,7 +264,7 @@ const dispatchForm = ref({
 });
 
 const canDispatch = computed(() => {
-  return ['admin', 'station_manager'].includes(userStore.roleCode);
+  return userStore.hasRole('station_manager');
 });
 
 const getFaultTypeLabel = (type) => {
@@ -296,11 +340,11 @@ const loadList = async () => {
       page: pagination.value.page,
       pageSize: pagination.value.pageSize,
       stationId: userStore.currentStationId,
-      status: filters.value.status || undefined,
-      urgencyLevel: filters.value.urgencyLevel || undefined,
-      startDate: filters.value.dateRange?.[0],
-      endDate: filters.value.dateRange?.[1],
-      keyword: filters.value.keyword || undefined
+      status: filters.value.status === 'all' ? undefined : filters.value.status,
+      urgencyLevel: filters.value.urgencyLevel === 'all' ? undefined : filters.value.urgencyLevel,
+      startDate: filters.value.startDate || undefined,
+      endDate: filters.value.endDate || undefined,
+      keyword: filters.value.keyword?.trim() || undefined
     };
     const res = await request.get('/fault-reports', { params });
     faultList.value = (res.list || []).map(item => ({
@@ -308,15 +352,44 @@ const loadList = async () => {
       displayStatus: resolveDisplayStatus(item)
     }));
     pagination.value.total = res.total || 0;
+    loadFaultSuggestions(params);
   } catch (e) {
     
   }
 };
 
+const loadFaultSuggestions = async (baseParams) => {
+  try {
+    const params = {
+      ...baseParams,
+      page: 1,
+      pageSize: 5000
+    };
+    const res = await request.get('/fault-reports', { params });
+    faultSuggestionList.value = (res.list || []).map(item => ({
+      ...item,
+      displayStatus: resolveDisplayStatus(item)
+    }));
+  } catch (e) {
+    faultSuggestionList.value = [];
+  }
+};
+
+const handleSearch = () => {
+  pagination.value.page = 1;
+  loadList();
+};
+
+const resetFilters = () => {
+  filters.value = { ...defaultFilters };
+  pagination.value.page = 1;
+  loadList();
+};
+
 const loadRepairers = async () => {
   try {
     const res = await request.get('/users', {
-      params: { roleCode: 'maintenance', pageSize: 100 }
+      params: { roleCode: 'maintenance', pageSize: 50 }
     });
     repairers.value = res.list || [];
   } catch (e) {
@@ -390,11 +463,10 @@ onMounted(() => {
     display: flex;
     gap: 12px;
     flex-wrap: wrap;
+  }
+
+  .filter-card {
     margin-bottom: 20px;
-    background: #fff;
-    padding: 16px;
-    border-radius: 8px;
-    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.1);
   }
 
   .el-table {

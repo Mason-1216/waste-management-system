@@ -1,6 +1,28 @@
 <template>
 
   <div class="fault-report-page">
+    <div class="page-header">
+      <h2>故障上报</h2>
+      <div class="header-actions" v-if="activeTab === 'equipment' && canManageEquipment">
+        <el-button type="info" @click="downloadEquipmentTemplate">
+          <el-icon><Download /></el-icon>下载模板
+        </el-button>
+        <BaseUpload
+          ref="uploadEquipmentRef"
+          :auto-upload="false"
+          :show-file-list="false"
+          :on-change="handleEquipmentFileChange"
+          accept=".xlsx,.xls"
+        >
+          <el-button type="success">
+            <el-icon><Download /></el-icon>批量导入
+          </el-button>
+        </BaseUpload>
+        <el-button type="primary" @click="showAddEquipmentDialog">
+          <el-icon><Plus /></el-icon>新增
+        </el-button>
+      </div>
+    </div>
 
     <el-tabs v-model="activeTab" type="border-card">
 
@@ -178,7 +200,11 @@
 
           <h3>近期上报记录</h3>
 
-          <el-table :data="recentReports" stripe border>
+          <el-card class="filter-card">
+            <FilterBar />
+          </el-card>
+
+          <el-table :data="recentReportRows" stripe border>
 
             <el-table-column prop="reportCode" label="上报编号" width="150" />
 
@@ -234,6 +260,18 @@
 
           </el-table>
 
+          <div class="pagination-wrapper">
+            <el-pagination
+              v-model:current-page="recentPagination.page"
+              v-model:page-size="recentPagination.pageSize"
+              :page-sizes="[5, 10, 20, 50]"
+              :total="recentPagination.total"
+              layout="total, sizes, prev, pager, next"
+              @current-change="handleRecentPageChange"
+              @size-change="handleRecentPageSizeChange"
+            />
+          </div>
+
         </div>
 
       </el-tab-pane>
@@ -248,49 +286,16 @@
 
             <h4>设备管理</h4>
 
-            <div class="header-actions">
-
-              <el-button @click="downloadEquipmentTemplate">
-
-                <el-icon><Download /></el-icon>下载模板
-
-              </el-button>
-
-              <BaseUpload
-
-                ref="uploadEquipmentRef"
-
-                :auto-upload="false"
-
-                :show-file-list="false"
-
-                :on-change="handleEquipmentFileChange"
-
-                accept=".xlsx,.xls"
-
-              >
-
-                <el-button type="success">
-
-                  <el-icon><Download /></el-icon>导入
-
-                </el-button>
-
-              </BaseUpload>
-
-              <el-button type="primary" @click="showAddEquipmentDialog">
-
-                <el-icon><Plus /></el-icon>新增
-
-              </el-button>
-
-            </div>
 
           </div>
 
 
 
-          <el-table :data="equipmentList" stripe border v-loading="loadingEquipment">
+          <el-card class="filter-card">
+            <FilterBar />
+          </el-card>
+
+          <el-table :data="equipmentTableRows" stripe border v-loading="loadingEquipment">
 
             <el-table-column label="场站" width="150">
 
@@ -321,6 +326,18 @@
             </el-table-column>
 
           </el-table>
+
+          <div class="pagination-wrapper">
+            <el-pagination
+              v-model:current-page="equipmentPagination.page"
+              v-model:page-size="equipmentPagination.pageSize"
+              :page-sizes="[5, 10, 20, 50]"
+              :total="equipmentPagination.total"
+              layout="total, sizes, prev, pager, next"
+              @current-change="handleEquipmentPageChange"
+              @size-change="handleEquipmentPageSizeChange"
+            />
+          </div>
 
         </div>
 
@@ -369,21 +386,16 @@
 
 <script setup>
 
-import { ref, computed, onMounted } from 'vue';
-
-import { useUserStore } from '@/store/modules/user';
-import { useUpload } from '@/composables/useUpload';
-
+import { ref, computed, onMounted, watch } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
-
 import { Plus, Download, Upload } from '@element-plus/icons-vue';
-
 import dayjs from 'dayjs';
-
 import * as XLSX from 'xlsx';
 
+import FilterBar from '@/components/common/FilterBar.vue';
+import { useUserStore } from '@/store/modules/user';
+import { useUpload } from '@/composables/useUpload';
 import { addTemplateInstructionSheet, applyTemplateHeaderStyle } from '@/utils/excelTemplate';
-
 import request from '@/api/request';
 import FormDialog from '@/components/system/FormDialog.vue';
 
@@ -407,13 +419,14 @@ import {
 
 const userStore = useUserStore();
 
-const { uploadUrl, uploadHeaders } = useUpload();
+const { uploadUrl, uploadHeaders, resolveUploadUrl } = useUpload();
 
 const formRef = ref(null);
 
 const submitting = ref(false);
 
 const recentReports = ref([]);
+const recentPagination = ref({ page: 1, pageSize: 5, total: 0 });
 
 const photoList = ref([]);
 
@@ -425,7 +438,7 @@ const activeTab = ref('report');
 
 const equipmentManageRoles = ['station_manager', 'department_manager', 'deputy_manager'];
 
-const canManageEquipment = computed(() => equipmentManageRoles.includes(userStore.roleCode) || equipmentManageRoles.includes(userStore.baseRoleCode));
+const canManageEquipment = computed(() => userStore.hasRole(equipmentManageRoles));
 
 
 
@@ -472,6 +485,7 @@ const rules = {
 const loadingEquipment = ref(false);
 
 const equipmentList = ref([]);
+const equipmentPagination = ref({ page: 1, pageSize: 5, total: 0 });
 
 const equipmentDialogVisible = ref(false);
 
@@ -674,13 +688,15 @@ const normalizeFaultReport = (item) => ({
 
 
 const normalizeUploadFile = (file) => {
-
   const responseUrl = file?.response?.data?.url ?? file?.response?.url ?? '';
-
-  const url = responseUrl ? responseUrl : (file?.url ?? '');
-
+  let rawUrl = '';
+  if (responseUrl) {
+    rawUrl = responseUrl;
+  } else if (file?.url) {
+    rawUrl = file.url;
+  }
+  const url = resolveUploadUrl(rawUrl);
   return url ? { ...file, url } : file;
-
 };
 
 
@@ -767,7 +783,10 @@ const loadRecentReports = async () => {
 
     });
 
-    recentReports.value = (res.list || []).map(normalizeFaultReport);
+    const list = Array.isArray(res?.list) ? res.list : [];
+    recentReports.value = list.map(normalizeFaultReport);
+    recentPagination.value.page = 1;
+    recentPagination.value.total = recentReports.value.length;
 
   } catch (e) {
 
@@ -775,6 +794,38 @@ const loadRecentReports = async () => {
 
   }
 
+};
+
+const recentReportRows = computed(() => {
+  const list = Array.isArray(recentReports.value) ? recentReports.value : [];
+  const startIndex = (recentPagination.value.page - 1) * recentPagination.value.pageSize;
+  const endIndex = startIndex + recentPagination.value.pageSize;
+  return list.slice(startIndex, endIndex);
+});
+
+const handleRecentPageChange = (page) => {
+  recentPagination.value.page = page;
+};
+
+const handleRecentPageSizeChange = (size) => {
+  recentPagination.value.pageSize = size;
+  recentPagination.value.page = 1;
+};
+
+const equipmentTableRows = computed(() => {
+  const list = Array.isArray(equipmentList.value) ? equipmentList.value : [];
+  const startIndex = (equipmentPagination.value.page - 1) * equipmentPagination.value.pageSize;
+  const endIndex = startIndex + equipmentPagination.value.pageSize;
+  return list.slice(startIndex, endIndex);
+});
+
+const handleEquipmentPageChange = (page) => {
+  equipmentPagination.value.page = page;
+};
+
+const handleEquipmentPageSizeChange = (size) => {
+  equipmentPagination.value.pageSize = size;
+  equipmentPagination.value.page = 1;
 };
 
 
@@ -845,7 +896,9 @@ const loadEquipmentList = async () => {
 
     });
 
-    equipmentList.value = res || [];
+    equipmentList.value = Array.isArray(res) ? res : [];
+    equipmentPagination.value.page = 1;
+    equipmentPagination.value.total = equipmentList.value.length;
 
   } catch (e) {
 
@@ -1200,6 +1253,26 @@ onMounted(() => {
 
 });
 
+watch(
+  () => recentReports.value.length,
+  (total) => {
+    recentPagination.value.total = total;
+    const size = recentPagination.value.pageSize;
+    const maxPage = Math.max(1, Math.ceil(total / size));
+    if (recentPagination.value.page > maxPage) recentPagination.value.page = maxPage;
+  }
+);
+
+watch(
+  () => equipmentList.value.length,
+  (total) => {
+    equipmentPagination.value.total = total;
+    const size = equipmentPagination.value.pageSize;
+    const maxPage = Math.max(1, Math.ceil(total / size));
+    if (equipmentPagination.value.page > maxPage) equipmentPagination.value.page = maxPage;
+  }
+);
+
 </script>
 
 
@@ -1207,6 +1280,40 @@ onMounted(() => {
 <style lang="scss" scoped>
 
 .fault-report-page {
+
+  .page-header {
+
+    display: flex;
+
+    justify-content: space-between;
+
+    align-items: center;
+
+    margin-bottom: 20px;
+
+
+
+    h2 {
+
+      margin: 0;
+
+      font-size: 20px;
+
+      color: #303133;
+
+    }
+
+
+
+    .header-actions {
+
+      display: flex;
+
+      gap: 8px;
+
+    }
+
+  }
 
   .report-form-card {
 

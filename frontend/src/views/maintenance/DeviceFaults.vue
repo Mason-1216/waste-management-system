@@ -1,68 +1,185 @@
 <template>
   <div class="device-fault-page">
     <div class="page-header">
-      <h2>设备维修记录</h2>
-      <div class="actions">
-        <el-button v-if="canReport" type="primary" @click="addRow">新增报障</el-button>
-        <el-button @click="loadRecords">刷新</el-button>
-      </div>
+      <h2>故障上报</h2>
     </div>
 
-    <FilterBar>
-      <el-select v-model="filters.stationId" placeholder="场站" clearable style="width: 160px;" @change="loadRecords">
-        <el-option
-          v-for="station in stationFilterOptions"
-          :key="station.id"
-          :label="station.name"
-          :value="station.id"
-        />
-      </el-select>
-      <el-input
-        v-model="filters.equipmentName"
-        placeholder="设备名称"
-        clearable
-        style="width: 160px;"
-        @clear="loadRecords"
-        @keyup.enter="loadRecords"
-      />
-      <el-select v-model="filters.urgencyLevel" placeholder="紧急程度" clearable style="width: 140px;" @change="loadRecords">
-        <el-option
-          v-for="option in urgencyOptions"
-          :key="option.value"
-          :label="option.label"
-          :value="option.value"
-        />
-      </el-select>
-      <el-input
-        v-model="filters.repairPersonName"
-        placeholder="维修人员"
-        clearable
-        style="width: 160px;"
-        @clear="loadRecords"
-        @keyup.enter="loadRecords"
-      />
-      <el-select v-model="filters.status" placeholder="状态" clearable style="width: 140px;" @change="loadRecords">
-        <el-option label="草稿" value="draft_report" />
-        <el-option label="已上报" value="submitted_report" />
-        <el-option label="已派单" value="dispatched" />
-        <el-option label="维修中" value="repairing" />
-        <el-option label="退回重做" value="rework" />
-        <el-option label="待验收" value="repaired_submitted" />
-        <el-option label="已验收" value="accepted" />
-        <el-option label="已归档" value="archived" />
-      </el-select>
-    </FilterBar>
+    <el-card v-if="canReport && reportForm" class="report-form-card">
+      <div class="inspection-form-header">
+        <div class="form-title-row">
+          <div class="form-subtitle">新增报障</div>
+        </div>
+      </div>
 
-    <TableWrapper>
-      <el-table
-        :data="records"
-        border
-        stripe
-        class="fault-table"
-        v-loading="loading"
-        :row-key="rowKey"
+      <el-form
+        ref="reportFormRef"
+        :model="reportForm"
+        :rules="reportFormRules"
+        label-width="100px"
+        class="expand-form"
       >
-        <el-table-column label="表单编号">
+        <div class="section-grid">
+          <el-form-item label="场站" prop="station_id" required>
+            <el-select
+              v-model="reportForm.station_id"
+              placeholder="请选择场站"
+              style="width: 100%;"
+              @change="handleReportStationChange"
+            >
+              <el-option
+                v-for="station in reportFormStationOptions"
+                :key="station.id"
+                :label="station.station_name || station.stationName || station.name || ''"
+                :value="station.id"
+              />
+            </el-select>
+          </el-form-item>
+          <el-form-item label="设备编号" prop="equipment_code" required>
+            <el-select
+              v-model="reportForm.equipment_code"
+              placeholder="选择设备"
+              filterable
+              clearable
+              style="width: 100%;"
+              @change="handleReportEquipmentChange"
+            >
+              <el-option
+                v-for="equipment in equipmentList"
+                :key="equipment.equipment_code"
+                :label="equipment.equipment_code"
+                :value="equipment.equipment_code"
+              >
+                <span>{{ equipment.equipment_code }}</span>
+                <span style="color: #8492a6; font-size: 12px; margin-left: 10px;">{{ equipment.equipment_name }}</span>
+              </el-option>
+            </el-select>
+          </el-form-item>
+          <el-form-item label="设备名称" prop="equipment_name" required>
+            <el-input v-model="reportForm.equipment_name" />
+          </el-form-item>
+          <el-form-item label="安装地点" prop="equipment_location" required>
+            <el-input v-model="reportForm.equipment_location" />
+          </el-form-item>
+          <el-form-item label="上报日期">
+            <el-date-picker
+              v-model="reportForm.report_date"
+              type="date"
+              value-format="YYYY-MM-DD"
+            />
+          </el-form-item>
+          <el-form-item label="上报时间">
+            <el-time-picker
+              v-model="reportForm.report_time"
+              value-format="HH:mm"
+              format="HH:mm"
+            />
+          </el-form-item>
+          <el-form-item label="上报人">
+            <el-input v-model="reportForm.reporter_name" disabled />
+          </el-form-item>
+          <el-form-item label="紧急程度">
+            <el-select v-model="reportForm.urgency_level">
+              <el-option
+                v-for="option in urgencyOptions"
+                :key="option.value"
+                :label="option.label"
+                :value="option.value"
+              />
+            </el-select>
+          </el-form-item>
+          <el-form-item label="故障现象描述" class="full-width">
+            <el-input v-model="reportForm.fault_description" />
+          </el-form-item>
+        </div>
+      </el-form>
+
+      <div class="form-actions report-form-actions">
+        <el-button @click="resetReportForm">重置</el-button>
+        <el-button :loading="reportFormSaving" @click="saveReportFromForm(false)">保存草稿</el-button>
+        <el-button type="danger" :loading="reportFormSaving" @click="saveReportFromForm(true)">提交上报</el-button>
+      </div>
+    </el-card>
+
+    <el-card class="filter-card">
+      <FilterBar>
+        <div class="filter-item">
+          <span class="filter-label">场站</span>
+          <FilterSelect v-model="filters.stationId" placeholder="全部" filterable clearable @change="loadRecords" @clear="loadRecords">
+            <el-option label="全部" value="all" />
+            <el-option
+              v-for="station in stationFilterOptions"
+              :key="station.id"
+              :label="station.name"
+              :value="station.id"
+            />
+          </FilterSelect>
+        </div>
+        <div class="filter-item">
+          <span class="filter-label">设备名称</span>
+          <FilterAutocomplete
+            v-model="filters.equipmentName"
+            :fetch-suggestions="fetchEquipmentNameSuggestions"
+            trigger-on-focus
+            placeholder="全部"
+            clearable
+            @select="loadRecords"
+            @input="loadRecords"
+            @clear="loadRecords"
+            @keyup.enter="loadRecords"
+          />
+        </div>
+        <div class="filter-item">
+          <span class="filter-label">紧急程度</span>
+          <FilterSelect v-model="filters.urgencyLevel" placeholder="全部" filterable clearable @change="loadRecords" @clear="loadRecords">
+            <el-option label="全部" value="all" />
+            <el-option
+              v-for="option in urgencyOptions"
+              :key="option.value"
+              :label="option.label"
+              :value="option.value"
+            />
+          </FilterSelect>
+        </div>
+        <div class="filter-item">
+          <span class="filter-label">维修人员</span>
+          <FilterAutocomplete
+            v-model="filters.repairPersonName"
+            :fetch-suggestions="fetchRepairPersonNameSuggestions"
+            trigger-on-focus
+            placeholder="全部"
+            clearable
+            @select="loadRecords"
+            @input="loadRecords"
+            @clear="loadRecords"
+            @keyup.enter="loadRecords"
+          />
+        </div>
+        <div class="filter-item">
+          <span class="filter-label">状态</span>
+          <FilterSelect v-model="filters.status" placeholder="全部" filterable clearable @change="loadRecords" @clear="loadRecords">
+            <el-option label="全部" value="all" />
+            <el-option label="草稿" value="draft_report" />
+            <el-option label="已上报" value="submitted_report" />
+            <el-option label="已派单" value="dispatched" />
+            <el-option label="维修中" value="repairing" />
+            <el-option label="退回重做" value="rework" />
+            <el-option label="待验收" value="repaired_submitted" />
+            <el-option label="已验收" value="accepted" />
+            <el-option label="已归档" value="archived" />
+          </FilterSelect>
+        </div>
+      </FilterBar>
+    </el-card>
+
+    <el-table
+      :data="records"
+      border
+      stripe
+      class="fault-table"
+      v-loading="loading"
+      :row-key="rowKey"
+    >
+        <el-table-column label="表单编号" min-width="160">
           <template #default="{ row }">
             <span>{{ row.record_code || '-' }}</span>
           </template>
@@ -72,47 +189,47 @@
             <span>{{ row.station?.station_name || row.station_name || '-' }}</span>
           </template>
         </el-table-column>
-        <el-table-column label="设备名称">
+        <el-table-column label="设备名称" min-width="200" show-overflow-tooltip>
           <template #default="{ row }">
             <span>{{ row.equipment_name || '-' }}</span>
           </template>
         </el-table-column>
-        <el-table-column label="安装地点">
+        <el-table-column label="安装地点" min-width="200" show-overflow-tooltip>
           <template #default="{ row }">
             <span>{{ row.equipment_location || '-' }}</span>
           </template>
         </el-table-column>
-        <el-table-column label="状态">
+        <el-table-column label="状态" width="120">
           <template #default="{ row }">
             <el-tag :type="statusTag(row)">{{ statusLabel(row) }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="紧急程度">
+        <el-table-column label="紧急程度" width="120">
           <template #default="{ row }">
             <el-tag :type="urgencyTag(row.urgency_level)">{{ urgencyLabel(row.urgency_level) }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="上报人">
+        <el-table-column label="上报人" width="120">
           <template #default="{ row }">
             <span>{{ row.reporter_name || '-' }}</span>
           </template>
         </el-table-column>
-        <el-table-column label="派单人">
+        <el-table-column label="派单人" width="120">
           <template #default="{ row }">
             <span>{{ row.dispatch_by_name || '-' }}</span>
           </template>
         </el-table-column>
-        <el-table-column label="维修人员">
+        <el-table-column label="维修人员" min-width="220" show-overflow-tooltip>
           <template #default="{ row }">
             <span>{{ formatRepairNames(row) }}</span>
           </template>
         </el-table-column>
-        <el-table-column label="任务积分合计" width="120">
+        <el-table-column label="任务积分合计" width="140">
           <template #default="{ row }">
             <span>{{ formatRepairTaskPointsTotal(row) }}</span>
           </template>
         </el-table-column>
-        <el-table-column label="验收人">
+        <el-table-column label="验收人" width="120">
           <template #default="{ row }">
             <span>{{ row.verifier_name || '-' }}</span>
           </template>
@@ -137,15 +254,14 @@
             </el-tooltip>
           </template>
         </el-table-column>
-      </el-table>
-    </TableWrapper>
+    </el-table>
 
     <div class="pagination-wrapper">
       <el-pagination
         v-model:current-page="pagination.page"
         v-model:page-size="pagination.pageSize"
         :total="pagination.total"
-        :page-sizes="[10, 20, 50]"
+        :page-sizes="[5, 10, 20, 50]"
         layout="total, sizes, prev, pager, next"
         @current-change="loadRecords"
         @size-change="loadRecords"
@@ -200,8 +316,11 @@
 import { ref, computed, onMounted } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import dayjs from 'dayjs';
+
+import { createListSuggestionFetcher } from '@/utils/filterAutocomplete';
 import { useUserStore } from '@/store/modules/user';
 import MaintenanceFaultDetailDialog from '@/components/maintenance/MaintenanceFaultDetailDialog.vue';
+import { WarningFilled } from '@element-plus/icons-vue';
 import {
   getRepairRecords,
   createRepairRecord,
@@ -215,18 +334,42 @@ import {
 } from '@/api/repair';
 import request from '@/api/request';
 import { getEquipmentByCode, getEquipment } from '@/api/equipment';
-import { getStations } from '@/api/station';
+import { getAllStations } from '@/api/station';
 
 const userStore = useUserStore();
 
 const records = ref([]);
+const recordSuggestionList = ref([]);
 const loading = ref(false);
 const saving = ref({});
+
+const reportFormKey = 'report-form';
+const reportFormRef = ref(null);
+const reportForm = ref(null);
+
+const fetchEquipmentNameSuggestions = createListSuggestionFetcher(
+  () => recordSuggestionList.value,
+  (row) => row.equipment_name
+);
+const fetchRepairPersonNameSuggestions = createListSuggestionFetcher(
+  () => recordSuggestionList.value,
+  (row) => formatRepairNames(row)
+);
+
 const repairers = ref([]);
 const stations = ref([]);
 const equipmentList = ref([]);
 const isActiveStatus = (status) => status === undefined || status === null || status === '' || status === 'active' || status === 1 || status === '1' || status === true;
 const activeStationList = computed(() => stations.value.filter(station => isActiveStatus(station.status)));
+const reportFormStationOptions = computed(() => {
+  const selectedId = reportForm.value?.station_id;
+  if (!selectedId) return activeStationList.value;
+  const selected = stations.value.find(station => station.id === selectedId);
+  if (selected && !isActiveStatus(selected.status)) {
+    return [selected, ...activeStationList.value.filter(station => station.id !== selectedId)];
+  }
+  return activeStationList.value;
+});
 const formStationOptions = computed(() => {
   const selectedId = currentRow.value?.station_id;
   if (!selectedId) return activeStationList.value;
@@ -239,19 +382,20 @@ const formStationOptions = computed(() => {
 
 const pagination = ref({
   page: 1,
-  pageSize: 10,
+  pageSize: 5,
   total: 0
 });
 
 const dialogVisible = ref(false);
 const currentRow = ref(null);
-const filters = ref({
-  status: '',
-  stationId: null,
+const defaultFilters = {
+  status: 'all',
+  stationId: 'all',
   equipmentName: '',
-  urgencyLevel: '',
+  urgencyLevel: 'all',
   repairPersonName: ''
-});
+};
+const filters = ref({ ...defaultFilters });
 
 const stationFilterOptions = computed(() => {
   return (stations.value || [])
@@ -278,6 +422,24 @@ const formRules = {
   ],
   repair_person_id: [
     { required: true, message: '请选择维修负责人', trigger: 'change' }
+  ],
+  repair_result: [
+    { required: true, message: '请选择维修结果', trigger: 'change' }
+  ]
+};
+
+const reportFormRules = {
+  station_id: [
+    { required: true, message: '请选择场站', trigger: 'change' }
+  ],
+  equipment_code: [
+    { required: true, message: '请选择设备编号', trigger: 'change' }
+  ],
+  equipment_name: [
+    { required: true, message: '请输入设备名称', trigger: 'blur' }
+  ],
+  equipment_location: [
+    { required: true, message: '请输入安装地点', trigger: 'blur' }
   ]
 };
 
@@ -285,17 +447,17 @@ const reportRoles = ['operator', 'station_manager', 'deputy_manager', 'departmen
 const dispatchRoles = ['station_manager', 'deputy_manager', 'department_manager'];
 
 const canReport = computed(() => userStore.hasRole(reportRoles));
-const canDispatch = computed(() => dispatchRoles.includes(userStore.roleCode));
-const canVerify = computed(() => dispatchRoles.includes(userStore.roleCode));
-const canRepair = computed(() => userStore.roleCode === 'maintenance');
-const canDeleteAny = computed(() => ['admin', ...dispatchRoles].includes(userStore.roleCode));
+const canDispatch = computed(() => userStore.hasRole(dispatchRoles));
+const canVerify = computed(() => userStore.hasRole(dispatchRoles));
+const canRepair = computed(() => userStore.hasRole('maintenance'));
+const canDeleteAny = computed(() => userStore.hasRole(dispatchRoles));
 
 const rowKey = (row) => row.id || row._tempId;
 
 const statusLabel = (row) => {
   const status = row?.status;
   if (status === 'repairing') {
-    if (row?.verify_result === 'reject') return '退回重做';
+    if (['fail', 'reject'].includes(row?.verify_result)) return '退回重做';
     return getRepairPhaseLabel(row);
   }
   const labels = {
@@ -313,7 +475,7 @@ const statusLabel = (row) => {
 const statusTag = (row) => {
   const status = row?.status;
   if (status === 'repairing') {
-    if (row?.verify_result === 'reject') return 'danger';
+    if (['fail', 'reject'].includes(row?.verify_result)) return 'danger';
     const result = row?.repair_result;
     if (result === 'normal') return 'success';
     if (result === 'observe') return 'warning';
@@ -512,27 +674,62 @@ const loadRecords = async () => {
   loading.value = true;
   try {
     const isRework = filters.value.status === 'rework';
-    const statusParam = isRework ? 'repairing' : (filters.value.status || undefined);
-    const res = await getRepairRecords({
+    const statusParam = isRework ? 'repairing' : (filters.value.status === 'all' ? undefined : filters.value.status || undefined);
+    const isMaintenance = userStore.hasRole('maintenance');
+    const selectedStationId = filters.value.stationId === 'all' ? null : filters.value.stationId;
+    const resolvedStationId = selectedStationId || (isMaintenance ? null : userStore.currentStationId);
+
+    const params = {
       page: pagination.value.page,
       pageSize: pagination.value.pageSize,
-      stationId: filters.value.stationId || userStore.currentStationId,
+      stationId: resolvedStationId || undefined,
       status: statusParam,
-      equipmentName: filters.value.equipmentName || undefined,
-      urgencyLevel: filters.value.urgencyLevel || undefined,
-      repairPersonName: filters.value.repairPersonName || undefined
-    });
+      equipmentName: filters.value.equipmentName?.trim() || undefined,
+      urgencyLevel: filters.value.urgencyLevel === 'all' ? undefined : filters.value.urgencyLevel,
+      repairPersonName: filters.value.repairPersonName?.trim() || undefined
+    };
+    const res = await getRepairRecords(params);
     let list = (res.list || []).map(normalizeRecord);
     if (isRework) {
-      list = list.filter(item => item.status === 'repairing' && item.verify_result === 'reject');
+      list = list.filter(item => item.status === 'repairing' && ['fail', 'reject'].includes(item.verify_result));
     }
     records.value = list;
     pagination.value.total = res.total || 0;
+    loadRecordSuggestions(params, isRework);
   } catch {
     // 静默处理异常
   } finally {
     loading.value = false;
   }
+};
+
+const loadRecordSuggestions = async (baseParams, isRework) => {
+  try {
+    const params = {
+      ...baseParams,
+      page: 1,
+      pageSize: 5000
+    };
+    const res = await getRepairRecords(params);
+    let list = (res.list || []).map(normalizeRecord);
+    if (isRework) {
+      list = list.filter(item => item.status === 'repairing' && ['fail', 'reject'].includes(item.verify_result));
+    }
+    recordSuggestionList.value = list;
+  } catch {
+    recordSuggestionList.value = [];
+  }
+};
+
+const handleSearch = () => {
+  pagination.value.page = 1;
+  loadRecords();
+};
+
+const resetFilters = () => {
+  filters.value = { ...defaultFilters };
+  pagination.value.page = 1;
+  loadRecords();
 };
 
 const loadRepairers = async () => {
@@ -596,7 +793,7 @@ const handleEquipmentCodeBlur = async (row) => {
 
     } else {
 
-      ElMessage.warning('未找到设备 "' + row.equipment_code + '" 信息');
+      ElMessage.warning('未找到设备信息');
 
     }
 
@@ -664,6 +861,16 @@ const addRow = () => {
   openDialog(records.value[0]);
 };
 
+const handleReportStationChange = async () => {
+  if (!reportForm.value) return;
+  await handleStationChange(reportForm.value);
+};
+
+const handleReportEquipmentChange = () => {
+  if (!reportForm.value) return;
+  handleEquipmentChange(reportForm.value);
+};
+
 const onRepairerChange = (row, value) => {
   const repairer = repairers.value.find((item) => item.id === value);
   row.repair_person_name = getUserDisplayName(repairer);
@@ -717,6 +924,62 @@ const deleteRow = async (row) => {
 
 const setSaving = (row, value) => {
   saving.value[rowKey(row)] = value;
+};
+
+const reportFormSaving = computed(() => saving.value[reportFormKey] === true);
+
+const buildReportForm = () => {
+  const now = dayjs();
+  const currentStation = stations.value.find(station => station.id === userStore.currentStationId);
+  const defaultStationId = currentStation && isActiveStatus(currentStation.status)
+    ? currentStation.id
+    : null;
+
+  return {
+    _tempId: reportFormKey,
+    id: null,
+    record_code: '',
+    status: 'draft_report',
+    station_id: defaultStationId,
+    equipment_code: '',
+    equipment_name: '',
+    equipment_location: '',
+    report_date: now.format('YYYY-MM-DD'),
+    report_time: now.format('HH:mm'),
+    reporter_id: userStore.userId,
+    reporter_name: userStore.realName,
+    urgency_level: 'medium',
+    fault_description: '',
+    preliminary_judgment: ''
+  };
+};
+
+const resetReportForm = async () => {
+  reportForm.value = buildReportForm();
+  if (reportForm.value.station_id) {
+    await loadEquipmentByStation(reportForm.value.station_id);
+  } else {
+    equipmentList.value = [];
+  }
+  reportFormRef.value?.clearValidate();
+};
+
+const validateReportForm = async () => {
+  if (!reportFormRef.value) return true;
+  return reportFormRef.value.validate().then(() => true, () => false);
+};
+
+const saveReportFromForm = async (submit) => {
+  const valid = await validateReportForm();
+  if (!valid) return;
+
+  const success = await saveReport(reportForm.value, submit, reportFormKey);
+  if (!success) return;
+
+  await loadRecords();
+  if (submit) {
+    await resetReportForm();
+  }
 };
 
 const normalizeItems = (list, fields) => {
@@ -814,26 +1077,29 @@ const unlockPart = (row, index) => {
   row.parts_list[index]._locked = false;
 };
 
-const saveReport = async (row, submit) => {
+const saveReport = async (row, submit, savingKeyOverride) => {
   // 验证必填字段
   if (!row.station_id) {
     ElMessage.warning('请选择场站');
-    return;
+    return false;
   }
   if (!row.equipment_code || !row.equipment_code.trim()) {
     ElMessage.warning('请输入设备编号');
-    return;
+    return false;
   }
   if (!row.equipment_name || !row.equipment_name.trim()) {
     ElMessage.warning('请输入设备名称');
-    return;
+    return false;
   }
   if (!row.equipment_location || !row.equipment_location.trim()) {
     ElMessage.warning('请输入安装地点');
-    return;
+    return false;
   }
 
-  setSaving(row, true);
+  const savingKey = savingKeyOverride !== undefined && savingKeyOverride !== null
+    ? savingKeyOverride
+    : rowKey(row);
+  saving.value[savingKey] = true;
   try {
     if (!row.id) {
       const res = await createRepairRecord({
@@ -869,10 +1135,12 @@ const saveReport = async (row, submit) => {
       }
     }
     ElMessage.success(submit ? '提交成功' : '保存成功');
+    return true;
   } catch {
     ElMessage.error(submit ? '提交失败' : '保存失败');
+    return false;
   } finally {
-    setSaving(row, false);
+    saving.value[savingKey] = false;
   }
 };
 
@@ -940,6 +1208,11 @@ const startRowRepair = async (row) => {
 };
 
 const submitRepairRow = async (row) => {
+  const repairResultText = normalizeText(row?.repair_result);
+  if (!repairResultText) {
+    ElMessage.warning('请选择维修结果');
+    return;
+  }
   setSaving(row, true);
   try {
     const now = dayjs();
@@ -955,7 +1228,7 @@ const submitRepairRow = async (row) => {
       repairTasks: buildRepairTasks(row),
       consumablesList: buildConsumables(row),
       partsList: buildParts(row),
-      repairResult: row.repair_result || 'normal',
+      repairResult: repairResultText,
       observeDays: row.observe_days,
       unsolvedReason: row.unsolved_reason,
       workHours: row.work_hours,
@@ -976,6 +1249,11 @@ const submitRepairRow = async (row) => {
 };
 
 const saveRepairRow = async (row) => {
+  const repairResultText = normalizeText(row?.repair_result);
+  if (!repairResultText) {
+    ElMessage.warning('请选择维修结果');
+    return;
+  }
   setSaving(row, true);
   try {
     const payload = {
@@ -985,7 +1263,7 @@ const saveRepairRow = async (row) => {
       repair_tasks: buildRepairTasks(row),
       consumables_list: buildConsumables(row),
       parts_list: buildParts(row),
-      repair_result: row.repair_result,
+      repair_result: repairResultText,
       observe_days: row.observe_days,
       unsolved_reason: row.unsolved_reason,
       work_hours: row.work_hours,
@@ -1008,18 +1286,19 @@ const consumableRowClass = ({ row }) => (row?._locked ? 'row-locked' : '');
 const partRowClass = ({ row }) => (row?._locked ? 'row-locked' : '');
 
 const verifyRow = async (row, result = 'pass') => {
+  const normalizedResult = result === 'reject' ? 'fail' : result;
   setSaving(row, true);
   try {
     const payload = {
-      verifyResult: result,
+      verifyResult: normalizedResult,
       verifyAttitude: row.verify_attitude,
       verifyQuality: row.verify_quality,
       verifyDate: row.verify_date || dayjs().format('YYYY-MM-DD'),
       verifyTime: row.verify_time || dayjs().format('HH:mm')
     };
     await verifyRepairRecord(row.id, payload);
-    row.verify_result = result;
-    row.status = result === 'pass' ? 'accepted' : 'repairing';
+    row.verify_result = normalizedResult;
+    row.status = normalizedResult === 'pass' ? 'accepted' : 'repairing';
     row.verify_date = payload.verifyDate;
     row.verify_time = payload.verifyTime;
     ElMessage.success(result === 'pass' ? '验收完成' : '已退回重新维修');
@@ -1033,7 +1312,7 @@ const verifyRow = async (row, result = 'pass') => {
 // 场站列表
 const loadStations = async () => {
   try {
-    const res = await getStations({ pageSize: 200 });
+    const res = await getAllStations();
     stations.value = res.list || res || [];
   } catch (error) {
     
@@ -1074,10 +1353,11 @@ const handleEquipmentChange = (row) => {
   }
 };
 
-onMounted(() => {
+onMounted(async () => {
   loadRecords();
   loadRepairers();
-  loadStations();
+  await loadStations();
+  await resetReportForm();
 });
 </script>
 
@@ -1095,28 +1375,76 @@ onMounted(() => {
     }
   }
 
-  .actions {
-    display: flex;
-    gap: 12px;
-  }
-
-  .table-wrapper {
+  .report-banner {
     background: #fff;
     border-radius: 8px;
-    padding: 16px;
-    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.1);
-    overflow-x: auto;
+    padding: 24px;
+    margin-bottom: 16px;
+    border: 1px solid #e4e7ed;
+    border-left: 4px solid #f56c6c;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+
+    .banner-content {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      flex: 1;
+      min-width: 0;
+    }
+
+    .banner-icon {
+      font-size: 44px;
+      color: #f56c6c;
+    }
+
+    .banner-info {
+      flex: 1;
+      min-width: 0;
+
+      .banner-title {
+        font-size: 18px;
+        font-weight: 600;
+        color: #303133;
+      }
+
+      .banner-desc {
+        font-size: 14px;
+        color: #909399;
+        margin-top: 4px;
+      }
+    }
+  }
+
+  .report-form-card {
+    margin-bottom: 16px;
+
+    .inspection-form-header {
+      margin-bottom: 12px;
+    }
+
+    .form-title-row {
+      display: flex;
+      align-items: center;
+      justify-content: flex-start;
+      width: 100%;
+      gap: 12px;
+    }
+
+    .form-subtitle {
+      font-size: 18px;
+      color: #303133;
+    }
+  }
+
+  .filter-card {
+    margin-bottom: 16px;
   }
 
   .fault-table {
     width: 100%;
-    min-width: 1200px;
-  }
-
-  .filter-bar {
-    display: flex;
-    gap: 12px;
-    margin-bottom: 16px;
   }
 
   .expand-form {
@@ -1209,6 +1537,10 @@ onMounted(() => {
     gap: 12px;
   }
 
+  .report-form-actions {
+    justify-content: flex-end;
+  }
+
   .pagination-wrapper {
     display: flex;
     justify-content: flex-end;
@@ -1218,7 +1550,38 @@ onMounted(() => {
     border-radius: 8px;
   }
 
+  
+  @media (min-width: 1025px) {
+    .report-banner {
+      .banner-actions {
+        order: -1;
+      }
+
+      .banner-content {
+        order: 0;
+      }
+    }
+  }
+
   @media (max-width: 1024px) {
+    .report-banner {
+      padding: 16px;
+      flex-direction: column;
+      align-items: stretch;
+
+      .banner-content {
+        width: 100%;
+      }
+
+      .banner-actions {
+        width: 100%;
+      }
+
+      :deep(.el-button) {
+        width: 100%;
+      }
+    }
+
     :deep(.el-dialog) {
       width: 95% !important;
       margin: 20px auto !important;
@@ -1231,7 +1594,7 @@ onMounted(() => {
       max-width: 100%;
     }
 
-    .expand-form {
+    :deep(.expand-form) {
       max-width: 100%;
       overflow-x: hidden;
 
@@ -1320,7 +1683,6 @@ onMounted(() => {
   }
 }
 </style>
-
 
 
 

@@ -171,16 +171,18 @@ export const deleteWorkType = async (ctx) => {
     throw createError(404, '工作性质不存在');
   }
 
-  // 检查是否有关联的检查项目
-  const itemCount = await SafetyCheckItem.count({
-    where: { work_type_id: id }
-  });
-
-  if (itemCount > 0) {
-    throw createError(400, '该工作性质下还有检查项目，无法删除');
+  const t = await sequelize.transaction();
+  try {
+    await SafetyCheckItem.destroy({
+      where: { work_type_id: id },
+      transaction: t
+    });
+    await workType.destroy({ transaction: t });
+    await t.commit();
+  } catch (error) {
+    await t.rollback();
+    throw error;
   }
-
-  await workType.destroy();
 
   ctx.body = {
     code: 200,
@@ -542,7 +544,11 @@ export const getCheckItemsByWorkTypes = async (ctx) => {
   const items = await SafetyCheckItem.findAll({
     where: {
       work_type_id: { [Op.in]: ids },
-      status: 'active'
+      [Op.or]: [
+        { status: 'active' },
+        { status: null },
+        { status: '' }
+      ]
     },
     include: [
       { model: SafetyWorkType, as: 'workType', attributes: ['id', 'work_type_name', 'is_default'] }

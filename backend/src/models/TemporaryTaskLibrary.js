@@ -22,15 +22,54 @@ const TemporaryTaskLibrary = sequelize.define('TemporaryTaskLibrary', {
     allowNull: false,
     comment: '标准工时(h/d)'
   },
-  points: {
+  unit_points: {
     type: DataTypes.INTEGER,
     allowNull: false,
-    comment: '积分'
+    comment: '单位积分'
+  },
+  task_category: {
+    type: DataTypes.STRING(50),
+    allowNull: true,
+    comment: '任务类别'
+  },
+  score_method: {
+    type: DataTypes.STRING(20),
+    allowNull: true,
+    comment: '给分方式'
+  },
+  quantity: {
+    type: DataTypes.INTEGER,
+    allowNull: false,
+    defaultValue: 1,
+    comment: '数量'
+  },
+  points_rule: {
+    type: DataTypes.TEXT,
+    allowNull: true,
+    comment: '积分规则'
+  },
+  quantity_editable: {
+    type: DataTypes.TINYINT,
+    allowNull: false,
+    defaultValue: 0,
+    comment: '数量是否可修改'
+  },
+  unit_points_editable: {
+    type: DataTypes.TINYINT,
+    allowNull: false,
+    defaultValue: 1,
+    comment: '?????????'
+  },
+  dispatch_review_required: {
+    type: DataTypes.TINYINT,
+    allowNull: false,
+    defaultValue: 0,
+    comment: '派发任务是否强制审核'
   },
   station_id: {
     type: DataTypes.INTEGER,
     allowNull: true,
-    comment: '场站ID（可选，共享任务库时为空）'
+    comment: '场站ID（可选，共享任务汇总表时为空）'
   },
   created_by: {
     type: DataTypes.INTEGER,

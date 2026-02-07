@@ -38,11 +38,11 @@ const SafetyRectification = sequelize.define('SafetyRectification', {
   responsible_person_id: {
     type: DataTypes.INTEGER,
     allowNull: false,
-    comment: '?????ID'
+    comment: '整改责任人ID'
   },
   responsible_person_name: {
     type: DataTypes.STRING(50),
-    comment: '???????'
+    comment: '整改责任人姓名'
   },
   punished_person_id: {
     type: DataTypes.INTEGER,
@@ -76,7 +76,7 @@ const SafetyRectification = sequelize.define('SafetyRectification', {
   status: {
     type: DataTypes.ENUM('pending', 'approved', 'rejected'),
     defaultValue: 'pending',
-    comment: '状态: pending=待复核, approved=已复核, rejected=已驳回'
+    comment: '状态: pending=待复核 approved=已复核 rejected=已驳回'
   },
   approver_id: {
     type: DataTypes.INTEGER,

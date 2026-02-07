@@ -3,15 +3,25 @@ const scrollOverflowValues = ['auto', 'scroll', 'overlay'];
 const dragThreshold = 6;
 const edgeThreshold = 24;
 
+const hasHorizontalOverflow = (element) => element.scrollWidth - element.clientWidth > 0;
+
+const isNativeScrollableX = (element) => {
+  const overflowX = window.getComputedStyle(element).overflowX;
+  return scrollOverflowValues.includes(overflowX);
+};
+
 const isScrollableX = (element) => {
   if (!(element instanceof HTMLElement)) {
     return false;
   }
-  const computed = window.getComputedStyle(element);
-  const overflowX = computed.overflowX;
-  const canOverflow = scrollOverflowValues.includes(overflowX);
-  const maxScrollLeft = element.scrollWidth - element.clientWidth;
-  return canOverflow && maxScrollLeft > 0;
+  if (!hasHorizontalOverflow(element)) {
+    return false;
+  }
+  if (isNativeScrollableX(element)) {
+    return true;
+  }
+  return element.classList.contains('el-scrollbar__wrap')
+    || element.classList.contains('el-table__body-wrapper');
 };
 
 const hasGuardAncestor = (element) => {
@@ -29,6 +39,16 @@ const findScrollableX = (target) => {
       return current;
     }
     current = current.parentElement;
+  }
+  const table = target instanceof Element ? target.closest('.el-table') : null;
+  if (table instanceof HTMLElement) {
+    const bodyWrapper = table.querySelector('.el-table__body-wrapper');
+    const scrollbarWrap = bodyWrapper?.querySelector('.el-scrollbar__wrap');
+    const candidates = [scrollbarWrap, bodyWrapper].filter((el) => el instanceof HTMLElement);
+    const resolved = candidates.find((el) => isScrollableX(el));
+    if (resolved) {
+      return resolved;
+    }
   }
   return null;
 };
@@ -52,29 +72,36 @@ const setupHorizontalScrollGuard = () => {
   };
 
   const onTouchStart = (event) => {
+    reset();
     if (event.touches.length !== 1) {
-      reset();
       return;
     }
     const target = event.target;
     if (!(target instanceof Element)) {
-      reset();
       return;
     }
     const scrollable = findScrollableX(target);
     if (!scrollable) {
-      reset();
+      return;
+    }
+    if (isNativeScrollableX(scrollable)) {
+      return;
+    }
+    const startX = event.touches[0].clientX;
+    const startY = event.touches[0].clientY;
+    const edgeStart =
+      startX <= edgeThreshold ||
+      startX >= (window.innerWidth || document.documentElement.clientWidth) - edgeThreshold;
+    if (edgeStart) {
       return;
     }
     state.active = true;
     state.dragging = false;
     state.target = scrollable;
-    state.startX = event.touches[0].clientX;
-    state.startY = event.touches[0].clientY;
+    state.startX = startX;
+    state.startY = startY;
     state.startScrollLeft = scrollable.scrollLeft;
-    state.edgeStart =
-      state.startX <= edgeThreshold ||
-      state.startX >= (window.innerWidth || document.documentElement.clientWidth) - edgeThreshold;
+    state.edgeStart = edgeStart;
   };
 
   const onTouchMove = (event) => {
@@ -82,6 +109,11 @@ const setupHorizontalScrollGuard = () => {
       return;
     }
     if (!(state.target instanceof HTMLElement)) {
+      reset();
+      return;
+    }
+    if (!state.target.isConnected || !isScrollableX(state.target)) {
+      reset();
       return;
     }
     if (event.touches.length !== 1) {
@@ -110,7 +142,9 @@ const setupHorizontalScrollGuard = () => {
       state.dragging = true;
     }
 
-    event.preventDefault();
+    if (event.cancelable) {
+      event.preventDefault();
+    }
     const maxScrollLeft = Math.max(0, state.target.scrollWidth - state.target.clientWidth);
     let nextScrollLeft = state.startScrollLeft - deltaX;
     if (nextScrollLeft < 0) {
@@ -130,6 +164,14 @@ const setupHorizontalScrollGuard = () => {
   document.addEventListener('touchmove', onTouchMove, { passive: false, capture: true });
   document.addEventListener('touchend', onTouchEnd, { passive: true, capture: true });
   document.addEventListener('touchcancel', onTouchEnd, { passive: true, capture: true });
+  window.addEventListener('pagehide', reset);
+  window.addEventListener('pageshow', reset);
+  window.addEventListener('popstate', reset);
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState !== 'visible') {
+      reset();
+    }
+  });
 };
 
 export default setupHorizontalScrollGuard;

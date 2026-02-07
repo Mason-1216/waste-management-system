@@ -5,9 +5,60 @@
     </div>
 
     <!-- 管理员查看反馈记录 -->
-    <div class="section" v-if="userStore.roleCode === 'admin'">
+    <div class="section" v-if="userStore.hasRole('admin')">
       <h3>用户反馈记录</h3>
-      <el-table :data="feedbackList" stripe border v-loading="loadingFeedback">
+      <el-card class="filter-card">
+        <FilterBar>
+          <div class="filter-item">
+            <span class="filter-label">用户</span>
+            <FilterAutocomplete
+              v-model="feedbackFilters.keyword"
+              :fetch-suggestions="fetchFeedbackUserSuggestions"
+              trigger-on-focus
+              placeholder="全部"
+              clearable
+              style="width: 160px"
+              @select="applyFeedbackFilters"
+              @input="applyFeedbackFilters"
+              @clear="applyFeedbackFilters"
+              @keyup.enter="applyFeedbackFilters"
+            />
+          </div>
+          <div class="filter-item">
+            <span class="filter-label">类型</span>
+            <FilterSelect
+              v-model="feedbackFilters.type"
+              placeholder="全部"
+              clearable
+              filterable
+              style="width: 160px"
+              @change="applyFeedbackFilters"
+              @clear="applyFeedbackFilters"
+            >
+              <el-option label="全部" value="all" />
+              <el-option label="功能建议" value="suggestion" />
+              <el-option label="问题反馈" value="bug" />
+              <el-option label="其他" value="other" />
+            </FilterSelect>
+          </div>
+          <div class="filter-item">
+            <span class="filter-label">反馈内容</span>
+            <FilterAutocomplete
+              v-model="feedbackFilters.content"
+              :fetch-suggestions="fetchFeedbackContentSuggestions"
+              trigger-on-focus
+              placeholder="全部"
+              clearable
+              style="width: 220px"
+              @select="applyFeedbackFilters"
+              @input="applyFeedbackFilters"
+              @clear="applyFeedbackFilters"
+              @keyup.enter="applyFeedbackFilters"
+            />
+          </div>
+        </FilterBar>
+      </el-card>
+      <el-table :data="feedbackTableRows" stripe border v-loading="loadingFeedback">
         <el-table-column prop="userName" label="用户" width="120" />
         <el-table-column prop="type" label="类型" width="100">
           <template #default="{ row }">
@@ -25,6 +76,17 @@
           </template>
         </el-table-column>
       </el-table>
+      <div class="pagination-wrapper">
+        <el-pagination
+          v-model:current-page="pagination.page"
+          v-model:page-size="pagination.pageSize"
+          :page-sizes="[5, 10, 20, 50]"
+          :total="pagination.total"
+          layout="total, sizes, prev, pager, next"
+          @current-change="handlePageChange"
+          @size-change="handlePageSizeChange"
+        />
+      </div>
     </div>
 
     <!-- 常见问题 -->
@@ -114,32 +176,113 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue';
+import { ref, onMounted, computed, watch } from 'vue';
 import { ElMessage } from 'element-plus';
+import { Plus } from '@element-plus/icons-vue';
+
+import FilterBar from '@/components/common/FilterBar.vue';
 import request from '@/api/request';
+import { createListSuggestionFetcher } from '@/utils/filterAutocomplete';
+import { markAsRead } from '@/api/notification';
 import { useUserStore } from '@/store/modules/user';
 import { useUpload } from '@/composables/useUpload';
-import { Plus } from '@element-plus/icons-vue';
 
 const activeFaq = ref(['1']);
 const feedbackFormRef = ref(null);
 const submitting = ref(false);
 const userStore = useUserStore();
 
-const { uploadUrl, uploadHeaders } = useUpload();
+const { uploadUrl, uploadHeaders, resolveUploadUrl } = useUpload();
 const imageList = ref([]);
 
 // 管理员查看反馈列表
 const feedbackList = ref([]);
 const loadingFeedback = ref(false);
+const pagination = ref({ page: 1, pageSize: 5, total: 0 });
+
+const feedbackFilters = ref({
+  keyword: '',
+  type: 'all',
+  content: ''
+});
+
+const normalizeText = (value) => {
+  if (value === undefined || value === null) return '';
+  return String(value).trim();
+};
+
+const normalizeTextLower = (value) => normalizeText(value).toLowerCase();
+
+const resolveFeedbackUser = (row) => normalizeText(
+  row?.userName
+    ?? row?.user_name
+    ?? row?.username
+    ?? row?.user?.real_name
+    ?? row?.user?.realName
+    ?? row?.user?.name
+    ?? row?.creatorName
+    ?? row?.created_by
+);
+
+const resolveFeedbackType = (row) => normalizeText(
+  row?.type
+    ?? row?.feedback_type
+    ?? row?.feedbackType
+    ?? row?.category
+);
+
+const resolveFeedbackContent = (row) => normalizeText(
+  row?.content
+    ?? row?.feedback_content
+    ?? row?.feedbackContent
+    ?? row?.message
+    ?? row?.detail
+    ?? row?.description
+);
+
+const filteredFeedbackList = computed(() => {
+  const list = Array.isArray(feedbackList.value) ? feedbackList.value : [];
+  const keyword = normalizeTextLower(feedbackFilters.value.keyword);
+  const content = normalizeTextLower(feedbackFilters.value.content);
+  const typeValue = normalizeTextLower(feedbackFilters.value.type);
+  const hasTypeFilter = typeValue && typeValue !== 'all';
+
+  return list.filter((row) => {
+    if (keyword) {
+      const nameText = normalizeTextLower(resolveFeedbackUser(row));
+      if (!nameText.includes(keyword)) return false;
+    }
+    if (hasTypeFilter) {
+      const rowType = normalizeTextLower(resolveFeedbackType(row));
+      if (!rowType || rowType !== typeValue) return false;
+    }
+    if (content) {
+      const contentText = normalizeTextLower(resolveFeedbackContent(row));
+      if (!contentText.includes(content)) return false;
+    }
+    return true;
+  });
+});
+
+const fetchFeedbackUserSuggestions = createListSuggestionFetcher(
+  () => filteredFeedbackList.value,
+  (row) => resolveFeedbackUser(row)
+);
+
+const fetchFeedbackContentSuggestions = createListSuggestionFetcher(
+  () => filteredFeedbackList.value,
+  (row) => resolveFeedbackContent(row)
+);
 
 const loadFeedbackList = async () => {
-  if (userStore.roleCode !== 'admin') return;
+  if (!userStore.hasRole('admin')) return;
 
   loadingFeedback.value = true;
   try {
     const res = await request.get('/feedback');
-    feedbackList.value = res.data || [];
+    feedbackList.value = Array.isArray(res?.data) ? res.data : [];
+    pagination.value.page = 1;
+    applyFeedbackFilters();
   } catch (e) {
     // 如果API不存在，使用模拟数据
     feedbackList.value = [];
@@ -148,13 +291,62 @@ const loadFeedbackList = async () => {
   }
 };
 
-const viewFeedbackDetail = (row) => {
+const feedbackTableRows = computed(() => {
+  const list = Array.isArray(filteredFeedbackList.value) ? filteredFeedbackList.value : [];
+  const startIndex = (pagination.value.page - 1) * pagination.value.pageSize;
+  const endIndex = startIndex + pagination.value.pageSize;
+  return list.slice(startIndex, endIndex);
+});
+
+const updateFeedbackPagination = () => {
+  const total = filteredFeedbackList.value.length;
+  pagination.value.total = total;
+  const size = pagination.value.pageSize;
+  const maxPage = Math.max(1, Math.ceil(total / size));
+  if (pagination.value.page > maxPage) pagination.value.page = maxPage;
+};
+
+const applyFeedbackFilters = () => {
+  pagination.value.page = 1;
+  updateFeedbackPagination();
+};
+
+const handlePageChange = (page) => {
+  pagination.value.page = page;
+};
+
+const handlePageSizeChange = (size) => {
+  pagination.value.pageSize = size;
+  pagination.value.page = 1;
+  updateFeedbackPagination();
+};
+
+const emitSidebarBadgeRefresh = () => {
+  window.dispatchEvent(new CustomEvent('sidebar-badge-refresh'));
+};
+
+const viewFeedbackDetail = async (row) => {
+  try {
+    if (row?.id) {
+      await markAsRead(row.id);
+      emitSidebarBadgeRefresh();
+    }
+  } catch (e) {
+    // ignore
+  }
   ElMessage.info('查看反馈详情功能开发中');
 };
 
 onMounted(() => {
   loadFeedbackList();
 });
+
+watch(
+  () => [filteredFeedbackList.value.length, pagination.value.pageSize],
+  () => {
+    updateFeedbackPagination();
+  }
+);
 
 const feedbackForm = ref({
   type: '',
@@ -189,7 +381,13 @@ const submitFeedback = async () => {
 
 const normalizeUploadFile = (file) => {
   const responseUrl = file?.response?.data?.url ?? file?.response?.url ?? '';
-  const url = responseUrl ? responseUrl : (file?.url ?? '');
+  let rawUrl = '';
+  if (responseUrl) {
+    rawUrl = responseUrl;
+  } else if (file?.url) {
+    rawUrl = file.url;
+  }
+  const url = resolveUploadUrl(rawUrl);
   return url ? { ...file, url } : file;
 };
 
@@ -242,6 +440,10 @@ const handleUploadError = () => {
       color: #303133;
       padding-bottom: 12px;
       border-bottom: 1px solid #eee;
+    }
+
+    .filter-card {
+      margin-bottom: 16px;
     }
 
     p {

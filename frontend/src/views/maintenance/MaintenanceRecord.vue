@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div class="maintenance-record-page">
     <div class="page-header">
       <h2>设备保养记录</h2>
@@ -8,21 +8,39 @@
     </div>
 
     <!-- 筛选 -->
-    <FilterBar>
-      <el-select v-model="filters.status" placeholder="审核状态" clearable @change="loadList">
-        <el-option label="待审核" value="pending" />
-        <el-option label="已通过" value="approved" />
-        <el-option label="已驳回" value="rejected" />
-      </el-select>
-      <el-date-picker
-        v-model="filters.dateRange"
-        type="daterange"
-        start-placeholder="开始日期"
-        end-placeholder="结束日期"
-        value-format="YYYY-MM-DD"
-        @change="loadList"
-      />
-    </FilterBar>
+    <el-card class="filter-card">
+      <FilterBar>
+        <div class="filter-item">
+          <span class="filter-label">审核状态</span>
+          <FilterSelect v-model="filters.status" placeholder="全部" filterable clearable @change="loadList" @clear="loadList">
+            <el-option label="全部" value="all" />
+            <el-option label="待审核" value="pending" />
+            <el-option label="已通过" value="approved" />
+            <el-option label="已驳回" value="rejected" />
+          </FilterSelect>
+        </div>
+        <div class="filter-item">
+          <span class="filter-label">开始日期</span>
+          <el-date-picker
+            v-model="filters.startDate"
+            type="date"
+            placeholder="全部"
+            value-format="YYYY-MM-DD"
+            @change="loadList"
+          />
+        </div>
+        <div class="filter-item">
+          <span class="filter-label">结束日期</span>
+          <el-date-picker
+            v-model="filters.endDate"
+            type="date"
+            placeholder="全部"
+            value-format="YYYY-MM-DD"
+            @change="loadList"
+          />
+        </div>
+      </FilterBar>
+    </el-card>
 
     <!-- 列表 -->
     <el-table :data="recordList" stripe border>
@@ -72,7 +90,7 @@
         v-model:current-page="pagination.page"
         v-model:page-size="pagination.pageSize"
         :total="pagination.total"
-        :page-sizes="[10, 20, 50]"
+        :page-sizes="[5, 10, 20, 50]"
         layout="total, sizes, prev, pager, next"
         @current-change="loadList"
         @size-change="loadList"
@@ -188,7 +206,7 @@ import FormDialog from '@/components/system/FormDialog.vue';
 
 const userStore = useUserStore();
 
-const { uploadUrl, uploadHeaders } = useUpload();
+const { uploadUrl, uploadHeaders, resolveUploadUrl } = useUpload();
 const formRef = ref(null);
 
 const recordList = ref([]);
@@ -198,14 +216,17 @@ const detailVisible = ref(false);
 const saving = ref(false);
 const photoList = ref([]);
 
-const filters = ref({
-  status: '',
-  dateRange: []
-});
+const today = dayjs().format('YYYY-MM-DD');
+const defaultFilters = {
+  status: 'all',
+  startDate: dayjs().subtract(5, 'day').format('YYYY-MM-DD'),
+  endDate: today
+};
+const filters = ref({ ...defaultFilters });
 
 const pagination = ref({
   page: 1,
-  pageSize: 10,
+  pageSize: 5,
   total: 0
 });
 
@@ -251,7 +272,13 @@ const formatDate = (date) => date ? dayjs(date).format('YYYY-MM-DD') : '-';
 
 const normalizeUploadFile = (file) => {
   const responseUrl = file?.response?.data?.url ?? file?.response?.url ?? '';
-  const url = responseUrl ? responseUrl : (file?.url ?? '');
+  let rawUrl = '';
+  if (responseUrl) {
+    rawUrl = responseUrl;
+  } else if (file?.url) {
+    rawUrl = file.url;
+  }
+  const url = resolveUploadUrl(rawUrl);
   return url ? { ...file, url } : file;
 };
 
@@ -265,20 +292,31 @@ const handleUploadError = () => {
 
 const loadList = async () => {
   try {
-    const params = {
-      page: pagination.value.page,
-      pageSize: pagination.value.pageSize,
-      stationId: userStore.currentStationId,
-      approvalStatus: filters.value.status || undefined,
-      startDate: filters.value.dateRange?.[0],
-      endDate: filters.value.dateRange?.[1]
-    };
+      const params = {
+        page: pagination.value.page,
+        pageSize: pagination.value.pageSize,
+        stationId: userStore.currentStationId,
+        approvalStatus: filters.value.status === 'all' ? undefined : filters.value.status,
+        startDate: filters.value.startDate || undefined,
+        endDate: filters.value.endDate || undefined
+      };
     const res = await request.get('/maintenance-records', { params });
     recordList.value = res.list || [];
     pagination.value.total = res.total || 0;
   } catch (e) {
     
   }
+};
+
+const handleSearch = () => {
+  pagination.value.page = 1;
+  loadList();
+};
+
+const resetFilters = () => {
+  filters.value = { ...defaultFilters };
+  pagination.value.page = 1;
+  loadList();
 };
 
 const showAddDialog = () => {
@@ -350,12 +388,12 @@ onMounted(() => {
 
   .filter-bar {
     display: flex;
-    gap: 12px;
-    margin-bottom: 20px;
-    background: #fff;
-    padding: 16px;
-    border-radius: 8px;
-    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.1);
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .filter-card {
+    margin-bottom: 16px;
   }
 
   .el-table {

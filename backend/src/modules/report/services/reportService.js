@@ -30,6 +30,80 @@ const toNumber = (value, fallback) => {
   return Number.isFinite(parsed) ? parsed : fallback;
 };
 
+const buildPointsSummary = ({ date, userId, userName }) => ({
+  date,
+  userId,
+  userName,
+  safety: 0,
+  hygiene: 0,
+  repair: 0,
+  maintenance: 0,
+  fixed: 0,
+  dispatch: 0,
+  selfApply: 0,
+  deduction: 0,
+  total: 0,
+  safetyDetails: [],
+  hygieneDetails: [],
+  repairDetails: [],
+  maintenanceDetails: [],
+  fixedDetails: [],
+  dispatchDetails: [],
+  selfApplyDetails: [],
+  deductionDetails: []
+});
+
+const buildPointsDetail = ({
+  itemName,
+  category,
+  method,
+  unitPoints,
+  quantity,
+  points,
+  source
+}) => ({
+  itemName: resolveText(itemName),
+  category: resolveText(category),
+  method: resolveText(method),
+  unitPoints: toNumber(unitPoints, 0),
+  quantity: toNumber(quantity, 1),
+  points: toNumber(points, 0),
+  source: resolveText(source)
+});
+
+const resolveAssistantNames = (value) => {
+  const text = resolveText(value);
+  if (!text) return [];
+  return text
+    .split(/[，,、;；/]+/)
+    .map(name => name.trim())
+    .filter(name => name.length > 0);
+};
+
+const buildSummaryKey = (date, userId, userName, tag) => {
+  const hasUserId = userId !== undefined && userId !== null && userId !== '';
+  if (hasUserId) return `${date}::${userId}`;
+  const nameText = resolveText(userName);
+  const keyTag = tag ?? 'user';
+  return `${date}::${keyTag}::${nameText}`;
+};
+
+const resolvePageValue = (value, fallback) => {
+  const parsed = Number.parseInt(value, 10);
+  if (!Number.isInteger(parsed) || parsed < 1) {
+    return fallback;
+  }
+  return parsed;
+};
+
+const resolvePageSize = (value, fallback) => {
+  const parsed = Number.parseInt(value, 10);
+  if (!Number.isInteger(parsed) || parsed < 1) {
+    return fallback;
+  }
+  return Math.min(parsed, 200);
+};
+
 /**
  * 工时统计报表
  * GET /api/reports/work-hours
@@ -328,7 +402,18 @@ export const getPointsSummaryReport = async (ctx) => {
 
   const logs = await PositionWorkLog.findAll({
     where,
-    attributes: ['work_date', 'user_id', 'user_name', 'task_source', 'unit_points', 'quantity', 'deduction_points']
+    attributes: [
+      'work_date',
+      'user_id',
+      'user_name',
+      'task_source',
+      'work_name',
+      'task_category',
+      'score_method',
+      'unit_points',
+      'quantity',
+      'deduction_points'
+    ]
   });
 
   const summaryMap = new Map();
@@ -340,20 +425,7 @@ export const getPointsSummaryReport = async (ctx) => {
     const key = `${date}::${userId}`;
 
     if (!summaryMap.has(key)) {
-      summaryMap.set(key, {
-        date,
-        userId,
-        userName,
-        safety: 0,
-        hygiene: 0,
-        repair: 0,
-        maintenance: 0,
-        fixed: 0,
-        dispatch: 0,
-        selfApply: 0,
-        deduction: 0,
-        total: 0
-      });
+      summaryMap.set(key, buildPointsSummary({ date, userId, userName }));
     }
 
     const summary = summaryMap.get(key);
@@ -363,15 +435,51 @@ export const getPointsSummaryReport = async (ctx) => {
 
     if (log.task_source === 'fixed') {
       summary.fixed += points;
+      summary.fixedDetails.push(buildPointsDetail({
+        itemName: log.work_name,
+        category: log.task_category,
+        method: log.score_method,
+        unitPoints,
+        quantity: quantityValue,
+        points,
+        source: '固定工作'
+      }));
     } else if (log.task_source === 'dispatch') {
       summary.dispatch += points;
+      summary.dispatchDetails.push(buildPointsDetail({
+        itemName: log.work_name,
+        category: log.task_category,
+        method: log.score_method,
+        unitPoints,
+        quantity: quantityValue,
+        points,
+        source: '派发任务'
+      }));
     } else if (log.task_source === 'self_apply') {
       summary.selfApply += points;
+      summary.selfApplyDetails.push(buildPointsDetail({
+        itemName: log.work_name,
+        category: log.task_category,
+        method: log.score_method,
+        unitPoints,
+        quantity: quantityValue,
+        points,
+        source: '自行申请'
+      }));
     }
 
     const deductionValue = toNumber(log.deduction_points, 0);
     if (deductionValue !== 0) {
       summary.deduction += deductionValue;
+      summary.deductionDetails.push(buildPointsDetail({
+        itemName: log.work_name ?? '扣分',
+        category: log.task_category,
+        method: '扣分',
+        unitPoints: deductionValue,
+        quantity: 1,
+        points: deductionValue,
+        source: '扣分'
+      }));
     }
   });
 
@@ -402,11 +510,14 @@ export const getPointsSummaryReport = async (ctx) => {
 
   // 获取所有工作性质的积分
   const workTypes = await SafetyWorkType.findAll({
-    attributes: ['id', 'points']
+    attributes: ['id', 'points', 'work_type_name']
   });
-  const workTypePointsMap = new Map();
-  workTypes.forEach(wt => {
-    workTypePointsMap.set(wt.id, toNumber(wt.points, 0));
+  const workTypeInfoMap = new Map();
+  workTypes.forEach((wt) => {
+    workTypeInfoMap.set(wt.id, {
+      name: wt.work_type_name ?? '',
+      points: toNumber(wt.points, 0)
+    });
   });
 
   // 汇总安全自检积分
@@ -417,27 +528,24 @@ export const getPointsSummaryReport = async (ctx) => {
     const key = `${date}::${userId}`;
 
     if (!summaryMap.has(key)) {
-      summaryMap.set(key, {
-        date,
-        userId,
-        userName,
-        safety: 0,
-        hygiene: 0,
-        repair: 0,
-        maintenance: 0,
-        fixed: 0,
-        dispatch: 0,
-        selfApply: 0,
-        deduction: 0,
-        total: 0
-      });
+      summaryMap.set(key, buildPointsSummary({ date, userId, userName }));
     }
 
     const summary = summaryMap.get(key);
     const workTypeIds = Array.isArray(inspection.work_type_ids) ? inspection.work_type_ids : [];
-    workTypeIds.forEach(wtId => {
-      const points = workTypePointsMap.get(wtId) || 0;
+    workTypeIds.forEach((wtId) => {
+      const info = workTypeInfoMap.get(wtId) ?? { name: '', points: 0 };
+      const points = toNumber(info.points, 0);
       summary.safety += points;
+      summary.safetyDetails.push(buildPointsDetail({
+        itemName: info.name,
+        category: '工作性质',
+        method: '',
+        unitPoints: points,
+        quantity: 1,
+        points,
+        source: '安全自检'
+      }));
     });
   });
 
@@ -473,25 +581,21 @@ export const getPointsSummaryReport = async (ctx) => {
     const key = `${date}::${userId}`;
 
     if (!summaryMap.has(key)) {
-      summaryMap.set(key, {
-        date,
-        userId,
-        userName,
-        safety: 0,
-        hygiene: 0,
-        repair: 0,
-        maintenance: 0,
-        fixed: 0,
-        dispatch: 0,
-        selfApply: 0,
-        deduction: 0,
-        total: 0
-      });
+      summaryMap.set(key, buildPointsSummary({ date, userId, userName }));
     }
 
     const summary = summaryMap.get(key);
     const points = toNumber(inspection.points, 0);
     summary.safety += points;
+    summary.safetyDetails.push(buildPointsDetail({
+      itemName: '安全他检',
+      category: '',
+      method: '',
+      unitPoints: points,
+      quantity: 1,
+      points,
+      source: '安全他检'
+    }));
   });
 
   // 集成卫生自检积分
@@ -521,11 +625,14 @@ export const getPointsSummaryReport = async (ctx) => {
 
   // 获取所有卫生责任区的积分
   const hygieneAreas = await HygieneArea.findAll({
-    attributes: ['id', 'points']
+    attributes: ['id', 'points', 'area_name']
   });
-  const hygieneAreaPointsMap = new Map();
-  hygieneAreas.forEach(ha => {
-    hygieneAreaPointsMap.set(ha.id, toNumber(ha.points, 0));
+  const hygieneAreaInfoMap = new Map();
+  hygieneAreas.forEach((ha) => {
+    hygieneAreaInfoMap.set(ha.id, {
+      name: ha.area_name ?? '',
+      points: toNumber(ha.points, 0)
+    });
   });
 
   // 汇总卫生自检积分
@@ -536,20 +643,7 @@ export const getPointsSummaryReport = async (ctx) => {
     const key = `${date}::${userId}`;
 
     if (!summaryMap.has(key)) {
-      summaryMap.set(key, {
-        date,
-        userId,
-        userName,
-        safety: 0,
-        hygiene: 0,
-        repair: 0,
-        maintenance: 0,
-        fixed: 0,
-        dispatch: 0,
-        selfApply: 0,
-        deduction: 0,
-        total: 0
-      });
+      summaryMap.set(key, buildPointsSummary({ date, userId, userName }));
     }
 
     const summary = summaryMap.get(key);
@@ -560,9 +654,19 @@ export const getPointsSummaryReport = async (ctx) => {
         areaIds.add(item.areaId);
       }
     });
-    areaIds.forEach(areaId => {
-      const points = hygieneAreaPointsMap.get(areaId) || 0;
+    areaIds.forEach((areaId) => {
+      const info = hygieneAreaInfoMap.get(areaId) ?? { name: '', points: 0 };
+      const points = toNumber(info.points, 0);
       summary.hygiene += points;
+      summary.hygieneDetails.push(buildPointsDetail({
+        itemName: info.name,
+        category: '责任区',
+        method: '',
+        unitPoints: points,
+        quantity: 1,
+        points,
+        source: '卫生自检'
+      }));
     });
   });
 
@@ -598,25 +702,21 @@ export const getPointsSummaryReport = async (ctx) => {
     const key = `${date}::${userId}`;
 
     if (!summaryMap.has(key)) {
-      summaryMap.set(key, {
-        date,
-        userId,
-        userName,
-        safety: 0,
-        hygiene: 0,
-        repair: 0,
-        maintenance: 0,
-        fixed: 0,
-        dispatch: 0,
-        selfApply: 0,
-        deduction: 0,
-        total: 0
-      });
+      summaryMap.set(key, buildPointsSummary({ date, userId, userName }));
     }
 
     const summary = summaryMap.get(key);
     const points = toNumber(inspection.points, 0);
     summary.hygiene += points;
+    summary.hygieneDetails.push(buildPointsDetail({
+      itemName: '卫生他检',
+      category: '',
+      method: '',
+      unitPoints: points,
+      quantity: 1,
+      points,
+      source: '卫生他检'
+    }));
   });
 
   // 集成维修积分
@@ -631,8 +731,41 @@ export const getPointsSummaryReport = async (ctx) => {
   // 使用 repair_end_date 或 verify_date 作为日期筛选
   const repairRecords = await RepairRecord.findAll({
     where: repairWhere,
-    attributes: ['repair_end_date', 'verify_date', 'repair_person_id', 'repair_person_name', 'repair_tasks']
+    attributes: [
+      'repair_end_date',
+      'verify_date',
+      'repair_person_id',
+      'repair_person_name',
+      'repair_assistant_name',
+      'repair_tasks'
+    ]
   });
+
+  const assistantNameSet = new Set();
+  repairRecords.forEach((record) => {
+    resolveAssistantNames(record.repair_assistant_name)
+      .forEach(name => assistantNameSet.add(name));
+  });
+
+  const assistantIdMap = new Map();
+  if (assistantNameSet.size > 0) {
+    const assistantNames = Array.from(assistantNameSet);
+    const assistants = await User.findAll({
+      where: {
+        [Op.or]: [
+          { real_name: { [Op.in]: assistantNames } },
+          { username: { [Op.in]: assistantNames } }
+        ]
+      },
+      attributes: ['id', 'real_name', 'username']
+    });
+    assistants.forEach((assistant) => {
+      const realName = resolveText(assistant.real_name);
+      const username = resolveText(assistant.username);
+      if (realName) assistantIdMap.set(realName, assistant.id);
+      if (username) assistantIdMap.set(username, assistant.id);
+    });
+  }
 
   // 汇总维修积分
   repairRecords.forEach((record) => {
@@ -644,38 +777,74 @@ export const getPointsSummaryReport = async (ctx) => {
 
     const userId = record.repair_person_id;
     const userName = record.repair_person_name ?? '';
-
-    if (keywordText && !userName.includes(keywordText)) return;
-
-    if (!dataFilter.all) {
-      if (dataFilter.userId && userId !== dataFilter.userId) return;
-    }
-
-    const key = `${dateStr}::${userId}`;
-
-    if (!summaryMap.has(key)) {
-      summaryMap.set(key, {
-        date: dateStr,
-        userId,
-        userName,
-        safety: 0,
-        hygiene: 0,
-        repair: 0,
-        maintenance: 0,
-        fixed: 0,
-        dispatch: 0,
-        selfApply: 0,
-        deduction: 0,
-        total: 0
-      });
-    }
-
-    const summary = summaryMap.get(key);
     const repairTasks = Array.isArray(record.repair_tasks) ? record.repair_tasks : [];
-    repairTasks.forEach(task => {
-      const taskPoints = toNumber(task.points, 0);
-      const taskQuantity = toNumber(task.quantity, 1);
-      summary.repair += taskPoints * taskQuantity;
+
+    let leaderMatchesKeyword = true;
+    if (keywordText) {
+      leaderMatchesKeyword = userName.includes(keywordText);
+    }
+
+    let leaderMatchesUser = true;
+    if (!dataFilter.all && dataFilter.userId) {
+      leaderMatchesUser = userId === dataFilter.userId;
+    }
+
+    const key = buildSummaryKey(dateStr, userId, userName, 'repair');
+
+    const appendRepairTasks = (summary) => {
+      repairTasks.forEach((task) => {
+        const taskPoints = toNumber(task?.points, 0);
+        const taskQuantity = toNumber(task?.quantity, 1);
+        const taskTotal = taskPoints * taskQuantity;
+        summary.repair += taskTotal;
+        summary.repairDetails.push(buildPointsDetail({
+          itemName: task?.task_name ?? task?.job_name ?? '',
+          category: task?.task_category,
+          method: task?.score_method,
+          unitPoints: taskPoints,
+          quantity: taskQuantity,
+          points: taskTotal,
+          source: '维修任务'
+        }));
+      });
+    };
+
+    if (leaderMatchesKeyword && leaderMatchesUser) {
+      if (!summaryMap.has(key)) {
+        summaryMap.set(key, buildPointsSummary({ date: dateStr, userId, userName }));
+      }
+      const summary = summaryMap.get(key);
+      appendRepairTasks(summary);
+    }
+
+    const assistantNames = resolveAssistantNames(record.repair_assistant_name);
+    if (assistantNames.length === 0) return;
+
+    const uniqueAssistants = new Set(assistantNames);
+    uniqueAssistants.forEach((assistantName) => {
+      const nameText = resolveText(assistantName);
+      if (!nameText) return;
+      if (nameText === userName) return;
+      const assistantId = assistantIdMap.get(nameText);
+
+      let assistantMatchesKeyword = true;
+      if (keywordText) {
+        assistantMatchesKeyword = nameText.includes(keywordText);
+      }
+
+      let assistantMatchesUser = true;
+      if (!dataFilter.all && dataFilter.userId) {
+        assistantMatchesUser = assistantId === dataFilter.userId;
+      }
+
+      if (!assistantMatchesKeyword || !assistantMatchesUser) return;
+
+      const assistantKey = buildSummaryKey(dateStr, assistantId, nameText, 'assistant');
+      if (!summaryMap.has(assistantKey)) {
+        summaryMap.set(assistantKey, buildPointsSummary({ date: dateStr, userId: assistantId, userName: nameText }));
+      }
+      const assistantSummary = summaryMap.get(assistantKey);
+      appendRepairTasks(assistantSummary);
     });
   });
 
@@ -700,10 +869,10 @@ export const getPointsSummaryReport = async (ctx) => {
 
   const maintenanceRecords = await MaintenanceWorkRecord.findAll({
     where: maintenanceWhere,
-    attributes: ['work_date', 'executor_id', 'executor_name', 'maintenance_items']
+    attributes: ['work_date', 'executor_id', 'executor_name', 'maintenance_items', 'verify_result', 'deduction_points', 'deduction_remark']
   });
 
-  // 汇总保养积分（按合格项数量计算，每项1分）
+  // 汇总保养积分（按合格项标准积分求和，验收不通过按扣分处理）
   maintenanceRecords.forEach((record) => {
     const date = record.work_date;
     const userId = record.executor_id;
@@ -711,26 +880,51 @@ export const getPointsSummaryReport = async (ctx) => {
     const key = `${date}::${userId}`;
 
     if (!summaryMap.has(key)) {
-      summaryMap.set(key, {
-        date,
-        userId,
-        userName,
-        safety: 0,
-        hygiene: 0,
-        repair: 0,
-        maintenance: 0,
-        fixed: 0,
-        dispatch: 0,
-        selfApply: 0,
-        deduction: 0,
-        total: 0
-      });
+      summaryMap.set(key, buildPointsSummary({ date, userId, userName }));
     }
 
     const summary = summaryMap.get(key);
     const maintenanceItems = Array.isArray(record.maintenance_items) ? record.maintenance_items : [];
-    const qualifiedCount = maintenanceItems.filter(item => item.confirmed === true || item.confirmed === 1).length;
-    summary.maintenance += qualifiedCount;
+    const verifyResult = record.verify_result;
+
+    maintenanceItems.forEach((item) => {
+      const confirmed = item?.confirmed === true || item?.confirmed === 1;
+      if (!confirmed) return;
+      const rawPoints = item?.points;
+      const parsedPoints = rawPoints === undefined || rawPoints === null || rawPoints === ''
+        ? 0
+        : Number(rawPoints);
+      const points = Number.isNaN(parsedPoints) ? 0 : parsedPoints;
+      summary.maintenance += points;
+      summary.maintenanceDetails.push(buildPointsDetail({
+        itemName: item?.name ?? item?.item_name ?? '',
+        category: '',
+        method: '合格',
+        unitPoints: points,
+        quantity: 1,
+        points,
+        source: '保养工作'
+      }));
+    });
+
+    if (verifyResult === 'fail') {
+      const deductionPoints = record.deduction_points !== undefined && record.deduction_points !== null
+        ? Number(record.deduction_points)
+        : 0;
+      const safeDeduction = Number.isNaN(deductionPoints) ? 0 : deductionPoints;
+      if (safeDeduction !== 0) {
+        summary.maintenance += safeDeduction;
+        summary.maintenanceDetails.push(buildPointsDetail({
+          itemName: record.deduction_remark ? `验收不通过扣分（${record.deduction_remark}）` : '验收不通过扣分',
+          category: '',
+          method: '扣分',
+          unitPoints: safeDeduction,
+          quantity: 1,
+          points: safeDeduction,
+          source: '保养工作'
+        }));
+      }
+    }
   });
 
   const result = Array.from(summaryMap.values()).map((item) => {
@@ -754,17 +948,34 @@ export const getPointsSummaryReport = async (ctx) => {
     return b.date.localeCompare(a.date);
   });
 
+  const shouldPaginate = ctx.query.page !== undefined || ctx.query.pageSize !== undefined;
+  const total = result.length;
+
+  if (!shouldPaginate) {
+    ctx.body = {
+      code: 200,
+      message: 'success',
+      data: result
+    };
+    return;
+  }
+
+  const page = resolvePageValue(ctx.query.page, 1);
+  const pageSize = resolvePageSize(ctx.query.pageSize, 10);
+  const startIndex = (page - 1) * pageSize;
+  const list = result.slice(startIndex, startIndex + pageSize);
+
   ctx.body = {
     code: 200,
     message: 'success',
-    data: result
+    data: {
+      list,
+      total,
+      page,
+      pageSize
+    }
   };
 };
-
-/**
- * 进料统计报表
- * GET /api/reports/inbound
- */
 
 /**
  * 淇濆吇鏈堣川缁熻

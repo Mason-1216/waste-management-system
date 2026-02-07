@@ -11,7 +11,13 @@ import { addTemplateInstructionSheet, applyTemplateHeaderStyle } from '../../../
  */
 export const getPositionJobs = async (ctx) => {
   const { page, pageSize, offset, limit } = getPagination(ctx.query);
-  const order = getOrderBy(ctx.query);
+  const order = ctx.query.sortBy
+    ? getOrderBy(ctx.query)
+    : [
+      ['position_name', 'ASC'],
+      ['sort_order', 'ASC'],
+      ['created_at', 'ASC']
+    ];
   const {
     positionName,
     stationId,
@@ -179,6 +185,7 @@ export const createPositionJob = async (ctx) => {
     quantityEditable,
     pointsEditable,
     dispatchReviewRequired,
+    sortOrder,
     stationId
   } = ctx.request.body;
   const { roleCode, stations } = ctx.state.user;
@@ -214,6 +221,14 @@ export const createPositionJob = async (ctx) => {
     throw createError(400, '数量必须是 1-1000 的整数');
   }
 
+
+  const normalizedSortOrder = sortOrder !== undefined && sortOrder !== null && sortOrder !== ''
+    ? Number.parseInt(sortOrder, 10)
+    : 1;
+  if (!Number.isInteger(normalizedSortOrder) || normalizedSortOrder < 1 || normalizedSortOrder > 9999) {
+    throw createError(400, '排序必须是 1-9999 的整数');
+  }
+
   const existing = await PositionJob.findOne({
     where: {
       position_name: positionName.trim(),
@@ -238,6 +253,7 @@ export const createPositionJob = async (ctx) => {
     quantity_editable: Number(quantityEditable) === 1 ? 1 : 0,
     points_editable: Number(pointsEditable) === 1 ? 1 : 0,
     dispatch_review_required: Number(dispatchReviewRequired) === 1 ? 1 : 0,
+    sort_order: normalizedSortOrder,
     station_id: Number(stationId),
     is_active: 1
   });
@@ -267,6 +283,7 @@ export const updatePositionJob = async (ctx) => {
     quantityEditable,
     pointsEditable,
     dispatchReviewRequired,
+    sortOrder,
     stationId,
     isActive,
     renamePosition
@@ -350,6 +367,16 @@ export const updatePositionJob = async (ctx) => {
       throw createError(400, '数量必须是 1-1000 的整数');
     }
     updateData.quantity = normalizedQuantity;
+  }
+
+  if (sortOrder !== undefined) {
+    const normalizedSortOrder = sortOrder === null || sortOrder === ''
+      ? 1
+      : Number.parseInt(sortOrder, 10);
+    if (!Number.isInteger(normalizedSortOrder) || normalizedSortOrder < 1 || normalizedSortOrder > 9999) {
+      throw createError(400, '排序必须是 1-9999 的整数');
+    }
+    updateData.sort_order = normalizedSortOrder;
   }
 
   if (pointsRule !== undefined) {
@@ -667,16 +694,36 @@ export const importPositionJobs = async (ctx) => {
 
       const stationName = row.getCell(1).value?.toString().trim();
       const positionName = row.getCell(2).value?.toString().trim();
-      const jobName = row.getCell(3).value?.toString().trim();
-      const taskCategory = row.getCell(4).value?.toString().trim();
-      const scoreMethod = row.getCell(5).value?.toString().trim();
-      const standardHours = parseNumber(row.getCell(6).value, Number.parseFloat);
-      const points = parseNumber(row.getCell(7).value, Number.parseFloat);
-      const quantity = parseNumber(row.getCell(8).value, Number.parseInt) ?? 1;
-      const pointsRule = row.getCell(9).value?.toString().trim();
-      const quantityEditable = parseBoolean(row.getCell(10).value);
-      const pointsEditable = parseBoolean(row.getCell(11).value);
-      const dispatchReviewRequired = parseBoolean(row.getCell(12).value);
+      const sortOrder = parseNumber(row.getCell(3).value, Number.parseInt);
+      const jobName = row.getCell(4).value?.toString().trim();
+      const taskCategory = row.getCell(5).value?.toString().trim();
+      const scoreMethod = row.getCell(6).value?.toString().trim();
+      const standardHours = parseNumber(row.getCell(7).value, Number.parseFloat);
+
+      // 单位积分允许为空：为空时按 0 导入；非空但非数字时仍报错。
+      const rawPointsValue = normalizeCellValue(row.getCell(8).value);
+      let points = 0;
+      if (rawPointsValue !== undefined && rawPointsValue !== null && rawPointsValue !== '') {
+        const parsedPoints = Number.parseFloat(rawPointsValue);
+        if (Number.isNaN(parsedPoints)) {
+          results.push({
+            row: i,
+            stationName,
+            positionName,
+            jobName,
+            status: 'error',
+            message: '单位积分必须为数字'
+          });
+          continue;
+        }
+        points = parsedPoints;
+      }
+
+      const quantity = parseNumber(row.getCell(9).value, Number.parseInt) ?? 1;
+      const pointsRule = row.getCell(10).value?.toString().trim();
+      const quantityEditable = parseBoolean(row.getCell(11).value);
+      const pointsEditable = parseBoolean(row.getCell(12).value);
+      const dispatchReviewRequired = parseBoolean(row.getCell(13).value);
 
       if (!positionName || !jobName) {
         results.push({
@@ -690,18 +737,6 @@ export const importPositionJobs = async (ctx) => {
         continue;
       }
 
-      if (points === null || points === undefined) {
-        results.push({
-          row: i,
-          stationName,
-          positionName,
-          jobName,
-          status: 'error',
-          message: '单位积分不能为空'
-        });
-        continue;
-      }
-
       if (!Number.isInteger(quantity) || quantity < 1 || quantity > 1000) {
         results.push({
           row: i,
@@ -710,6 +745,19 @@ export const importPositionJobs = async (ctx) => {
           jobName,
           status: 'error',
           message: '数量必须是 1-1000 的整数'
+        });
+        continue;
+      }
+
+      const normalizedSortOrder = sortOrder ?? 1;
+      if (!Number.isInteger(normalizedSortOrder) || normalizedSortOrder < 1 || normalizedSortOrder > 9999) {
+        results.push({
+          row: i,
+          stationName,
+          positionName,
+          jobName,
+          status: 'error',
+          message: '排序必须是 1-9999 的整数'
         });
         continue;
       }
@@ -752,6 +800,7 @@ export const importPositionJobs = async (ctx) => {
           quantity_editable: quantityEditable === 1 ? 1 : 0,
           points_editable: pointsEditable === 1 ? 1 : 0,
           dispatch_review_required: dispatchReviewRequired === 1 ? 1 : 0,
+          sort_order: normalizedSortOrder,
           station_id: stationId,
           is_active: 1
         });
@@ -773,7 +822,8 @@ export const importPositionJobs = async (ctx) => {
           points_rule: pointsRule ?? existing.points_rule,
           quantity_editable: quantityEditable === null ? existing.quantity_editable : quantityEditable,
           points_editable: pointsEditable === null ? existing.points_editable : pointsEditable,
-          dispatch_review_required: dispatchReviewRequired === null ? existing.dispatch_review_required : dispatchReviewRequired
+          dispatch_review_required: dispatchReviewRequired === null ? existing.dispatch_review_required : dispatchReviewRequired,
+          sort_order: normalizedSortOrder
         });
 
         results.push({
@@ -815,9 +865,10 @@ export const getPositionJobsTemplate = async (ctx) => {
     const workbook = new ExcelJS.Workbook();
     const worksheet = workbook.addWorksheet('岗位任务模板');
 
-    worksheet.columns = [
+            worksheet.columns = [
       { header: '场站', key: 'stationName', width: 15 },
       { header: '岗位', key: 'positionName', width: 15 },
+      { header: '排序', key: 'sortOrder', width: 10 },
       { header: '任务名称', key: 'jobName', width: 25 },
       { header: '任务类别', key: 'taskCategory', width: 15 },
       { header: '给分方式', key: 'scoreMethod', width: 15 },
@@ -830,9 +881,10 @@ export const getPositionJobsTemplate = async (ctx) => {
       { header: '派发任务是否强制审核', key: 'dispatchReviewRequired', width: 20 }
     ];
 
-    worksheet.addRow({
+            worksheet.addRow({
       stationName: '示例场站',
       positionName: '示例岗位',
+      sortOrder: 1,
       jobName: '示例任务',
       taskCategory: '自由文本',
       scoreMethod: '奖扣结合式',
@@ -846,14 +898,15 @@ export const getPositionJobsTemplate = async (ctx) => {
     });
 
     applyTemplateHeaderStyle(worksheet, 1);
-    addTemplateInstructionSheet(workbook, [
+            addTemplateInstructionSheet(workbook, [
       ['场站', '填写场站名称，可留空表示通用任务'],
       ['岗位', '岗位名称必填'],
+      ['排序', '可不填，默认 1，整数 1-9999'],
       ['任务名称', '任务名称必填'],
-      ['任务类别', '自由文本，用于筛选区分'],
-      ['给分方式', '奖扣结合式 / 扣分项 / 奖分项'],
+      ['任务类别', '自由文本，用于筛选区'],
+      ['给分方式', '奖扣结合式/ 扣分项/ 奖分项'],
       ['标准工时(h/d)', '标准工时，可不填'],
-      ['单位积分', '必填，可为正数/负数/0'],
+      ['单位积分', '可不填，默认 0；可为正数/负数/0'],
       ['数量', '整数 1-1000，默认 1'],
       ['积分规则', '备注说明'],
       ['数量是否可修改', '填写 是/否'],
@@ -895,7 +948,10 @@ export const getPositionJobsByPosition = async (ctx) => {
     include: [
       { model: Station, as: 'station', attributes: ['id', 'station_name'] }
     ],
-    order: [['job_name', 'ASC']]
+    order: [
+      ['sort_order', 'ASC'],
+      ['created_at', 'ASC']
+    ]
   });
 
   ctx.body = {
@@ -914,10 +970,16 @@ export const getPositionNames = async (ctx) => {
   const dataFilter = ctx.state.dataFilter;
   const { stationId } = ctx.query;
 
-  const where = {};
+  const where = {
+    is_active: 1
+  };
 
-  if (stationId) {
-    where.station_id = Number(stationId);
+  if (stationId !== undefined && stationId !== null && stationId !== '') {
+    const parsedStationId = Number(stationId);
+    if (Number.isNaN(parsedStationId)) {
+      throw createError(400, '场站无效');
+    }
+    where.station_id = parsedStationId;
   } else if (!dataFilter.all && dataFilter.stationIds?.length > 0) {
     where.station_id = { [Op.in]: dataFilter.stationIds };
   }

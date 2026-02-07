@@ -16,6 +16,7 @@ import { startCronJobs } from './services/cronJobs.js';
 import { startPlcWatcher } from './services/plcIngestion.js';
 import logger from './config/logger.js';
 import { defineAssociations } from './models/index.js';
+import { ensureDevTestAccount } from './services/devTestGuard.js';
 
 // 加载环境变量
 dotenv.config();
@@ -117,6 +118,12 @@ async function start() {
 
     // 定义模型关联
     defineAssociations();
+
+    try {
+      await ensureDevTestAccount();
+    } catch (error) {
+      logger.error('开发测试账号守护失败', error);
+    }
     
     // 同步数据库模型（开发环境）
     if (process.env.NODE_ENV === 'development') {

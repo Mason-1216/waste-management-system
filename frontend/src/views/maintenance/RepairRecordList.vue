@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div class="repair-list-page">
     <div class="page-header">
       <h2>设备维修记录单</h2>
@@ -9,27 +9,36 @@
     </div>
 
     <!-- 筛选条件 -->
-    <div class="filter-card">
-      <el-form :inline="true" :model="filters" class="filter-form">
-        <el-form-item label="状态">
-          <el-select v-model="filters.status" clearable placeholder="全部状态" style="width: 150px;">
+    <el-card class="filter-card">
+      <FilterBar>
+        <div class="filter-item">
+          <span class="filter-label">状态</span>
+          <FilterSelect v-model="filters.status" clearable filterable placeholder="全部" style="width: 150px;" @change="loadList" @clear="loadList">
+            <el-option label="全部" value="all" />
             <el-option label="草稿" value="draft_report" />
             <el-option label="已提交" value="submitted_report" />
             <el-option label="已派发" value="dispatched" />
             <el-option label="维修中" value="repairing" />
             <el-option label="待验收" value="repaired_submitted" />
             <el-option label="已验收" value="accepted" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="设备名称">
-          <el-input v-model="filters.equipmentName" placeholder="设备名称" clearable style="width: 150px;" />
-        </el-form-item>
-        <el-form-item>
-          <el-button type="primary" @click="loadList">查询</el-button>
-          <el-button @click="resetFilters">重置</el-button>
-        </el-form-item>
-      </el-form>
-    </div>
+          </FilterSelect>
+        </div>
+        <div class="filter-item">
+          <span class="filter-label">设备名称</span>
+          <FilterAutocomplete
+            v-model="filters.equipmentName"
+            :fetch-suggestions="fetchEquipmentNameSuggestions"
+            trigger-on-focus
+            placeholder="全部"
+            clearable
+            style="width: 150px;"
+            @select="loadList"
+            @input="loadList"
+            @clear="loadList"
+          />
+        </div>
+      </FilterBar>
+    </el-card>
 
     <!-- 快捷筛选标签 -->
     <div class="quick-filters">
@@ -77,7 +86,7 @@
       <el-pagination
         v-model:current-page="pagination.page"
         v-model:page-size="pagination.pageSize"
-        :page-sizes="[10, 20, 50]"
+        :page-sizes="[5, 10, 20, 50]"
         :total="pagination.total"
         layout="total, sizes, prev, pager, next"
         @size-change="loadList"
@@ -90,29 +99,38 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
+import dayjs from 'dayjs';
+
+import FilterBar from '@/components/common/FilterBar.vue';
 import { useUserStore } from '@/store/modules/user';
 import { getRepairRecords } from '@/api/repair';
-import dayjs from 'dayjs';
+import { createListSuggestionFetcher } from '@/utils/filterAutocomplete';
 
 const router = useRouter();
 const userStore = useUserStore();
 
 const loading = ref(false);
 const list = ref([]);
+const listSuggestion = ref([]);
 const quickFilter = ref('all');
 
+const fetchEquipmentNameSuggestions = createListSuggestionFetcher(
+  () => listSuggestion.value,
+  (row) => row.equipment_name
+);
+
 const filters = ref({
-  status: '',
+  status: 'all',
   equipmentName: ''
 });
 
 const pagination = ref({
   page: 1,
-  pageSize: 10,
+  pageSize: 5,
   total: 0
 });
 
-const isStationManager = computed(() => ['station_manager', 'admin'].includes(userStore.roleCode));
+const isStationManager = computed(() => userStore.hasRole('station_manager'));
 
 const getStatusType = (status) => {
   const types = {
@@ -160,8 +178,8 @@ const loadList = async () => {
     const params = {
       page: pagination.value.page,
       pageSize: pagination.value.pageSize,
-      status: filters.value.status,
-      equipmentName: filters.value.equipmentName
+      status: filters.value.status === 'all' ? undefined : filters.value.status,
+      equipmentName: filters.value.equipmentName?.trim() || undefined
     };
 
     // 根据快捷筛选添加条件
@@ -178,6 +196,7 @@ const loadList = async () => {
     const res = await getRepairRecords(params);
     list.value = res.list || [];
     pagination.value.total = res.total || 0;
+    loadListSuggestions(params);
   } catch (e) {
     
   } finally {
@@ -185,15 +204,29 @@ const loadList = async () => {
   }
 };
 
+const loadListSuggestions = async (baseParams) => {
+  try {
+    const params = {
+      ...baseParams,
+      page: 1,
+      pageSize: 5000
+    };
+    const res = await getRepairRecords(params);
+    listSuggestion.value = res.list || [];
+  } catch (e) {
+    listSuggestion.value = [];
+  }
+};
+
 const resetFilters = () => {
-  filters.value = { status: '', equipmentName: '' };
+  filters.value = { status: 'all', equipmentName: '' };
   quickFilter.value = 'all';
   pagination.value.page = 1;
   loadList();
 };
 
 const handleQuickFilter = () => {
-  filters.value.status = '';
+  filters.value.status = 'all';
   pagination.value.page = 1;
   loadList();
 };
@@ -238,11 +271,7 @@ onMounted(() => {
   }
 
   .filter-card {
-    background: #fff;
-    border-radius: 8px;
-    padding: 16px;
     margin-bottom: 16px;
-    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.1);
   }
 
   .quick-filters {

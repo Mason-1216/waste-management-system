@@ -10,7 +10,11 @@
       <el-tab-pane label="已驳回" name="rejected" />
     </el-tabs>
 
-    <el-table :data="approvalList" stripe border>
+    <el-card class="filter-card">
+      <FilterBar />
+    </el-card>
+
+    <el-table :data="approvalTableRows" stripe border>
       <el-table-column prop="equipmentName" label="设备名称" min-width="150" />
       <el-table-column prop="maintenanceType" label="保养类型" width="120" />
       <el-table-column prop="maintenanceDate" label="保养日期" width="120" />
@@ -32,6 +36,18 @@
       </el-table-column>
     </el-table>
 
+    <div class="pagination-wrapper">
+      <el-pagination
+        v-model:current-page="pagination.page"
+        v-model:page-size="pagination.pageSize"
+        :page-sizes="[5, 10, 20, 50]"
+        :total="pagination.total"
+        layout="total, sizes, prev, pager, next"
+        @current-change="handlePageChange"
+        @size-change="handlePageSizeChange"
+      />
+    </div>
+
     <FormDialog
       v-model="rejectDialogVisible"
       title="驳回原因"
@@ -46,13 +62,16 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue';
+import { ref, onMounted, computed, watch } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
+
+import FilterBar from '@/components/common/FilterBar.vue';
 import request from '@/api/request';
 import FormDialog from '@/components/system/FormDialog.vue';
 
 const activeTab = ref('pending');
 const approvalList = ref([]);
+const pagination = ref({ page: 1, pageSize: 5, total: 0 });
 const rejectDialogVisible = ref(false);
 const rejectReason = ref('');
 const currentRecord = ref(null);
@@ -63,8 +82,26 @@ const getStatusLabel = (status) => ({ pending: '待审核', approved: '已通过
 const loadList = async () => {
   try {
     const res = await request.get('/maintenance-records', { params: { approvalStatus: activeTab.value } });
-    approvalList.value = res.list || [];
+    approvalList.value = Array.isArray(res?.list) ? res.list : [];
+    pagination.value.page = 1;
+    pagination.value.total = approvalList.value.length;
   } catch (e) {  }
+};
+
+const approvalTableRows = computed(() => {
+  const list = Array.isArray(approvalList.value) ? approvalList.value : [];
+  const startIndex = (pagination.value.page - 1) * pagination.value.pageSize;
+  const endIndex = startIndex + pagination.value.pageSize;
+  return list.slice(startIndex, endIndex);
+});
+
+const handlePageChange = (page) => {
+  pagination.value.page = page;
+};
+
+const handlePageSizeChange = (size) => {
+  pagination.value.pageSize = size;
+  pagination.value.page = 1;
 };
 
 const viewDetail = (row) => {
@@ -92,6 +129,16 @@ const confirmReject = async () => {
 };
 
 onMounted(() => loadList());
+
+watch(
+  () => approvalList.value.length,
+  (total) => {
+    pagination.value.total = total;
+    const size = pagination.value.pageSize;
+    const maxPage = Math.max(1, Math.ceil(total / size));
+    if (pagination.value.page > maxPage) pagination.value.page = maxPage;
+  }
+);
 </script>
 
 <style lang="scss" scoped>

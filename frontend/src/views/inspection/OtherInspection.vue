@@ -1,136 +1,22 @@
 ﻿<template>
   <div class="safety-other-page">
     <div class="page-header">
-      <h3>员工检查记录</h3>
-      <el-button type="primary" @click="showNewInspection">
-        <el-icon><Plus /></el-icon>新增他检
-      </el-button>
+      <h3>
+        <span v-if="isRecordsView" class="page-title-link" @click="goFormView">安全他检</span>
+        <span v-else>安全他检</span>
+      </h3>
+      <div v-if="!isRecordsView" class="header-actions">
+        <el-button @click="goRecordsView">查询</el-button>
+      </div>
     </div>
 
-    <!-- 筛选条件 -->
-    <el-card class="filter-card">
-      <el-form :inline="true">
-        <el-form-item>
-          <el-date-picker
-            v-model="filters.dateRange"
-            type="daterange"
-            start-placeholder="开始日期"
-            end-placeholder="结束日期"
-            value-format="YYYY-MM-DD"
-            style="width: 240px"
-          />
-        </el-form-item>
-        <el-form-item v-if="showStationFilter">
-          <el-select
-            v-model="filters.stationId"
-            placeholder="请选择场站"
-            clearable
-            style="width: 180px"
-          >
-            <el-option
-              v-for="station in stationList"
-              :key="station.id"
-              :label="station.stationName"
-              :value="station.id"
-            />
-          </el-select>
-        </el-form-item>
-        <el-form-item>
-          <el-input
-            v-model="filters.inspectedName"
-            placeholder="请输入姓名"
-            clearable
-            style="width: 150px"
-          />
-        </el-form-item>
-        <el-form-item>
-          <el-select
-            v-model="filters.workTypeIds"
-            placeholder="请选择工作性质"
-            clearable
-            multiple
-            collapse-tags
-            collapse-tags-tooltip
-            filterable
-            style="width: 240px"
-          >
-            <el-option
-              v-for="wt in workTypes"
-              :key="wt.id"
-              :label="wt.work_type_name"
-              :value="wt.id"
-            />
-          </el-select>
-        </el-form-item>
-        <el-form-item>
-          <el-button @click="resetFilters">重置</el-button>
-        </el-form-item>
-      </el-form>
-    </el-card>
-
-    <!-- 检查记录列表 -->
-    <TableCard>
-      <el-table :data="inspectionList" stripe border v-loading="loading">
-        <el-table-column prop="inspection_date" label="检查日期" width="120" />
-        <el-table-column label="场站" width="150">
-          <template #default="{ row }">
-            {{ row.station?.station_name || '-' }}
-          </template>
-        </el-table-column>
-        <el-table-column label="被检查人" width="100">
-          <template #default="{ row }">
-            {{ row.inspected_user_name || '-' }}
-          </template>
-        </el-table-column>
-        <el-table-column label="工作性质" min-width="150">
-          <template #default="{ row }">
-            {{ getWorkTypeNames(row.work_type_ids) }}
-          </template>
-        </el-table-column>
-        <el-table-column label="积分" width="90">
-          <template #default="{ row }">
-            {{ getInspectionPoints(row) }}
-          </template>
-        </el-table-column>
-        <el-table-column label="检查人" width="100">
-          <template #default="{ row }">
-            {{ row.inspector?.real_name || row.inspector_name || '-' }}
-          </template>
-        </el-table-column>
-        <el-table-column label="检查结果" width="100">
-          <template #default="{ row }">
-            <el-tag :type="getInspectionResult(row).type">
-              {{ getInspectionResult(row).text }}
-            </el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column label="操作" width="100">
-          <template #default="{ row }">
-            <el-button link type="primary" @click="viewDetail(row)">查看</el-button>
-          </template>
-        </el-table-column>
-      </el-table>
-
-      <div class="pagination-wrapper">
-        <el-pagination
-          v-model:current-page="pagination.page"
-          v-model:page-size="pagination.pageSize"
-          :total="pagination.total"
-          layout="total, prev, pager, next"
-          @current-change="loadInspectionList"
-        />
+    <el-card v-if="!isRecordsView" class="inspection-form-card">
+      <div class="inspection-form-header">
+        <div class="form-title-row">
+          <div class="form-subtitle">他检表单</div>
+        </div>
       </div>
-    </TableCard>
 
-    <!-- 新建检查对话框 -->
-    <FormDialog
-      v-model="dialogVisible"
-      title="安全他检"
-      width="750px"
-      :close-on-click-modal="false"
-      :show-confirm="false"
-      :show-cancel="false"
-    >
       <el-form :model="inspectionForm" :rules="formRules" ref="formRef" label-width="100px">
         <el-form-item label="场站" prop="stationId">
           <el-select
@@ -178,7 +64,6 @@
           </el-checkbox-group>
         </el-form-item>
 
-        <!-- 检查项目 -->
         <div v-if="groupedCheckItems.length > 0">
           <SafetyCheckItemList
             :groups="groupedCheckItems"
@@ -188,14 +73,14 @@
             pass-value="pass"
             fail-value="fail"
             :pass-label="'合格'"
-            :fail-label="'异常'"
+            :fail-label="'不合格'"
             :parent-label="'父项'"
             :child-label="'子项'"
             :standard-label="'标准：'"
-            :photo-label="'上传异常项照片：'"
+            :photo-label="'上传不合格项照片：'"
             :show-remark="true"
             remark-field="remark"
-            :remark-placeholder="'请填写异常原因'"
+            :remark-placeholder="'请填写不合格原因'"
             remark-position="before"
             :use-button-radio="true"
             radio-group-size="small"
@@ -217,11 +102,207 @@
         </el-form-item>
       </el-form>
 
-      <template #footer>
-        <el-button @click="dialogVisible = false">取消</el-button>
+      <div class="form-actions">
+        <el-button @click="showNewInspection">重置</el-button>
         <el-button type="primary" @click="submitInspection" :loading="submitting">提交</el-button>
-      </template>
-    </FormDialog>
+      </div>
+    </el-card>
+
+    <template v-if="isRecordsView">
+      <el-card class="filter-card">
+        <FilterBar>
+        <div class="filter-item">
+          <span class="filter-label">开始日期</span>
+          <el-date-picker
+            v-model="filters.startDate"
+            type="date"
+            placeholder="全部"
+            value-format="YYYY-MM-DD"
+            @change="applyFilters"
+          />
+        </div>
+        <div class="filter-item">
+          <span class="filter-label">结束日期</span>
+          <el-date-picker
+            v-model="filters.endDate"
+            type="date"
+            placeholder="全部"
+            value-format="YYYY-MM-DD"
+            @change="applyFilters"
+          />
+        </div>
+        <div class="filter-item">
+          <span class="filter-label">日期排序</span>
+          <FilterSelect
+            v-model="filters.sortOrder"
+            placeholder="升序"
+            filterable
+            @change="applyFilters"
+          >
+            <el-option
+              v-for="option in dateSortOptions"
+              :key="option.value"
+              :label="option.label"
+              :value="option.value"
+            />
+          </FilterSelect>
+        </div>
+        <div class="filter-item">
+          <span class="filter-label">检查性质</span>
+          <FilterSelect
+            v-model="filters.inspectionKind"
+            placeholder="全部"
+            clearable
+            filterable
+            @change="applyFilters"
+            @clear="applyFilters"
+          >
+            <el-option label="全部" value="all" />
+            <el-option
+              v-for="option in inspectionKindOptions"
+              :key="option.value"
+              :label="option.label"
+              :value="option.value"
+            />
+          </FilterSelect>
+        </div>
+        <div v-if="showStationFilter" class="filter-item">
+          <span class="filter-label">场站</span>
+          <FilterSelect
+            v-model="filters.stationId"
+            placeholder="全部"
+            clearable
+            filterable
+            @change="applyFilters"
+            @clear="applyFilters"
+          >
+            <el-option label="全部" value="all" />
+            <el-option
+              v-for="station in stationList"
+              :key="station.id"
+              :label="station.stationName"
+              :value="station.id"
+            />
+          </FilterSelect>
+        </div>
+        <div class="filter-item">
+          <span class="filter-label">被检查人</span>
+          <FilterAutocomplete
+            v-model="filters.inspectedName"
+            :fetch-suggestions="fetchInspectedNameSuggestions"
+            trigger-on-focus
+            placeholder="全部"
+            clearable
+            @select="applyFilters"
+            @input="applyFilters"
+            @clear="applyFilters"
+          />
+        </div>
+        <div class="filter-item">
+          <span class="filter-label">工作性质</span>
+          <FilterSelect
+            v-model="filters.workTypeIds"
+            placeholder="全部"
+            clearable
+            multiple
+            collapse-tags
+            collapse-tags-tooltip
+            filterable
+            @change="applyFilters"
+            @clear="applyFilters"
+          >
+            <el-option label="全部" value="all" />
+            <el-option
+              v-for="wt in workTypes"
+              :key="wt.id"
+              :label="wt.work_type_name"
+              :value="wt.id"
+            />
+          </FilterSelect>
+        </div>
+        <div class="filter-item">
+          <span class="filter-label">检查结果</span>
+          <el-select
+            v-model="filters.inspectionResult"
+            placeholder="全部"
+            clearable
+            filterable
+            @change="applyFilters"
+            @clear="applyFilters"
+          >
+            <el-option label="全部" value="all" />
+            <el-option
+              v-for="option in inspectionResultOptions"
+              :key="option.value"
+              :label="option.label"
+              :value="option.value"
+            />
+          </el-select>
+        </div>
+        </FilterBar>
+      </el-card>
+
+      <div class="history-section">
+        <h3>记录列表</h3>
+        <el-table :data="inspectionList" stripe border v-loading="loading">
+        <el-table-column prop="inspection_date" label="检查日期" width="120" />
+        <el-table-column label="检查性质" width="90">
+          <template #default="{ row }">
+            {{ getInspectionKindLabel(row) }}
+          </template>
+        </el-table-column>
+        <el-table-column label="场站" width="150">
+          <template #default="{ row }">
+            {{ row.station?.station_name || '-' }}
+          </template>
+        </el-table-column>
+        <el-table-column label="被检查人" width="100">
+          <template #default="{ row }">
+            {{ row.inspected_user_name || '-' }}
+          </template>
+        </el-table-column>
+        <el-table-column label="工作性质" min-width="150">
+          <template #default="{ row }">
+            {{ getWorkTypeNames(row.work_type_ids) }}
+          </template>
+        </el-table-column>
+        <el-table-column label="积分" width="90">
+          <template #default="{ row }">
+            {{ getInspectionPoints(row) }}
+          </template>
+        </el-table-column>
+        <el-table-column label="检查人" width="100">
+          <template #default="{ row }">
+            {{ row.inspector?.real_name || row.inspector_name || '-' }}
+          </template>
+        </el-table-column>
+        <el-table-column label="检查结果" width="100">
+          <template #default="{ row }">
+            <el-tag :type="getInspectionResult(row).type">
+              {{ getInspectionResult(row).text }}
+            </el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column label="操作" width="100">
+          <template #default="{ row }">
+            <el-button link type="primary" @click="viewDetail(row)">查看</el-button>
+          </template>
+        </el-table-column>
+      </el-table>
+      </div>
+
+      <div class="pagination-wrapper">
+        <el-pagination
+          v-model:current-page="pagination.page"
+          v-model:page-size="pagination.pageSize"
+          :page-sizes="[5, 10, 20, 50]"
+          :total="pagination.total"
+          layout="total, sizes, prev, pager, next"
+          @current-change="loadInspectionList"
+          @size-change="handlePageSizeChange"
+        />
+      </div>
+    </template>
 
     <!-- 详情对话框 -->
     <FormDialog
@@ -242,7 +323,7 @@
           </el-descriptions-item>
           <el-descriptions-item label="总体结论">
             <el-tag :type="detailData.is_qualified ? 'success' : 'danger'">
-              {{ detailData.is_qualified ? '合格' : '异常' }}
+              {{ detailData.is_qualified ? '合格' : '不合格' }}
             </el-tag>
           </el-descriptions-item>
           <el-descriptions-item label="备注">{{ detailData.remark || '-' }}</el-descriptions-item>
@@ -266,7 +347,7 @@
             <el-table-column label="结果" width="80">
               <template #default="{ row }">
                 <el-tag :type="row.result === 'pass' ? 'success' : 'danger'" size="small">
-                  {{ row.result === 'pass' ? '合格' : '异常' }}
+                  {{ row.result === 'pass' ? '合格' : '不合格' }}
                 </el-tag>
               </template>
             </el-table-column>
@@ -303,17 +384,30 @@
 <script setup>
 import { ref, reactive, computed, onMounted, watch } from 'vue';
 import { ElMessage } from 'element-plus';
-import { Plus } from '@element-plus/icons-vue';
+import { Plus, InfoFilled } from '@element-plus/icons-vue';
+import { useRoute, useRouter } from 'vue-router';
 import { useUserStore } from '@/store/modules/user';
 import { useUpload } from '@/composables/useUpload';
 import request from '@/api/request';
 import dayjs from 'dayjs';
+
+import { createListSuggestionFetcher } from '@/utils/filterAutocomplete';
 import SafetyCheckItemList from '@/components/inspection/SafetyCheckItemList.vue';
 import FormDialog from '@/components/system/FormDialog.vue';
 
 const userStore = useUserStore();
+const route = useRoute();
+const router = useRouter();
 
-const { uploadUrl, uploadHeaders } = useUpload();
+const isRecordsView = computed(() => route.query.view === 'records');
+const goRecordsView = () => router.push({ query: { ...route.query, view: 'records' } });
+const goFormView = () => {
+  const query = { ...route.query };
+  delete query.view;
+  router.push({ query });
+};
+
+const { uploadUrl, uploadHeaders, resolveUploadUrl } = useUpload();
 
 // 场站筛选显示控制
 const showStationFilter = computed(() => {
@@ -321,7 +415,7 @@ const showStationFilter = computed(() => {
   if (user?.roleCode === 'station_manager' && user?.stations?.length > 1) {
     return true;
   }
-  return ['deputy_manager', 'department_manager', 'admin', 'safety_inspector'].includes(user?.roleCode);
+  return userStore.hasRole(['deputy_manager', 'department_manager', 'safety_inspector']);
 });
 
 // 场站列表
@@ -345,23 +439,50 @@ const isActiveStatus = (status) => status === undefined || status === null || st
 // 上传配置
 
 // 筛选条件
+const today = dayjs().format('YYYY-MM-DD');
 const filters = reactive({
-  dateRange: [],
-  stationId: null,
+  startDate: dayjs().subtract(5, 'day').format('YYYY-MM-DD'),
+  endDate: today,
+  inspectionKind: 'all',
+  stationId: 'all',
   inspectedName: '',
-  workTypeIds: []
+  workTypeIds: ['all'],
+  inspectionResult: 'all',
+  sortOrder: 'asc'
 });
 
 // 分页
 const pagination = reactive({
   page: 1,
-  pageSize: 10,
+  pageSize: 5,
   total: 0
 });
 
 // 列表数据
 const inspectionList = ref([]);
+const inspectionSuggestionList = ref([]);
 const loading = ref(false);
+
+const fetchInspectedNameSuggestions = createListSuggestionFetcher(
+  () => inspectionSuggestionList.value,
+  (row) => row.inspected_user_name
+);
+
+const inspectionKindOptions = [
+  { label: '自检', value: 'self' },
+  { label: '他检', value: 'other' }
+];
+
+const inspectionResultOptions = [
+  { label: '合格', value: 'pass' },
+  { label: '不合格', value: 'fail' },
+  { label: '未完成', value: 'incomplete' },
+  { label: '未检查', value: 'unchecked' }
+];
+const dateSortOptions = [
+  { label: '升序', value: 'asc' },
+  { label: '降序', value: 'desc' }
+];
 
 // 新建检查对话框
 const dialogVisible = ref(false);
@@ -445,7 +566,7 @@ const detailData = ref(null);
 // 加载场站列表
 const loadStations = async () => {
   try {
-    const res = await request.get('/stations', { params: { pageSize: 200 } });
+    const res = await request.get('/stations/all');
     stationList.value = (res.list || res || []).map(s => ({
       id: s.id,
       stationName: s.stationName || s.station_name,
@@ -495,7 +616,13 @@ const loadCheckItems = async (workTypeIds) => {
 
 const normalizeUploadFile = (file) => {
   const responseUrl = file?.response?.data?.url ?? file?.response?.url ?? '';
-  const url = responseUrl ? responseUrl : (file?.url ?? '');
+  let rawUrl = '';
+  if (responseUrl) {
+    rawUrl = responseUrl;
+  } else if (file?.url) {
+    rawUrl = file.url;
+  }
+  const url = resolveUploadUrl(rawUrl);
   return url ? { ...file, url } : file;
 };
 
@@ -571,26 +698,39 @@ const loadInspectionList = async () => {
     const params = {
       page: pagination.page,
       pageSize: pagination.pageSize,
-      inspectionType: 'safety'
+      inspectionType: 'safety',
+      includeSelf: 1
     };
 
-    if (filters.dateRange && filters.dateRange.length === 2) {
-      params.startDate = filters.dateRange[0];
-      params.endDate = filters.dateRange[1];
+    if (filters.startDate) {
+      params.startDate = filters.startDate;
     }
-    if (filters.stationId) {
+    if (filters.endDate) {
+      params.endDate = filters.endDate;
+    }
+    if (filters.stationId && filters.stationId !== 'all') {
       params.stationId = filters.stationId;
     }
     if (filters.inspectedName) {
-      params.inspectedUserName = filters.inspectedName;
+      params.inspectedUserName = filters.inspectedName.trim();
     }
-    if (filters.workTypeIds && filters.workTypeIds.length > 0) {
+    if (filters.workTypeIds && filters.workTypeIds.length > 0 && !filters.workTypeIds.includes('all')) {
       params.workTypeIds = filters.workTypeIds.join(',');
+    }
+    if (filters.inspectionKind && filters.inspectionKind !== 'all') {
+      params.inspectionKind = filters.inspectionKind;
+    }
+    if (filters.inspectionResult && filters.inspectionResult !== 'all') {
+      params.inspectionResult = filters.inspectionResult;
+    }
+    if (filters.sortOrder) {
+      params.sortOrder = filters.sortOrder;
     }
 
     const res = await request.get('/other-inspections', { params });
     inspectionList.value = res?.list || res || [];
     pagination.total = res?.total || 0;
+    loadInspectionSuggestions(params);
   } catch (error) {
     
   } finally {
@@ -598,22 +738,49 @@ const loadInspectionList = async () => {
   }
 };
 
+const loadInspectionSuggestions = async (baseParams) => {
+  try {
+    const params = {
+      ...baseParams,
+      page: 1,
+      pageSize: 5000
+    };
+    const res = await request.get('/other-inspections', { params });
+    const list = res?.list || res || [];
+    inspectionSuggestionList.value = Array.isArray(list) ? list : [];
+  } catch (error) {
+    inspectionSuggestionList.value = [];
+  }
+};
+
 // 重置筛选
 const resetFilters = () => {
-  filters.dateRange = [];
-  filters.stationId = null;
+  filters.startDate = dayjs().subtract(5, 'day').format('YYYY-MM-DD');
+  filters.endDate = today;
+  filters.inspectionKind = 'all';
+  filters.stationId = 'all';
   filters.inspectedName = '';
-  filters.workTypeIds = [];
+  filters.workTypeIds = ['all'];
+  filters.inspectionResult = 'all';
+  filters.sortOrder = 'asc';
+  if (!isRecordsView.value) return;
   loadInspectionList();
 };
 
 const applyFilters = () => {
+  if (!isRecordsView.value) return;
+  pagination.page = 1;
+  loadInspectionList();
+};
+
+const handlePageSizeChange = (size) => {
+  pagination.pageSize = size;
   pagination.page = 1;
   loadInspectionList();
 };
 
 watch(
-  () => [filters.dateRange, filters.stationId, filters.inspectedName, filters.workTypeIds],
+  () => [filters.startDate, filters.endDate, filters.inspectionKind, filters.stationId, filters.inspectedName, filters.workTypeIds, filters.inspectionResult, filters.sortOrder],
   () => {
     applyFilters();
   },
@@ -678,8 +845,6 @@ const showNewInspection = () => {
   if (defaultWorkTypes.length > 0) {
     loadCheckItems(defaultWorkTypes);
   }
-
-  dialogVisible.value = true;
 };
 
 // 提交检查
@@ -728,8 +893,10 @@ const submitInspection = async () => {
     });
 
     ElMessage.success('安全他检提交成功');
-    dialogVisible.value = false;
-    loadInspectionList();
+    showNewInspection();
+    if (isRecordsView.value) {
+      loadInspectionList();
+    }
   } catch (error) {
     if (error.message) {
       ElMessage.error(error.message);
@@ -781,19 +948,63 @@ const getInspectionPoints = (row) => {
   return total;
 };
 
+const getInspectionKindLabel = (row) => {
+  const kind = row?.inspection_kind ?? row?.inspectionKind;
+  if (kind === 'self') return '自检';
+  if (kind === 'other') return '他检';
+  return '他检';
+};
+
+const getItemStatusValue = (item) => {
+  if (item?.status === 0 || item?.status === 1) return item.status;
+  if (item?.checked === true) return 1;
+  if (item?.checked === false) return 0;
+  if (item?.result === 'pass') return 1;
+  if (item?.result === 'fail') return 0;
+  return null;
+};
+
+const getSelfInspectionResult = (row) => {
+  const items = row?.inspection_items || row?.inspectionItems || [];
+  if (!Array.isArray(items) || items.length === 0) {
+    return { type: 'info', text: '未检查' };
+  }
+  const statuses = items.map(item => getItemStatusValue(item));
+  const unselectedCount = statuses.filter(value => value === null).length;
+  const failCount = statuses.filter(value => value === 0).length;
+  if (unselectedCount > 0) {
+    return { type: 'info', text: '未完成' };
+  }
+  if (failCount === 0) {
+    return { type: 'success', text: '全部合格' };
+  }
+  return { type: 'warning', text: `有${failCount}项不合格` };
+};
+
 // 获取检查结果
 const getInspectionResult = (row) => {
+  const kind = row?.inspection_kind ?? row?.inspectionKind;
+  if (kind === 'self') {
+    return getSelfInspectionResult(row);
+  }
   if (row.is_qualified) {
     return { type: 'success', text: '合格' };
   } else {
-    return { type: 'danger', text: '异常' };
+    return { type: 'danger', text: '不合格' };
   }
 };
 
 onMounted(async () => {
   await loadStations();
   await loadWorkTypes();
+  showNewInspection();
+  if (isRecordsView.value) {
+    await loadInspectionList();
+  }
+});
 
+watch(isRecordsView, async (value) => {
+  if (!value) return;
   await loadInspectionList();
 });
 </script>
@@ -810,18 +1021,104 @@ onMounted(async () => {
       margin: 0;
       font-size: 18px;
     }
+
+    .page-title-link {
+      cursor: pointer;
+      color: var(--el-color-primary);
+    }
+  }
+
+  .inspection-form-card {
+    margin-bottom: 16px;
+
+    .inspection-form-header {
+      margin-bottom: 12px;
+    }
+
+    .form-title-row {
+      display: flex;
+      align-items: center;
+      justify-content: flex-start;
+      width: 100%;
+      gap: 12px;
+    }
+
+    .form-subtitle {
+      font-size: 14px;
+      color: #606266;
+    }
+
+    .form-actions {
+      display: flex;
+      gap: 8px;
+      justify-content: flex-end;
+      margin-top: 12px;
+    }
+  }
+
+  .report-banner {
+    background: #fff;
+    border-radius: 8px;
+    padding: 20px 24px;
+    margin-bottom: 16px;
+    border: 1px solid #d9ecff;
+    border-left: 4px solid #409EFF;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+
+    .banner-content {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      flex: 1;
+      min-width: 0;
+    }
+
+    .banner-icon {
+      font-size: 40px;
+      color: #409EFF;
+    }
+
+    .banner-info {
+      flex: 1;
+      min-width: 0;
+
+      .banner-title {
+        font-size: 18px;
+        font-weight: 600;
+        color: #303133;
+      }
+
+      .banner-desc {
+        font-size: 14px;
+        color: #909399;
+        margin-top: 4px;
+      }
+    }
   }
 
   .filter-card {
     margin-bottom: 20px;
   }
 
-  .table-card {
-    .pagination-wrapper {
-      margin-top: 16px;
-      display: flex;
-      justify-content: flex-end;
+  .history-section {
+    background: #fff;
+    border-radius: 8px;
+    padding: 20px;
+    border: 1px solid #e4e7ed;
+
+    h3 {
+      margin: 0 0 16px 0;
+      font-size: 16px;
     }
+  }
+
+  .pagination-wrapper {
+    margin-top: 16px;
+    display: flex;
+    justify-content: flex-end;
   }
 
   .check-group {
@@ -902,6 +1199,38 @@ onMounted(async () => {
         margin: 0 0 12px 0;
         font-size: 14px;
       }
+    }
+  }
+}
+
+@media (min-width: 1025px) {
+  .report-banner {
+    .banner-actions {
+      order: -1;
+    }
+
+    .banner-content {
+      order: 0;
+    }
+  }
+}
+
+@media (max-width: 1024px) {
+  .report-banner {
+    padding: 16px;
+    flex-direction: column;
+    align-items: stretch;
+
+    .banner-content {
+      width: 100%;
+    }
+
+    .banner-actions {
+      width: 100%;
+    }
+
+    :deep(.el-button) {
+      width: 100%;
     }
   }
 }

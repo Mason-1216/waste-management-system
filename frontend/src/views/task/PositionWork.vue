@@ -2,7 +2,7 @@
   <div class="position-work-page">
     <div v-if="showFixedView" class="tab-content">
           <div class="page-header">
-            <h2>固定任务</h2>
+            <h2>固定任务填报</h2>
             <div class="header-actions">
               <el-date-picker
                 v-model="currentDate"
@@ -10,9 +10,8 @@
                 placeholder="选择日期"
                 format="YYYY-MM-DD"
                 value-format="YYYY-MM-DD"
-                @change="loadTodayTasks"
+                @change="handleFixedDateChange"
               />
-              <el-button @click="loadTodayTasks">刷新</el-button>
             </div>
           </div>
 
@@ -28,8 +27,8 @@
             <el-table-column prop="workName" label="任务名称" min-width="180" />
             <el-table-column prop="taskCategory" label="任务类别" width="120" />
             <el-table-column prop="scoreMethod" label="给分方式" width="120" />
-            <el-table-column prop="unitPoints" label="单位积分" width="100" />
-            <el-table-column label="数量" width="110">
+            <el-table-column prop="unitPoints" label="单位积分" width="130" />
+            <el-table-column label="数量" width="130">
               <template #default="{ row }">
                 <el-input-number
                   v-model="row.quantity"
@@ -40,12 +39,8 @@
                   size="small"
                   controls-position="right"
                   :disabled="row.isSubmitted || !row.quantityEditable"
+                  class="table-input-number"
                 />
-              </template>
-            </el-table-column>
-            <el-table-column label="积分" width="110">
-              <template #default="{ row }">
-                {{ formatPoints(row.unitPoints, row.quantity) }}
               </template>
             </el-table-column>
             <el-table-column label="任务来源" width="120">
@@ -79,7 +74,7 @@
                 </el-tag>
               </template>
             </el-table-column>
-            <el-table-column label="操作" width="100" fixed="right" align="center">
+          <el-table-column label="操作" width="100" align="center">
               <template #default="{ row }">
                 <el-button
                   type="primary"
@@ -93,6 +88,20 @@
               </template>
             </el-table-column>
           </el-table>
+
+          <div class="pagination-wrapper" v-if="fixedPagination.total > 0">
+            <el-pagination
+              v-model:current-page="fixedPagination.page"
+              v-model:page-size="fixedPagination.pageSize"
+              :total="fixedPagination.total"
+              :page-sizes="[5, 10, 20, 50, 100]"
+              layout="total, sizes, prev, pager, next"
+              @current-change="loadTodayTasks"
+              @size-change="handleFixedPageSizeChange"
+            />
+          </div>
+
+
 
 
 
@@ -116,139 +125,159 @@
                 accept=".xlsx,.xls"
                 :before-upload="beforeUpload"
               >
-                <el-button type="primary" plain>
+                <el-button type="success">
                   <el-icon><Download /></el-icon>
                   批量导入
                 </el-button>
               </el-upload>
-              <el-button @click="downloadTemplate" plain>
+              <el-button type="info" @click="downloadTemplate">
                 <el-icon><Download /></el-icon>
                 下载模板
               </el-button>
-              <el-button :loading="exportingJobs" @click="exportPositionJobs" plain>
+              <el-button type="primary" :loading="exportingJobs" @click="exportPositionJobs">
                 <el-icon><Upload /></el-icon>
-                导出
+                批量导出
+              </el-button>
+              <el-button v-if="selectedJobs.length > 0" type="danger" @click="batchDeleteJobs">
+                <el-icon><Delete /></el-icon>
+                批量删除 ({{ selectedJobs.length }})
               </el-button>
             </div>
           </div>
 
-          <div class="filter-bar">
-            <el-select
-              v-if="!hideStation"
-              v-model="filters.stationId"
-              placeholder="场站"
-              clearable
-              :disabled="userStore.roleCode === 'station_manager'"
-              style="width: 160px"
-            >
-              <el-option
-                v-for="station in stations"
-                :key="station.id"
-                :label="station.station_name"
-                :value="station.id"
+      <el-card class="filter-card">
+        <FilterBar>
+            <div class="filter-item" v-if="!hideStation">
+              <span class="filter-label">场站</span>
+              <FilterSelect
+                v-model="filters.stationId"
+                placeholder="全部"
+                clearable
+                filterable
+                :disabled="userStore.roleCode === 'station_manager'"
+                style="width: 160px"
+                @change="handleJobSearch"
+                @clear="handleJobSearch"
+              >
+                <el-option label="全部" value="all" />
+                <el-option
+                  v-for="station in stations"
+                  :key="station.id"
+                  :label="station.station_name"
+                  :value="station.id"
+                />
+              </FilterSelect>
+            </div>
+            <div class="filter-item" v-if="!hidePosition">
+              <span class="filter-label">岗位</span>
+              <FilterAutocomplete
+                v-model="filters.positionName"
+                :fetch-suggestions="fetchPositionNameSuggestions"
+                trigger-on-focus
+                placeholder="全部"
+                clearable
+                style="width: 140px"
+                @select="handleJobSearch"
+                @input="handleJobSearch"
+                @clear="handleJobSearch"
+                @keyup.enter="handleJobSearch"
               />
-            </el-select>
-            <el-input
-              v-if="!hidePosition"
-              v-model="filters.positionName"
-              placeholder="岗位"
-              clearable
-              style="width: 140px"
-              @keyup.enter="handleJobSearch"
-            />
-            <el-input
-              v-model="filters.jobName"
-              placeholder="任务名称"
-              clearable
-              style="width: 160px"
-              @keyup.enter="handleJobSearch"
-            />
-            <el-input
-              v-model="filters.taskCategory"
-              placeholder="任务类别"
-              clearable
-              style="width: 140px"
-              @keyup.enter="handleJobSearch"
-            />
-            <el-select
-              v-model="filters.scoreMethod"
-              placeholder="给分方式"
-              clearable
-              style="width: 160px"
-            >
-              <el-option v-for="option in scoreMethodOptions" :key="option" :label="option" :value="option" />
-            </el-select>
-            <el-input
-              v-model="filters.standardHours"
-              placeholder="标准工时(h/d)"
-              clearable
-              type="number"
-              style="width: 150px"
-              @keyup.enter="handleJobSearch"
-            />
-            <el-input
-              v-model="filters.points"
-              placeholder="单位积分"
-              clearable
-              type="number"
-              style="width: 120px"
-              @keyup.enter="handleJobSearch"
-            />
-            <el-input
-              v-model="filters.quantity"
-              placeholder="数量"
-              clearable
-              type="number"
-              style="width: 100px"
-              @keyup.enter="handleJobSearch"
-            />
-            <el-input
-              v-model="filters.pointsRule"
-              placeholder="积分规则"
-              clearable
-              style="width: 160px"
-              @keyup.enter="handleJobSearch"
-            />
-            <el-select
-              v-model="filters.quantityEditable"
-              placeholder="数量是否可修改"
-              clearable
-              style="width: 150px"
-            >
-              <el-option label="是" :value="1" />
-              <el-option label="否" :value="0" />
-            </el-select>
-            <el-select
-              v-model="filters.pointsEditable"
-              placeholder="积分是否可修改"
-              clearable
-              style="width: 150px"
-            >
-              <el-option label="是" :value="1" />
-              <el-option label="否" :value="0" />
-            </el-select>
-            <el-select
-              v-model="filters.dispatchReviewRequired"
-              placeholder="派发任务是否强制审核"
-              clearable
-              style="width: 180px"
-            >
-              <el-option label="是" :value="1" />
-              <el-option label="否" :value="0" />
-            </el-select>
-            <el-button type="primary" @click="handleJobSearch">查询</el-button>
-            <el-button @click="resetFilters">重置</el-button>
-          </div>
-
-          <div
-            v-if="canManageLibrary && selectedJobs.length > 0"
-            class="batch-actions"
-            style="margin: 10px 0;"
-          >
-            <el-button type="danger" @click="batchDeleteJobs">
-              批量删除 ({{ selectedJobs.length }})
-            </el-button>
-          </div>
+            </div>
+            <div class="filter-item">
+              <span class="filter-label">任务名称</span>
+              <FilterAutocomplete
+                v-model="filters.jobName"
+                :fetch-suggestions="fetchJobNameSuggestions"
+                trigger-on-focus
+                placeholder="全部"
+                clearable
+                style="width: 160px"
+                @select="handleJobSearch"
+                @input="handleJobSearch"
+                @clear="handleJobSearch"
+                @keyup.enter="handleJobSearch"
+              />
+            </div>
+            <div class="filter-item">
+              <span class="filter-label">任务类别</span>
+              <FilterAutocomplete
+                v-model="filters.taskCategory"
+                :fetch-suggestions="fetchTaskCategorySuggestions"
+                trigger-on-focus
+                placeholder="全部"
+                clearable
+                style="width: 140px"
+                @select="handleJobSearch"
+                @input="handleJobSearch"
+                @clear="handleJobSearch"
+                @keyup.enter="handleJobSearch"
+              />
+            </div>
+            <div class="filter-item">
+              <span class="filter-label">给分方式</span>
+              <FilterSelect
+                v-model="filters.scoreMethod"
+                placeholder="全部"
+                clearable
+                filterable
+                style="width: 160px"
+                @change="handleJobSearch"
+                @clear="handleJobSearch"
+              >
+                <el-option label="全部" value="all" />
+                <el-option v-for="option in scoreMethodOptions" :key="option" :label="option" :value="option" />
+              </FilterSelect>
+            </div>
+            <div class="filter-item">
+              <span class="filter-label">数量可修改</span>
+              <FilterSelect
+                v-model="filters.quantityEditable"
+                placeholder="全部"
+                clearable
+                filterable
+                style="width: 150px"
+                @change="handleJobSearch"
+                @clear="handleJobSearch"
+              >
+                <el-option label="全部" value="all" />
+                <el-option label="是" :value="1" />
+                <el-option label="否" :value="0" />
+              </FilterSelect>
+            </div>
+            <div class="filter-item">
+              <span class="filter-label">积分可修改</span>
+              <FilterSelect
+                v-model="filters.pointsEditable"
+                placeholder="全部"
+                clearable
+                filterable
+                style="width: 150px"
+                @change="handleJobSearch"
+                @clear="handleJobSearch"
+              >
+                <el-option label="全部" value="all" />
+                <el-option label="是" :value="1" />
+                <el-option label="否" :value="0" />
+              </FilterSelect>
+            </div>
+            <div class="filter-item">
+              <span class="filter-label">派发强制审核</span>
+              <FilterSelect
+                v-model="filters.dispatchReviewRequired"
+                placeholder="全部"
+                clearable
+                filterable
+                style="width: 180px"
+                @change="handleJobSearch"
+                @clear="handleJobSearch"
+              >
+                <el-option label="全部" value="all" />
+                <el-option label="是" :value="1" />
+                <el-option label="否" :value="0" />
+              </FilterSelect>
+            </div>
+        </FilterBar>
+      </el-card>
 
           <el-table
             v-loading="jobLoading"
@@ -265,6 +294,11 @@
               </template>
             </el-table-column>
             <el-table-column v-if="!hidePosition" prop="position_name" label="岗位" width="140" />
+            <el-table-column prop="sort_order" label="排序" width="90">
+              <template #default="{ row }">
+                {{ row.sort_order ?? 1 }}
+              </template>
+            </el-table-column>
             <el-table-column prop="job_name" label="任务名称" min-width="160" />
             <el-table-column prop="task_category" label="任务类别" width="120">
               <template #default="{ row }">
@@ -319,9 +353,8 @@
                 </el-tag>
               </template>
             </el-table-column>
-            <el-table-column label="操作" width="240" fixed="right">
+          <el-table-column label="操作" width="240">
               <template #default="{ row }">
-                <el-button link type="primary" @click="openApplyDialog(row)">申请填报</el-button>
                 <el-button
                   v-if="canManageLibrary"
                   link
@@ -355,7 +388,7 @@
               v-model:current-page="pagination.page"
               v-model:page-size="pagination.pageSize"
               :total="pagination.total"
-              :page-sizes="[10, 20, 50, 100]"
+              :page-sizes="[5, 10, 20, 50, 100]"
               layout="total, sizes, prev, pager, next"
               @current-change="loadPositionJobs"
               @size-change="handleJobPageSizeChange"
@@ -385,8 +418,17 @@
             />
           </el-select>
         </el-form-item>
-        <el-form-item label="岗位" required>
+        <el-form-item label="排序" required>
           <el-input v-model="jobForm.positionName" placeholder="请输入岗位名称" />
+        </el-form-item>
+        <el-form-item label="排序">
+          <el-input-number
+            v-model="jobForm.sortOrder"
+            :min="1"
+            :max="9999"
+            :precision="0"
+            :step="1"
+          />
         </el-form-item>
         <el-form-item label="任务名称" required>
           <el-input v-model="jobForm.jobName" placeholder="请输入任务名称" />
@@ -537,6 +579,8 @@ import { ref, reactive, computed, onMounted, watch } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { Plus, Download, Upload } from '@element-plus/icons-vue';
 import dayjs from 'dayjs';
+
+import { createListSuggestionFetcher } from '@/utils/filterAutocomplete';
 import * as positionWorkLogApi from '@/api/positionWorkLog';
 import * as positionJobApi from '@/api/positionJob';
 import * as stationApi from '@/api/station';
@@ -551,7 +595,7 @@ const props = defineProps({
   },
   managementTitle: {
     type: String,
-    default: '岗位工作任务库'
+    default: '岗位工作任务汇总表'
   },
   forceManagement: {
     type: Boolean,
@@ -572,11 +616,11 @@ const userStore = useUserStore();
 const isDevTest = computed(() => userStore.roleCode === 'dev_test' || userStore.baseRoleCode === 'dev_test');
 const managerRoles = ['station_manager', 'department_manager', 'deputy_manager', 'senior_management'];
 const canManageLibrary = computed(() => userStore.hasRole(managerRoles));
-const allowManagement = computed(() => userStore.hasRole(['operator', 'station_manager', 'department_manager', 'deputy_manager', 'senior_management', 'dev_test']) || props.forceManagement);
+const allowManagement = computed(() => userStore.hasRole(managerRoles) || props.forceManagement);
 
 const showManagementView = computed(() => allowManagement.value && props.defaultTab === 'management');
 const showFixedView = computed(() => !showManagementView.value && !props.forceManagement);
-const managementTitle = computed(() => props.managementTitle ?? '岗位工作任务库');
+const managementTitle = computed(() => props.managementTitle ?? '岗位工作任务汇总表');
 
 const handleViewChange = () => {
   if (showManagementView.value) {
@@ -591,14 +635,49 @@ const handleViewChange = () => {
 
 const currentDate = ref(dayjs().format('YYYY-MM-DD'));
 const todayTasks = ref([]);
+const fixedPagination = reactive({
+  page: 1,
+  pageSize: 5,
+  total: 0
+});
 const taskLoading = ref(false);
 
 const loadTodayTasks = async () => {
   taskLoading.value = true;
   try {
-    const tasks = await positionWorkLogApi.getTodayTasks({ workDate: currentDate.value });
-    const normalizedTasks = Array.isArray(tasks) ? tasks : [];
-    todayTasks.value = normalizedTasks.map(task => ({
+    const result = await positionWorkLogApi.getTodayTasks({
+      workDate: currentDate.value,
+      page: fixedPagination.page,
+      pageSize: fixedPagination.pageSize
+    });
+    const normalizedList = Array.isArray(result)
+      ? result
+      : Array.isArray(result?.list)
+        ? result.list
+        : [];
+    const rawTotal = Array.isArray(result) ? normalizedList.length : result?.total;
+    const totalValue = Number(rawTotal);
+    fixedPagination.total = Number.isFinite(totalValue) ? totalValue : normalizedList.length;
+
+    if (!Array.isArray(result)) {
+      const nextPage = Number.parseInt(result?.page, 10);
+      const nextSize = Number.parseInt(result?.pageSize, 10);
+      if (Number.isInteger(nextPage) && nextPage > 0) {
+        fixedPagination.page = nextPage;
+      }
+      if (Number.isInteger(nextSize) && nextSize > 0) {
+        fixedPagination.pageSize = nextSize;
+      }
+    }
+
+    const maxPage = Math.max(1, Math.ceil(fixedPagination.total / fixedPagination.pageSize));
+    if (fixedPagination.total > 0 && fixedPagination.page > maxPage) {
+      fixedPagination.page = maxPage;
+      await loadTodayTasks();
+      return;
+    }
+
+    todayTasks.value = normalizedList.map(task => ({
       ...task,
       quantity: Number(task.quantity ?? 1),
       isCompleted: task.isSubmitted ? Number(task.isCompleted ?? 0) : task.isCompleted ?? null,
@@ -610,6 +689,19 @@ const loadTodayTasks = async () => {
   } finally {
     taskLoading.value = false;
   }
+};
+
+const handleFixedPageSizeChange = (size) => {
+  if (typeof size === 'number') {
+    fixedPagination.pageSize = size;
+  }
+  fixedPagination.page = 1;
+  loadTodayTasks();
+};
+
+const handleFixedDateChange = () => {
+  fixedPagination.page = 1;
+  loadTodayTasks();
 };
 
 const formatPoints = (unitPoints, quantity) => {
@@ -688,34 +780,46 @@ const saveTask = async (task) => {
 
 const stations = ref([]);
 const positionJobs = ref([]);
+const positionJobSuggestionList = ref([]);
 const selectedJobs = ref([]);
 const jobLoading = ref(false);
 const exportingJobs = ref(false);
+
+const fetchPositionNameSuggestions = createListSuggestionFetcher(
+  () => positionJobSuggestionList.value,
+  (row) => row.position_name
+);
+const fetchJobNameSuggestions = createListSuggestionFetcher(
+  () => positionJobSuggestionList.value,
+  (row) => row.job_name
+);
+const fetchTaskCategorySuggestions = createListSuggestionFetcher(
+  () => positionJobSuggestionList.value,
+  (row) => row.task_category
+);
+
 const filters = reactive({
-  stationId: null,
+  stationId: 'all',
   positionName: '',
   jobName: '',
   taskCategory: '',
-  scoreMethod: '',
-  standardHours: '',
-  points: '',
-  quantity: '',
-  pointsRule: '',
-  quantityEditable: null,
-  pointsEditable: null,
-  dispatchReviewRequired: null
+  scoreMethod: 'all',
+  quantityEditable: 'all',
+  pointsEditable: 'all',
+  dispatchReviewRequired: 'all'
 });
 const pagination = reactive({
   page: 1,
-  pageSize: 10,
+  pageSize: 5,
   total: 0
 });
 
-const hasFilterValue = (value) => value !== undefined && value !== null && value !== '';
+const hasFilterValue = (value) => value !== undefined && value !== null && value !== '' && value !== 'all';
 
 const resolveTextFilter = (value) => {
   if (typeof value !== 'string') return '';
-  return value.trim();
+  const text = value.trim();
+  return text === 'all' ? '' : text;
 };
 
 const handleJobSearch = () => {
@@ -726,18 +830,14 @@ const handleJobSearch = () => {
 const resetFilters = () => {
   filters.stationId = userStore.roleCode === 'station_manager' && userStore.stations?.length > 0
     ? userStore.stations[0].id
-    : null;
+    : 'all';
   filters.positionName = '';
   filters.jobName = '';
   filters.taskCategory = '';
-  filters.scoreMethod = '';
-  filters.standardHours = '';
-  filters.points = '';
-  filters.quantity = '';
-  filters.pointsRule = '';
-  filters.quantityEditable = null;
-  filters.pointsEditable = null;
-  filters.dispatchReviewRequired = null;
+  filters.scoreMethod = 'all';
+  filters.quantityEditable = 'all';
+  filters.pointsEditable = 'all';
+  filters.dispatchReviewRequired = 'all';
   pagination.page = 1;
   loadPositionJobs();
 };
@@ -752,7 +852,7 @@ const handleJobPageSizeChange = (size) => {
 
 const loadStations = async () => {
   try {
-    const data = await stationApi.getStations({ pageSize: 200 });
+    const data = await stationApi.getAllStations();
     stations.value = data?.list ?? data ?? [];
     if (userStore.roleCode === 'station_manager' && userStore.stations?.length > 0) {
       filters.stationId = userStore.stations[0].id;
@@ -769,7 +869,6 @@ const buildJobQuery = () => {
   const positionName = resolveTextFilter(filters.positionName);
   const jobName = resolveTextFilter(filters.jobName);
   const taskCategory = resolveTextFilter(filters.taskCategory);
-  const pointsRule = resolveTextFilter(filters.pointsRule);
   const scoreMethod = resolveTextFilter(filters.scoreMethod);
 
   return {
@@ -778,10 +877,6 @@ const buildJobQuery = () => {
     jobName: jobName ? jobName : undefined,
     taskCategory: taskCategory ? taskCategory : undefined,
     scoreMethod: scoreMethod ? scoreMethod : undefined,
-    standardHours: hasFilterValue(filters.standardHours) ? filters.standardHours : undefined,
-    points: hasFilterValue(filters.points) ? filters.points : undefined,
-    quantity: hasFilterValue(filters.quantity) ? filters.quantity : undefined,
-    pointsRule: pointsRule ? pointsRule : undefined,
     quantityEditable: hasFilterValue(filters.quantityEditable) ? filters.quantityEditable : undefined,
     pointsEditable: hasFilterValue(filters.pointsEditable) ? filters.pointsEditable : undefined,
     dispatchReviewRequired: hasFilterValue(filters.dispatchReviewRequired)
@@ -801,10 +896,24 @@ const loadPositionJobs = async () => {
     positionJobs.value = result?.list ?? [];
     pagination.total = result?.total ?? 0;
     selectedJobs.value = [];
+    loadPositionJobSuggestions();
   } catch (error) {
     ElMessage.error('加载岗位任务失败');
   } finally {
     jobLoading.value = false;
+  }
+};
+
+const loadPositionJobSuggestions = async () => {
+  try {
+    const result = await positionJobApi.getPositionJobs({
+      page: 1,
+      pageSize: 5000,
+      ...buildJobQuery()
+    });
+    positionJobSuggestionList.value = result?.list ?? [];
+  } catch (error) {
+    positionJobSuggestionList.value = [];
   }
 };
 
@@ -818,7 +927,7 @@ const exportPositionJobs = async () => {
   try {
     const result = await positionJobApi.getPositionJobs({
       page: 1,
-      pageSize: 10000,
+      pageSize: 5000,
       ...buildJobQuery()
     });
     const list = result?.list ?? [];
@@ -830,6 +939,7 @@ const exportPositionJobs = async () => {
     const rows = list.map(row => ([
       row.station?.station_name ?? '',
       row.position_name ?? '',
+      row.sort_order ?? 1,
       row.job_name ?? '',
       row.task_category ?? '',
       row.score_method ?? '',
@@ -846,6 +956,7 @@ const exportPositionJobs = async () => {
     const header = [
       '场站',
       '岗位',
+      '排序',
       '任务名称',
       '任务类别',
       '给分方式',
@@ -862,8 +973,8 @@ const exportPositionJobs = async () => {
     const XLSX = await import('xlsx');
     const ws = XLSX.utils.aoa_to_sheet([header, ...rows]);
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, '岗位工作任务库');
-    XLSX.writeFile(wb, `岗位工作任务库_${dayjs().format('YYYYMMDD_HHmmss')}.xlsx`);
+    XLSX.utils.book_append_sheet(wb, ws, '岗位工作任务汇总表');
+    XLSX.writeFile(wb, `岗位工作任务汇总表_${dayjs().format('YYYYMMDD_HHmmss')}.xlsx`);
 
     const total = result?.total ?? list.length;
     if (total > list.length) {
@@ -889,6 +1000,7 @@ const jobForm = reactive({
   standardHours: null,
   points: null,
   quantity: 1,
+  sortOrder: 1,
   pointsRule: '',
   quantityEditable: 0,
   pointsEditable: 0,
@@ -908,6 +1020,7 @@ const resetJobForm = () => {
   jobForm.standardHours = null;
   jobForm.points = null;
   jobForm.quantity = 1;
+  jobForm.sortOrder = 1;
   jobForm.pointsRule = '';
   jobForm.quantityEditable = 0;
   jobForm.pointsEditable = 0;
@@ -926,6 +1039,7 @@ const openJobDialog = (row = null) => {
     jobForm.standardHours = row.standard_hours ?? null;
     jobForm.points = row.points ?? null;
     jobForm.quantity = row.quantity ?? 1;
+    jobForm.sortOrder = row.sort_order ?? 1;
     jobForm.pointsRule = row.points_rule ?? '';
     jobForm.quantityEditable = row.quantity_editable ?? 0;
     jobForm.pointsEditable = row.points_editable ?? 0;
@@ -963,6 +1077,7 @@ const saveJob = async () => {
       standardHours: jobForm.standardHours,
       points: jobForm.points,
       quantity: quantityValue,
+      sortOrder: jobForm.sortOrder,
       pointsRule: jobForm.pointsRule,
       quantityEditable: jobForm.quantityEditable,
       pointsEditable: jobForm.pointsEditable,
@@ -1150,11 +1265,11 @@ const dispatchForm = reactive({
   quantity: 1
 });
 
-const loadExecutors = async (stationId) => {
+const loadExecutors = async () => {
   try {
     const params = {
       pageSize: 500,
-      stationId: stationId ?? undefined
+      roleCode: 'station_manager,operator,maintenance'
     };
     const res = await request.get('/users', { params });
     executorOptions.value = res?.list ?? res ?? [];
@@ -1173,7 +1288,7 @@ const openDispatchDialog = async (row) => {
   dispatchForm.executorId = null;
   dispatchForm.quantity = row.quantity ?? 1;
   dispatchDialogVisible.value = true;
-  await loadExecutors(row.station_id);
+  await loadExecutors();
 };
 
 const submitDispatch = async () => {
@@ -1239,8 +1354,11 @@ onMounted(() => {
     .filter-bar {
       display: flex;
       gap: 10px;
-      margin-bottom: 20px;
       flex-wrap: wrap;
+    }
+
+    .filter-card {
+      margin-bottom: 20px;
     }
 
     .pagination-wrapper {
@@ -1259,4 +1377,26 @@ onMounted(() => {
     vertical-align: middle;
   }
 }
+
+:deep(.table-input-number) {
+  width: 100%;
+}
+
+:deep(.table-input-number .el-input__wrapper) {
+  width: 100%;
+}
+  :deep(.table-input-number.is-controls-right .el-input__wrapper) {
+    padding-right: 52px;
+  }
+
+  :deep(.table-input-number.is-controls-right .el-input-number__decrease),
+  :deep(.table-input-number.is-controls-right .el-input-number__increase) {
+    width: 26px;
+  }
+
+:deep(.table-input-number .el-input-number__decrease),
+:deep(.table-input-number .el-input-number__increase) {
+  right: 0;
+}
 </style>
+

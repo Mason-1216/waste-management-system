@@ -1,10 +1,10 @@
-// 响应式断点
-$breakpoint-xs: 480px;   // 手机竖屏
-$breakpoint-sm: 768px;   // 手机横屏/平板竖屏
-$breakpoint-md: 1024px;  // 平板横屏
-$breakpoint-lg: 1280px;  // 桌面
+// 鍝嶅簲寮忔柇鐐?
+$breakpoint-xs: 480px;   // 鎵嬫満绔栧睆
+$breakpoint-sm: 768px;   // 鎵嬫満妯睆/骞虫澘绔栧睆
+$breakpoint-md: 1024px;  // 骞虫澘妯睆
+$breakpoint-lg: 1280px;  // 妗岄潰
 
-// 全局样式变量
+// 鍏ㄥ眬鏍峰紡鍙橀噺
 :root {
   --primary-color: #409EFF;
   --success-color: #67C23A;
@@ -18,13 +18,19 @@ $breakpoint-lg: 1280px;  // 桌面
   --sidebar-width: 220px;
   --header-height: 60px;
   --mobile-min-touch-size: 44px;
+  --table-row-height: 48px;
+  --table-visible-rows: 8;
 }
 
-// 重置样式
+@media screen and (max-width: 768px) {
+  :root {
+    --table-visible-rows: 6;
+  }
+}
+
+// 閲嶇疆鏍峰紡
 * {
   box-sizing: border-box;
-  scrollbar-width: auto;
-  scrollbar-color: #C0C4CC #F5F7FA;
 }
 
 html, body {
@@ -40,23 +46,9 @@ body {
   color: var(--text-color);
 }
 
-// 滚动条样式
-::-webkit-scrollbar {
-  width: 12px;
-  height: 12px;
-}
-
-::-webkit-scrollbar-thumb {
-  background-color: #C0C4CC;
-  border-radius: 3px;
-}
-
-::-webkit-scrollbar-track {
-  background-color: #F5F7FA;
-}
-
-// 自定义表格横向滑动条
-// 通用类
+// 婊氬姩鏉℃牱寮?
+// 鑷畾涔夎〃鏍兼í鍚戞粦鍔ㄦ潯
+// 閫氱敤绫?
 .flex {
   display: flex;
 }
@@ -117,7 +109,17 @@ body {
   padding: 20px;
 }
 
-// 页面容器
+:root {
+  --page-title-size: 20px;
+}
+
+.page-header {
+  h2 {
+    font-size: var(--page-title-size);
+  }
+}
+
+// 椤甸潰瀹瑰櫒
 .page-container {
   padding: 20px;
   background-color: #fff;
@@ -125,7 +127,7 @@ body {
   min-height: calc(100vh - var(--header-height) - 60px);
 }
 
-// 表格操作栏
+// 琛ㄦ牸鎿嶄綔鏍?
 .table-toolbar {
   display: flex;
   justify-content: space-between;
@@ -135,7 +137,7 @@ body {
   gap: 10px;
 }
 
-// 搜索表单
+// 鎼滅储琛ㄥ崟
 .search-form {
   display: flex;
   flex-wrap: wrap;
@@ -147,25 +149,148 @@ body {
   }
 }
 
-// 筛选/搜索区域自适应宽度
+// 绛涢€?鎼滅储鍖哄煙鑷€傚簲瀹藉害
 .filter-bar {
   display: flex;
   flex-wrap: wrap;
-  gap: 12px;
-  align-items: center;
+  gap: 8px;
+  align-items: flex-start;
   width: 100%;
 
   .el-input,
+  .el-autocomplete,
   .el-select,
   .el-date-picker,
   .el-date-editor {
-    min-width: 240px;
-    flex: 1 1 280px;
+    min-width: 220px;
+    flex: 0 1 240px;
+  }
+}
+
+// Make filter autocompletes look like a "typeable dropdown" by always showing a caret icon.
+// We render the caret using CSS (instead of Element Plus icons) to avoid per-page imports.
+.filter-bar .el-autocomplete .el-input__wrapper,
+.filter-form .el-autocomplete .el-input__wrapper,
+.search-form .el-autocomplete .el-input__wrapper,
+.table-toolbar .el-autocomplete .el-input__wrapper {
+  position: relative;
+  // Reserve space so the caret does not overlap the clear/validate icons.
+  padding-right: 34px !important;
+}
+
+.filter-bar .el-autocomplete .el-input__wrapper::after,
+.filter-form .el-autocomplete .el-input__wrapper::after,
+.search-form .el-autocomplete .el-input__wrapper::after,
+.table-toolbar .el-autocomplete .el-input__wrapper::after {
+  content: '';
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  width: 6px;
+  height: 6px;
+  border-right: 1.5px solid var(--el-text-color-placeholder);
+  border-bottom: 1.5px solid var(--el-text-color-placeholder);
+  transform: translateY(-60%) rotate(45deg);
+  transition: transform 0.15s ease;
+  pointer-events: none;
+  opacity: 0.9;
+}
+
+.filter-bar .el-autocomplete .el-input__wrapper.is-focus::after,
+.filter-form .el-autocomplete .el-input__wrapper.is-focus::after,
+.search-form .el-autocomplete .el-input__wrapper.is-focus::after,
+.table-toolbar .el-autocomplete .el-input__wrapper.is-focus::after {
+  transform: translateY(-60%) rotate(225deg);
+}
+
+.filter-item {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
+  flex: 0 1 240px;
+  min-width: 220px;
+}
+
+.filter-label {
+  color: var(--text-secondary);
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.filter-card {
+  position: relative;
+
+  &::before {
+    content: "\7b5b\9009";
+    position: absolute;
+    top: 8px;
+    left: 12px;
+    font-size: calc(var(--page-title-size) - 2px);
+    font-weight: 600;
+    color: var(--text-secondary);
+    line-height: 1;
+  }
+
+  .el-card__body {
+    padding-top: 34px;
+    padding-bottom: 12px;
+  }
+}
+
+.filter-item > .el-input,
+.filter-item > .el-autocomplete,
+.filter-item > .el-select,
+.filter-item > .el-date-picker,
+.filter-item > .el-date-editor,
+.filter-item > .el-input-number,
+.filter-item > .el-cascader {
+  width: 100% !important;
+  min-width: 0;
+  flex: 0 0 auto;
+}
+
+.filter-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: flex-start;
+
+  .el-form-item {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 4px;
+    flex: 0 1 240px;
+    min-width: 220px;
+    margin-right: 0;
+  }
+
+  .el-form-item__label {
+    color: var(--text-secondary);
+    line-height: 1.2;
+    padding: 0;
+  }
+
+  .el-form-item__content {
+    width: 100%;
+  }
+
+  .el-input,
+  .el-autocomplete,
+  .el-select,
+  .el-date-picker,
+  .el-date-editor,
+  .el-input-number,
+  .el-cascader {
+    width: 100% !important;
+    min-width: 0;
   }
 }
 
 .search-form {
   .el-input,
+  .el-autocomplete,
   .el-select,
   .el-date-picker,
   .el-date-editor {
@@ -173,9 +298,7 @@ body {
   }
 }
 
-// 筛选区输入控件统一最小宽度，避免筛选条过短
-.filter-bar,
-.filter-form,
+// 绛涢€夊尯杈撳叆鎺т欢缁熶竴鏈€灏忓搴︼紝閬垮厤绛涢€夋潯杩囩煭
 .search-form,
 .table-toolbar {
   .el-input,
@@ -190,14 +313,14 @@ body {
   }
 }
 
-// 卡片网格
+// 鍗＄墖缃戞牸
 .card-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
   gap: 16px;
 }
 
-// 统计卡片
+// 缁熻鍗＄墖
 .stat-card {
   background: #fff;
   border-radius: 8px;
@@ -223,7 +346,7 @@ body {
   }
 }
 
-// 状态标签颜色
+// 鐘舵€佹爣绛鹃鑹?
 .status-pending {
   color: var(--warning-color);
 }
@@ -236,8 +359,12 @@ body {
   color: var(--danger-color);
 }
 
-// 移动端适配
+// 绉诲姩绔€傞厤
 @media screen and (max-width: 768px) {
+  :root {
+    --page-title-size: 18px;
+  }
+
   .page-container {
     padding: 12px;
   }
@@ -250,6 +377,7 @@ body {
   .search-form,
   .filter-bar {
     width: 100%;
+    gap: 6px;
 
     .el-form-item {
       width: 100%;
@@ -262,13 +390,45 @@ body {
     }
   }
 
-  // 隐藏某些列
+  .filter-item {
+    width: 100%;
+    min-width: 0;
+    gap: 4px;
+    flex: 0 0 auto;
+  }
+
+  .filter-form {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 6px;
+  }
+
+  .filter-form .el-form-item {
+    width: 100%;
+    min-width: 0;
+    margin-bottom: 0;
+  }
+
+  .filter-card {
+    &::before {
+      top: 6px;
+      left: 10px;
+    }
+
+    .el-card__body {
+      padding-top: 30px;
+      padding-bottom: 10px;
+    }
+  }
+
+
+  // 闅愯棌鏌愪簺鍒?
   .hide-on-mobile {
     display: none !important;
   }
 }
 
-// 响应式表格容器
+// 鍝嶅簲寮忚〃鏍煎鍣?
 .table-container {
   width: 100%;
   overflow-x: auto;
@@ -284,11 +444,68 @@ body {
 .table-wrapper,
 .table-scroll,
 .list-table-wrapper {
+  width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
   overscroll-behavior-x: contain;
   touch-action: pan-x pan-y;
 }
 
-// 全局取消表格固定列（去掉冻结窗格）
+.pagination-wrapper,
+.pagination-container {
+  display: flex;
+  justify-content: flex-end !important;
+  align-items: center;
+  width: 100%;
+  background: #fff !important;
+  padding: 16px !important;
+  border-radius: 8px !important;
+  margin-top: 16px !important;
+}
+.wms-table-scrollbar-host {
+  position: relative;
+  width: 100%;
+  overflow-x: hidden !important;
+}
+
+.wms-table-scrollbar {
+  display: none;
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  height: 12px;
+  background: #F5F7FA;
+  border: 1px solid #E4E7ED;
+  border-radius: 6px;
+  z-index: 50;
+}
+
+.wms-table-scrollbar.is-active {
+  display: block;
+}
+
+.wms-table-scrollbar__thumb {
+  height: 100%;
+  background: #C0C4CC;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.wms-table-scrollbar.is-dragging {
+  cursor: grabbing;
+}
+
+.wms-table-scrollbar.is-hidden {
+  display: none;
+}
+
+.wms-table-scrollbar.is-disabled {
+  opacity: 0.4;
+  pointer-events: none;
+}
+
+// 鍏ㄥ眬鍙栨秷琛ㄦ牸鍥哄畾鍒楋紙鍘绘帀鍐荤粨绐楁牸锛?
 .el-table__fixed,
 .el-table__fixed-right {
   display: none !important;
@@ -299,9 +516,12 @@ body {
   display: none !important;
 }
 
-// 确保表格主体可横向滚动
+// 纭繚琛ㄦ牸涓讳綋鍙í鍚戞粴鍔?
 .el-table .el-table__body-wrapper {
-  overflow-x: hidden !important;
+  overflow-x: auto !important;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
+  touch-action: pan-x pan-y;
 }
 
 .el-table .el-table__header-wrapper,
@@ -310,36 +530,20 @@ body {
   overflow-y: hidden !important;
 }
 
-.el-table .el-table__body-wrapper,
-.el-table .el-scrollbar__wrap {
-  overflow-y: visible !important;
-}
-
 .el-table {
   width: 100%;
 }
 
 .el-table .el-scrollbar__wrap {
-  overflow-x: scroll !important;
+  overflow-x: auto !important;
   -webkit-overflow-scrolling: touch;
   overscroll-behavior-x: contain;
   touch-action: pan-x pan-y;
-  scrollbar-width: auto !important;
 }
 
-.el-table .el-scrollbar__wrap::-webkit-scrollbar {
-  width: 12px;
-  height: 12px;
-}
-
-.el-table .el-scrollbar__bar {
-  display: none !important;
-}
-
-
-// 移动端触摸友好的按钮
+// 绉诲姩绔Е鎽稿弸濂界殑鎸夐挳
 @media screen and (max-width: 768px) {
-  // 移动端取消表格固定列，避免遮挡（强制优先级）
+  // 绉诲姩绔彇娑堣〃鏍煎浐瀹氬垪锛岄伩鍏嶉伄鎸★紙寮哄埗浼樺厛绾э級
   .el-table__fixed,
   .el-table__fixed-right {
     display: none !important;
@@ -350,16 +554,19 @@ body {
     display: none !important;
   }
 
-  // 确保表格内容正常显示
+  // 纭繚琛ㄦ牸鍐呭姝ｅ父鏄剧ず
   .el-table .el-table__body-wrapper {
-    overflow-x: hidden !important;
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-x: contain;
+    touch-action: pan-x pan-y;
   }
 
   .el-table .el-scrollbar__wrap {
-    overflow-x: scroll !important;
+    overflow-x: auto !important;
   }
 
-  // 移动端表格列不固定
+  // 绉诲姩绔〃鏍煎垪涓嶅浐瀹?
   .el-table__cell.is-right,
   .el-table__cell.is-left {
     position: static !important;
@@ -375,13 +582,13 @@ body {
     min-height: 36px;
   }
 
-  // 表单元素触摸友好
+  // 琛ㄥ崟鍏冪礌瑙︽懜鍙嬪ソ
   .el-input__inner,
   .el-select__wrapper {
     min-height: var(--mobile-min-touch-size) !important;
   }
 
-  // 移动端表单栈状布局
+  // 绉诲姩绔〃鍗曟爤鐘跺竷灞€
   .el-form--inline {
     .el-form-item {
       display: block;
@@ -390,10 +597,13 @@ body {
     }
   }
 
-  // 筛选栏移动端适配
+  // 绛涢€夋爮绉诲姩绔€傞厤
   .filter-bar {
     flex-direction: column;
     align-items: stretch !important;
+    flex-wrap: nowrap;
+    row-gap: 8px;
+    column-gap: 0;
 
     .el-select,
     .el-input,
@@ -403,7 +613,7 @@ body {
     }
   }
 
-  // 分页移动端适配
+  // 鍒嗛〉绉诲姩绔€傞厤
   .el-pagination {
     flex-wrap: wrap;
     justify-content: center;
@@ -415,7 +625,7 @@ body {
     }
   }
 
-  // 页面头部移动端适配
+  // 椤甸潰澶撮儴绉诲姩绔€傞厤
   .page-header {
     flex-direction: column;
     align-items: flex-start !important;
@@ -438,12 +648,12 @@ body {
     }
   }
 
-  // 卡片移动端适配
+  // 鍗＄墖绉诲姩绔€傞厤
   .card-grid {
     grid-template-columns: 1fr;
   }
 
-  // 统计卡片移动端适配
+  // 缁熻鍗＄墖绉诲姩绔€傞厤
   .stat-card {
     padding: 16px;
 
@@ -452,7 +662,7 @@ body {
     }
   }
 
-  // 对话框移动端适配
+  // 瀵硅瘽妗嗙Щ鍔ㄧ閫傞厤
   .el-dialog {
     width: 95% !important;
     max-width: 95% !important;
@@ -464,14 +674,14 @@ body {
     overflow-y: auto;
   }
 
-  // 抽屉移动端适配
+  // 鎶藉眽绉诲姩绔€傞厤
   .el-drawer {
     width: 100% !important;
     max-width: 100% !important;
   }
 }
 
-// 瀵硅瘽妗嗗叏灞€閫傞厤
+// 鐎电鐦藉鍡楀弿鐏炩偓闁倿鍘?
 .el-dialog {
   max-width: min(960px, 96vw);
 }
@@ -481,7 +691,7 @@ body {
   overflow-y: auto;
 }
 
-// 小屏幕额外适配
+// 灏忓睆骞曢澶栭€傞厤
 @media screen and (max-width: 768px) {
   // Keep date range time inputs evenly sized.
   .el-date-range-picker__time-header {
@@ -503,12 +713,12 @@ body {
   }
 
   // ??????????????????
-  .el-table .el-table__body-wrapper,
   .el-table .el-table__header-wrapper,
-  .el-table .el-table__footer-wrapper,
-  .el-table .el-scrollbar__wrap {
+  .el-table .el-table__footer-wrapper {
     overflow-y: hidden !important;
   }
+
+
 
   // ????????????????
   .el-dialog {
@@ -564,15 +774,15 @@ body {
 }
 
 @media screen and (max-width: 480px) {
+  :root {
+    --page-title-size: 16px;
+  }
+
   .page-container {
     padding: 8px;
   }
 
   .page-header {
-    h2 {
-      font-size: 16px;
-    }
-
     .header-actions,
     .actions {
       .el-button {
@@ -582,7 +792,7 @@ body {
     }
   }
 
-  // 表格操作按钮移动端优化
+  // 琛ㄦ牸鎿嶄綔鎸夐挳绉诲姩绔紭鍖?
   .el-table {
     .el-button.is-link {
       padding: 4px 8px;
@@ -590,9 +800,12 @@ body {
   }
 }
 
-// 打印样式
+// 鎵撳嵃鏍峰紡
 @media print {
   .no-print {
     display: none !important;
   }
 }
+
+
+

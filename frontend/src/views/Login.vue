@@ -15,6 +15,7 @@
         <el-form-item prop="username">
           <el-input
             v-model="loginForm.username"
+            data-testid="login-username"
             placeholder="请输入用户名"
             size="large"
             prefix-icon="User"
@@ -24,6 +25,7 @@
         <el-form-item prop="password">
           <el-input
             v-model="loginForm.password"
+            data-testid="login-password"
             type="password"
             placeholder="请输入密码"
             size="large"
@@ -43,6 +45,7 @@
             :loading="loading"
             class="login-btn"
             @click="handleLogin"
+            data-testid="login-submit"
           >
             {{ loading ? '登录中...' : '登 录' }}
           </el-button>

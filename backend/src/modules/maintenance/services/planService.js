@@ -28,20 +28,46 @@ export const calculateNextMaintenanceDate = (baseDate, cycleType, cycleValue = 1
   return nextDate.format('YYYY-MM-DD');
 };
 
+
+const parseOptionalInt = (value) => {
+  if (value === undefined || value === null || value === '') return null;
+  const parsed = Number.parseInt(value, 10);
+  return Number.isNaN(parsed) ? null : parsed;
+};
+
 export const getMaintenancePlans = async ({ query, dataFilter }) => {
   const { page, pageSize, offset, limit } = getPagination(query);
   const order = getOrderBy(query);
   const { stationId, status, equipmentName } = query;
 
+  const safeFilter = dataFilter ?? {};
+  const allowedStationIds = Array.isArray(safeFilter.stationIds) ? safeFilter.stationIds : [];
+  const requestedStationId = parseOptionalInt(stationId);
+  const emptyData = () => formatPaginationResponse({ rows: [], count: 0 }, page, pageSize);
+
+  if (safeFilter.none) {
+    return emptyData();
+  }
+
+  if (!safeFilter.all) {
+    if (allowedStationIds.length === 0) {
+      return emptyData();
+    }
+    if (requestedStationId && !allowedStationIds.includes(requestedStationId)) {
+      return emptyData();
+    }
+  }
+
   const where = {};
 
-  if (stationId) where.station_id = stationId;
+  if (requestedStationId) {
+    where.station_id = requestedStationId;
+  } else if (!safeFilter.all && allowedStationIds.length > 0) {
+    where.station_id = { [Op.in]: allowedStationIds };
+  }
+
   if (status) where.status = status;
   if (equipmentName) where.equipment_name = { [Op.like]: `%${equipmentName}%` };
-
-  if (!dataFilter.all && dataFilter.stationIds?.length > 0) {
-    where.station_id = { [Op.in]: dataFilter.stationIds };
-  }
 
   const result = await MaintenancePlan.findAndCountAll({
     where,
@@ -55,7 +81,6 @@ export const getMaintenancePlans = async ({ query, dataFilter }) => {
 
   return formatPaginationResponse(result, page, pageSize);
 };
-
 export const createMaintenancePlan = async ({ body, user }) => {
   const {
     stationId,

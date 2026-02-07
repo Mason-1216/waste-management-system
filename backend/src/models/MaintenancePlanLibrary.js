@@ -99,6 +99,11 @@ const MaintenancePlanLibrary = sequelize.define('MaintenancePlanLibrary', {
     defaultValue: [],
     comment: '保养标准列表 [{name: 标准名称, specification: 保养规范}]'
   },
+  is_deleted: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: false,
+    comment: '?????'
+  },
   created_by: {
     type: DataTypes.INTEGER,
     comment: '创建人ID'

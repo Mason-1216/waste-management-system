@@ -4,8 +4,18 @@ import { checkRole } from '../../middlewares/permission.js';
 export const registerUserRoutes = (router) => {
   router.get(
     '/users',
-    checkRole(['admin', 'station_manager', 'department_manager', 'deputy_manager', 'safety_inspector']),
+    checkRole(['admin', 'station_manager', 'department_manager', 'deputy_manager', 'senior_management', 'safety_inspector']),
     userController.getUsers
+  );
+  router.get(
+    '/users/real-name-suggestions',
+    checkRole(['admin', 'station_manager', 'department_manager', 'deputy_manager', 'senior_management', 'safety_inspector']),
+    userController.getUserRealNameSuggestions
+  );
+  router.get(
+    '/users/company-name-suggestions',
+    checkRole(['admin', 'station_manager', 'department_manager', 'deputy_manager', 'senior_management', 'safety_inspector']),
+    userController.getUserCompanyNameSuggestions
   );
   router.get('/users/:id', userController.getUserById);
   router.post('/users', checkRole(['admin']), userController.createUser);

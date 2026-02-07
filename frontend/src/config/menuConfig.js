@@ -25,4 +25,36 @@ export const menuConfig = {
 
 export { bottomMenus };
 
+// A catalog of menu item definitions indexed by `path`.
+// Used to "inject" user-granted menu items that are not present in the base-role menu config.
+const buildMenuPathCatalog = () => {
+  const pathMap = new Map();
+  const walk = (items) => {
+    (items || []).forEach((item) => {
+      if (!item || !item.path) return;
+      if (!pathMap.has(item.path)) {
+        // Keep only the fields we need for rendering.
+        const normalized = {
+          path: item.path,
+          name: item.name,
+          icon: item.icon,
+          requiresPriceAdmin: item.requiresPriceAdmin,
+          isAction: item.isAction,
+          children: item.children ? item.children.map(child => ({ ...child })) : null
+        };
+        pathMap.set(item.path, normalized);
+      }
+      if (Array.isArray(item.children) && item.children.length > 0) {
+        walk(item.children);
+      }
+    });
+  };
+
+  Object.values(menuConfig).forEach(walk);
+  return pathMap;
+};
+
+export const menuPathCatalog = buildMenuPathCatalog();
+export const getMenuCatalogItemByPath = (path) => menuPathCatalog.get(path);
+
 export default menuConfig;

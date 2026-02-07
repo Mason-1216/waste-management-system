@@ -97,7 +97,7 @@
         </el-form-item>
       </div>
 
-      <el-divider content-position="left">派单人信息</el-divider>
+      <el-divider content-position="left">派单信息</el-divider>
       <div class="section-grid">
         <el-form-item label="计划维修时间" class="full-width">
           <div class="plan-repair-datetime">
@@ -273,19 +273,20 @@
           </div>
         </el-form-item>
 
-        <el-form-item label="任务库调取" class="full-width">
+        <el-form-item label="任务汇总表调取" class="full-width">
           <div class="list-block">
             <div class="list-actions">
               <el-button v-if="canEditRepair(currentRow)" type="primary" @click="openTaskLibrary">
                 选择任务
               </el-button>
             </div>
-            <div v-if="repairTasks.length > 0" class="task-table-scroll">
+            <div v-if="repairTasks.length > 0" class="table-scroll task-table-scroll">
               <el-table
                 :data="repairTasks"
                 border
                 stripe
-                class="task-table"
+                size="small"
+                class="inner-table task-table"
                 :row-key="repairTaskKey"
               >
                 <el-table-column prop="task_category" label="任务类别" width="120">
@@ -305,20 +306,15 @@
                 </el-table-column>
                 <el-table-column prop="points" label="单位积分" width="120">
                   <template #default="{ row }">
-                    <el-input-number
-                      v-model="row.points"
-                      :disabled="!canEditPoints(currentRow, row)"
-                      controls-position="right"
-                    />
+                    {{ getTaskPointsValue(row?.points) }}
                   </template>
                 </el-table-column>
-                <el-table-column prop="quantity" label="数量" width="110">
+                <el-table-column prop="quantity" label="数量" width="140">
                   <template #default="{ row }">
                     <el-input-number
                       v-model="row.quantity"
-                      :disabled="!canEditQuantity(currentRow, row)"
+                      :disabled="!canEditRepair(currentRow)"
                       :min="1"
-                      controls-position="right"
                     />
                   </template>
                 </el-table-column>
@@ -375,7 +371,7 @@
           />
         </el-form-item>
 
-        <el-form-item label="维修结果">
+        <el-form-item label="维修结果" prop="repair_result" required>
           <el-select v-model="currentRow.repair_result" :disabled="!canEditRepair(currentRow)">
             <el-option label="正常运行" value="normal" />
             <el-option label="待观察" value="observe" />
@@ -397,7 +393,7 @@
         </el-form-item>
       </div>
 
-      <el-divider content-position="left">验收人信息</el-divider>
+      <el-divider content-position="left">验收信息</el-divider>
       <div class="section-grid">
         <el-form-item label="维修态度">
           <el-rate
@@ -437,6 +433,8 @@
         </el-form-item>
       </div>
 
+    </el-form>
+    <template #footer>
       <div class="form-actions">
         <el-button
           v-if="canReport && isDraftRow(currentRow)"
@@ -489,7 +487,7 @@
           v-if="canVerify && currentRow.status === 'repaired_submitted'"
           type="warning"
           :loading="saving[rowKey(currentRow)]"
-          @click="verifyRow(currentRow, 'reject')"
+          @click="verifyRow(currentRow, 'fail')"
         >
           退回重做
         </el-button>
@@ -501,8 +499,9 @@
         >
           验收完成
         </el-button>
+        <el-button @click="dialogVisible = false">退出</el-button>
       </div>
-    </el-form>
+    </template>
     <RepairTaskLibraryDialog
       v-model:visible="taskLibraryVisible"
       :selected-tasks="repairTasks"
@@ -645,16 +644,6 @@ const openTaskLibrary = () => {
 
 const repairTaskKey = (row) => row?.task_id ?? row?.job_id ?? row?.id ?? row?.task_name ?? row?.job_name ?? '';
 
-const canEditPoints = (record, task) => {
-  if (!props.canEditRepair(record)) return false;
-  return Number(task?.points_editable) === 1;
-};
-
-const canEditQuantity = (record, task) => {
-  if (!props.canEditRepair(record)) return false;
-  return Number(task?.quantity_editable) === 1;
-};
-
 const handleTaskLibraryConfirm = (tasks) => {
   if (!currentRow.value) return;
   if (!Array.isArray(currentRow.value.repair_tasks)) {
@@ -713,18 +702,33 @@ const flowSteps = computed(() => {
   align-items: center;
 }
 
-.task-table {
+.list-block {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
   width: 100%;
-  min-width: 980px;
 }
 
-.task-table-scroll {
+.list-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.table-scroll {
   width: 100%;
   max-width: 100%;
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
 }
 
+.inner-table {
+  width: 100%;
+  min-width: 900px;
+}
+
+:deep(.el-input-number) {
+  width: 120px;
+}
 .task-summary {
   display: flex;
   justify-content: flex-end;
@@ -741,5 +745,29 @@ const flowSteps = computed(() => {
   white-space: nowrap;
   text-overflow: ellipsis;
   vertical-align: middle;
+}
+
+.form-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  justify-content: flex-end;
+}
+
+:global(.fault-dialog .el-dialog) {
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+}
+
+:global(.fault-dialog .el-dialog__header),
+:global(.fault-dialog .el-dialog__footer) {
+  flex-shrink: 0;
+}
+
+:global(.fault-dialog .el-dialog__body) {
+  flex: 1;
+  overflow-y: auto;
+  max-height: calc(90vh - 140px);
 }
 </style>

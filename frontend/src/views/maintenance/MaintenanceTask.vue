@@ -1,10 +1,10 @@
-<template>
+﻿<template>
   <div class="maintenance-task-page">
     <!-- 管理者视图：显示Tab -->
-    <el-tabs v-if="canManage" v-model="activeTab" type="border-card" :class="{ 'tabs-hidden': hideTabs }">
+    <el-tabs v-if="canManage || activeTab === 'records'" v-model="activeTab" type="border-card" :class="{ 'tabs-hidden': hideTabs }">
       <!-- Tab 1: 保养工作 -->
       <el-tab-pane v-if="!hideTabs || activeTab === 'work'" label="保养工作" name="work">
-        <MaintenanceWorkContent />
+        <MaintenanceWorkPanel :can-manage="canManage" />
       </el-tab-pane>
 
       <!-- Tab 2: 保养计划 -->
@@ -12,30 +12,18 @@
         <div class="page-header">
           <h2>设备保养计划</h2>
           <div class="header-actions">
-            <el-input
-              v-model="planFilters.keyword"
-              placeholder="请输入关键词"
-              clearable
-              style="width: 200px; margin-right: 12px;"
-              @clear="loadPlanList"
-              @keyup.enter="loadPlanList"
-            >
-              <template #prefix>
-                <el-icon><Search /></el-icon>
-              </template>
-            </el-input>
             <el-button type="primary" @click="showPlanDialog()">
               <el-icon><Plus /></el-icon>新增保养计划
             </el-button>
-            <el-button @click="downloadPlanTemplate">
+            <el-button type="info" @click="downloadPlanTemplate">
               <el-icon><Download /></el-icon>下载模板
             </el-button>
             <el-button type="success" @click="triggerPlanImport">
-              <el-icon><Download /></el-icon>导入
+              <el-icon><Download /></el-icon>批量导入
             </el-button>
             <input ref="planFileInputRef" type="file" accept=".xlsx,.xls" style="display:none" @change="handlePlanImport" />
-            <el-button @click="loadPlanList">刷新</el-button>
             <el-button v-if="selectedPlanRows.length" type="danger" @click="batchDeletePlans">
+              <el-icon><Delete /></el-icon>
               批量删除 ({{ selectedPlanRows.length }})
             </el-button>
           </div>
@@ -43,15 +31,42 @@
 
         <el-card class="filter-card">
           <FilterBar>
-            <el-select v-model="planFilters.stationId" placeholder="场站" clearable style="width: 150px;" @change="loadPlanList">
-              <el-option v-for="s in stationList" :key="s.id" :label="s.stationName" :value="s.id" />
-            </el-select>
-            <el-select v-model="planFilters.cycleType" placeholder="保养周期" clearable style="width: 120px;" @change="loadPlanList">
-              <el-option label="日保养" value="daily" />
-              <el-option label="周保养" value="weekly" />
-              <el-option label="月保养" value="monthly" />
-              <el-option label="年保养" value="yearly" />
-            </el-select>
+            <div class="filter-item">
+              <span class="filter-label">关键词</span>
+              <FilterAutocomplete
+                v-model="planFilters.keyword"
+                :fetch-suggestions="fetchPlanKeywordSuggestions"
+                trigger-on-focus
+                placeholder="全部"
+                clearable
+                style="width: 200px;"
+                @select="applyPlanFilters"
+                @input="applyPlanFilters"
+                @clear="applyPlanFilters"
+                @keyup.enter="applyPlanFilters"
+              >
+                <template #prefix>
+                  <el-icon><Search /></el-icon>
+                </template>
+              </FilterAutocomplete>
+            </div>
+            <div class="filter-item">
+              <span class="filter-label">场站</span>
+              <FilterSelect v-model="planFilters.stationId" placeholder="全部" filterable clearable style="width: 150px;" @change="applyPlanFilters" @clear="applyPlanFilters">
+                <el-option label="全部" value="all" />
+                <el-option v-for="s in stationList" :key="s.id" :label="s.stationName" :value="s.id" />
+              </FilterSelect>
+            </div>
+            <div class="filter-item">
+              <span class="filter-label">保养周期</span>
+              <FilterSelect v-model="planFilters.cycleType" placeholder="全部" filterable clearable style="width: 120px;" @change="applyPlanFilters" @clear="applyPlanFilters">
+                <el-option label="全部" value="all" />
+                <el-option label="日保养" value="daily" />
+                <el-option label="周保养" value="weekly" />
+                <el-option label="月保养" value="monthly" />
+                <el-option label="年保养" value="yearly" />
+              </FilterSelect>
+            </div>
           </FilterBar>
         </el-card>
 
@@ -126,50 +141,82 @@
           <h2>保养计划岗位分配</h2>
           <div class="header-actions">
             <el-button type="primary" @click="showPositionAssignDialog">
-              <el-icon><Plus /></el-icon>分配岗位计划
+              <el-icon><Plus /></el-icon>分配保养计划
             </el-button>
-            <el-button @click="loadPositionPlans">刷新</el-button>
           </div>
         </div>
 
         <el-card class="filter-card">
           <FilterBar>
-            <el-select v-model="positionFilters.stationId" placeholder="场站" clearable style="width: 150px;" @change="loadPositionPlans">
-              <el-option v-for="s in stationList" :key="s.id" :label="s.stationName" :value="s.id" />
-            </el-select>
-            <el-select v-model="positionFilters.positionName" placeholder="岗位" clearable style="width: 150px;" @change="loadPositionPlans">
-              <el-option v-for="p in allPositions" :key="p" :label="p" :value="p" />
-            </el-select>
-            <el-input
-              v-model="positionFilters.equipmentCode"
-              placeholder="设备编号"
-              clearable
-              style="width: 150px;"
-              @clear="loadPositionPlans"
-              @keyup.enter="loadPositionPlans"
-            />
-            <el-input
-              v-model="positionFilters.equipmentName"
-              placeholder="设备名称"
-              clearable
-              style="width: 160px;"
-              @clear="loadPositionPlans"
-              @keyup.enter="loadPositionPlans"
-            />
-            <el-input
-              v-model="positionFilters.installLocation"
-              placeholder="安装位置"
-              clearable
-              style="width: 160px;"
-              @clear="loadPositionPlans"
-              @keyup.enter="loadPositionPlans"
-            />
-            <el-select v-model="positionFilters.cycleType" placeholder="保养周期" clearable style="width: 120px;" @change="loadPositionPlans">
-              <el-option label="日保养" value="daily" />
-              <el-option label="周保养" value="weekly" />
-              <el-option label="月保养" value="monthly" />
-              <el-option label="年保养" value="yearly" />
-            </el-select>
+            <div class="filter-item">
+              <span class="filter-label">场站</span>
+              <FilterSelect v-model="positionFilters.stationId" placeholder="全部" filterable clearable style="width: 150px;" @change="applyPositionFilters" @clear="applyPositionFilters">
+                <el-option label="全部" value="all" />
+                <el-option v-for="s in stationList" :key="s.id" :label="s.stationName" :value="s.id" />
+              </FilterSelect>
+            </div>
+            <div class="filter-item">
+              <span class="filter-label">岗位</span>
+              <FilterSelect v-model="positionFilters.positionName" placeholder="全部" filterable clearable style="width: 150px;" @change="applyPositionFilters" @clear="applyPositionFilters">
+                <el-option label="全部" value="all" />
+                <el-option v-for="p in allPositions" :key="p" :label="p" :value="p" />
+              </FilterSelect>
+            </div>
+            <div class="filter-item">
+              <span class="filter-label">设备编号</span>
+              <FilterAutocomplete
+                v-model="positionFilters.equipmentCode"
+                :fetch-suggestions="fetchPositionEquipmentCodeSuggestions"
+                trigger-on-focus
+                placeholder="全部"
+                clearable
+                style="width: 150px;"
+                @select="applyPositionFilters"
+                @input="applyPositionFilters"
+                @clear="applyPositionFilters"
+                @keyup.enter="applyPositionFilters"
+              />
+            </div>
+            <div class="filter-item">
+              <span class="filter-label">设备名称</span>
+              <FilterAutocomplete
+                v-model="positionFilters.equipmentName"
+                :fetch-suggestions="fetchPositionEquipmentNameSuggestions"
+                trigger-on-focus
+                placeholder="全部"
+                clearable
+                style="width: 160px;"
+                @select="applyPositionFilters"
+                @input="applyPositionFilters"
+                @clear="applyPositionFilters"
+                @keyup.enter="applyPositionFilters"
+              />
+            </div>
+            <div class="filter-item">
+              <span class="filter-label">安装位置</span>
+              <FilterAutocomplete
+                v-model="positionFilters.installLocation"
+                :fetch-suggestions="fetchPositionInstallLocationSuggestions"
+                trigger-on-focus
+                placeholder="全部"
+                clearable
+                style="width: 160px;"
+                @select="applyPositionFilters"
+                @input="applyPositionFilters"
+                @clear="applyPositionFilters"
+                @keyup.enter="applyPositionFilters"
+              />
+            </div>
+            <div class="filter-item">
+              <span class="filter-label">保养周期</span>
+              <FilterSelect v-model="positionFilters.cycleType" placeholder="全部" filterable clearable style="width: 120px;" @change="applyPositionFilters" @clear="applyPositionFilters">
+                <el-option label="全部" value="all" />
+                <el-option label="日保养" value="daily" />
+                <el-option label="周保养" value="weekly" />
+                <el-option label="月保养" value="monthly" />
+                <el-option label="年保养" value="yearly" />
+              </FilterSelect>
+            </div>
           </FilterBar>
         </el-card>
 
@@ -203,7 +250,7 @@
             v-model:current-page="positionPagination.page"
             v-model:page-size="positionPagination.pageSize"
             :total="positionPagination.total"
-            :page-sizes="[10, 20, 50]"
+            :page-sizes="[5, 10, 20, 50]"
             layout="total, sizes, prev, pager, next"
             @current-change="loadPositionPlans"
             @size-change="loadPositionPlans"
@@ -215,69 +262,117 @@
       <el-tab-pane v-if="!hideTabs || activeTab === 'records'" label="保养工作记录" name="records">
         <div class="page-header">
           <h2>保养工作记录</h2>
-          <div class="header-actions">
-            <el-button @click="loadWorkRecords">刷新</el-button>
-          </div>
         </div>
 
         <el-card class="filter-card">
           <FilterBar>
-            <el-select v-model="recordFilters.stationId" placeholder="场站" clearable style="width: 150px;" @change="loadWorkRecords">
-              <el-option v-for="s in stationList" :key="s.id" :label="s.stationName" :value="s.id" />
-            </el-select>
-            <el-input
-              v-model="recordFilters.positionName"
-              placeholder="岗位"
-              clearable
-              style="width: 130px;"
-              @clear="loadWorkRecords"
-              @keyup.enter="loadWorkRecords"
-            />
-            <el-input
-              v-model="recordFilters.equipmentCode"
-              placeholder="设备编号"
-              clearable
-              style="width: 140px;"
-              @clear="loadWorkRecords"
-              @keyup.enter="loadWorkRecords"
-            />
-            <el-input
-              v-model="recordFilters.equipmentName"
-              placeholder="设备名称"
-              clearable
-              style="width: 160px;"
-              @clear="loadWorkRecords"
-              @keyup.enter="loadWorkRecords"
-            />
-            <el-select v-model="recordFilters.cycleType" placeholder="保养周期" clearable style="width: 120px;" @change="loadWorkRecords">
-              <el-option label="日保养" value="daily" />
-              <el-option label="周保养" value="weekly" />
-              <el-option label="月保养" value="monthly" />
-              <el-option label="年保养" value="yearly" />
-            </el-select>
-            <el-input
-              v-model="recordFilters.executorName"
-              placeholder="执行人"
-              clearable
-              style="width: 130px;"
-              @clear="loadWorkRecords"
-              @keyup.enter="loadWorkRecords"
-            />
-            <el-select v-model="recordFilters.status" placeholder="状态" clearable style="width: 120px;" @change="loadWorkRecords">
-              <el-option label="待完成" value="pending" />
-              <el-option label="已完成" value="completed" />
-              <el-option label="已验收" value="verified" />
-              <el-option label="未完成" value="missed" />
-            </el-select>
-            <el-date-picker
-              v-model="recordFilters.dateRange"
-              type="daterange"
-              start-placeholder="开始日期"
-              end-placeholder="结束日期"
-              value-format="YYYY-MM-DD"
-              style="width: 240px;"
-              @change="loadWorkRecords"
-            />
+            <div class="filter-item">
+              <span class="filter-label">场站</span>
+              <FilterSelect v-model="recordFilters.stationId" placeholder="全部" filterable clearable style="width: 150px;" @change="applyRecordFilters" @clear="applyRecordFilters">
+                <el-option label="全部" value="all" />
+                <el-option v-for="s in stationList" :key="s.id" :label="s.stationName" :value="s.id" />
+              </FilterSelect>
+            </div>
+            <div class="filter-item">
+              <span class="filter-label">岗位</span>
+              <FilterAutocomplete
+                v-model="recordFilters.positionName"
+                :fetch-suggestions="fetchRecordPositionNameSuggestions"
+                trigger-on-focus
+                placeholder="全部"
+                clearable
+                style="width: 130px;"
+                @select="applyRecordFilters"
+                @input="applyRecordFilters"
+                @clear="applyRecordFilters"
+                @keyup.enter="applyRecordFilters"
+              />
+            </div>
+            <div class="filter-item">
+              <span class="filter-label">设备编号</span>
+              <FilterAutocomplete
+                v-model="recordFilters.equipmentCode"
+                :fetch-suggestions="fetchRecordEquipmentCodeSuggestions"
+                trigger-on-focus
+                placeholder="全部"
+                clearable
+                style="width: 140px;"
+                @select="applyRecordFilters"
+                @input="applyRecordFilters"
+                @clear="applyRecordFilters"
+                @keyup.enter="applyRecordFilters"
+              />
+            </div>
+            <div class="filter-item">
+              <span class="filter-label">设备名称</span>
+              <FilterAutocomplete
+                v-model="recordFilters.equipmentName"
+                :fetch-suggestions="fetchRecordEquipmentNameSuggestions"
+                trigger-on-focus
+                placeholder="全部"
+                clearable
+                style="width: 160px;"
+                @select="applyRecordFilters"
+                @input="applyRecordFilters"
+                @clear="applyRecordFilters"
+                @keyup.enter="applyRecordFilters"
+              />
+            </div>
+            <div class="filter-item">
+              <span class="filter-label">保养周期</span>
+              <FilterSelect v-model="recordFilters.cycleType" placeholder="全部" filterable clearable style="width: 120px;" @change="applyRecordFilters" @clear="applyRecordFilters">
+                <el-option label="全部" value="all" />
+                <el-option label="日保养" value="daily" />
+                <el-option label="周保养" value="weekly" />
+                <el-option label="月保养" value="monthly" />
+                <el-option label="年保养" value="yearly" />
+              </FilterSelect>
+            </div>
+            <div class="filter-item">
+              <span class="filter-label">执行人</span>
+              <FilterAutocomplete
+                v-model="recordFilters.executorName"
+                :fetch-suggestions="fetchRecordExecutorNameSuggestions"
+                trigger-on-focus
+                placeholder="全部"
+                clearable
+                style="width: 130px;"
+                @select="applyRecordFilters"
+                @input="applyRecordFilters"
+                @clear="applyRecordFilters"
+                @keyup.enter="applyRecordFilters"
+              />
+            </div>
+            <div class="filter-item">
+              <span class="filter-label">状态</span>
+              <FilterSelect v-model="recordFilters.status" placeholder="全部" filterable clearable style="width: 120px;" @change="applyRecordFilters" @clear="applyRecordFilters">
+                <el-option label="全部" value="all" />
+                <el-option label="待完成" value="pending" />
+                <el-option label="已完成" value="completed" />
+                <el-option label="已验收" value="verified" />
+                <el-option label="未完成" value="missed" />
+              </FilterSelect>
+            </div>
+            <div class="filter-item">
+              <span class="filter-label">开始日期</span>
+              <el-date-picker
+                v-model="recordFilters.startDate"
+                type="date"
+                placeholder="全部"
+                value-format="YYYY-MM-DD"
+                @change="applyRecordFilters"
+              />
+            </div>
+            <div class="filter-item">
+              <span class="filter-label">结束日期</span>
+              <el-date-picker
+                v-model="recordFilters.endDate"
+                type="date"
+                placeholder="全部"
+                value-format="YYYY-MM-DD"
+                @change="applyRecordFilters"
+              />
+            </div>
           </FilterBar>
         </el-card>
 
@@ -328,7 +423,7 @@
             v-model:current-page="recordPagination.page"
             v-model:page-size="recordPagination.pageSize"
             :total="recordPagination.total"
-            :page-sizes="[10, 20, 50]"
+            :page-sizes="[5, 10, 20, 50]"
             layout="total, sizes, prev, pager, next"
             @current-change="loadWorkRecords"
             @size-change="loadWorkRecords"
@@ -338,7 +433,7 @@
     </el-tabs>
 
     <!-- 普通员工视图：只显示保养工作 -->
-    <MaintenanceWorkContent v-else />
+    <MaintenanceWorkPanel v-else :can-manage="canManage" />
 
     <!-- 岗位计划分配对话框 -->
     <FormDialog
@@ -421,6 +516,20 @@
             <el-radio value="fail">不通过</el-radio>
           </el-radio-group>
         </el-form-item>
+        <template v-if="verifyForm.result === 'fail'">
+          <el-form-item label="扣分">
+            <el-input-number
+              v-model="verifyForm.deductionPoints"
+              :min="-9999"
+              :max="0"
+              :step="1"
+              controls-position="right"
+            />
+          </el-form-item>
+          <el-form-item label="扣分说明">
+            <el-input v-model="verifyForm.deductionRemark" type="textarea" :rows="2" placeholder="请输入扣分说明" />
+          </el-form-item>
+        </template>
         <el-form-item label="验收备注">
           <el-input v-model="verifyForm.remark" type="textarea" :rows="3" placeholder="请输入验收备注" />
         </el-form-item>
@@ -448,15 +557,17 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, watch, defineComponent, h, resolveComponent } from 'vue';
+import { ref, computed, onMounted, watch } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
-import { Refresh, Sunny, Calendar, DataLine, TrendCharts, Plus, Search, Download } from '@element-plus/icons-vue';
+import { Plus, Search, Download } from '@element-plus/icons-vue';
 import dayjs from 'dayjs';
 
 import { addTemplateInstructionSheet, applyTemplateHeaderStyle } from '@/utils/excelTemplate';
+import { createListSuggestionFetcher } from '@/utils/filterAutocomplete';
 import request from '@/api/request';
 import { useUserStore } from '@/store/modules/user';
 import MaintenanceWorkRecordDetailDialog from '@/components/maintenance/MaintenanceWorkRecordDetailDialog.vue';
+import MaintenanceWorkPanel from '@/components/maintenance/MaintenanceWorkPanel.vue';
 import MaintenancePlanDialog from '@/components/maintenance/MaintenancePlanDialog.vue';
 import FormDialog from '@/components/system/FormDialog.vue';
 
@@ -484,537 +595,6 @@ watch(
   },
   { immediate: true }
 );
-
-// ========== 保养工作状态 ==========
-const workLoading = ref(false);
-const workTaskList = ref([]);
-const workDetailDialogVisible = ref(false);
-const workFormDialogVisible = ref(false);
-const workCurrentCycleType = ref('');
-const workCurrentTask = ref(null);
-const workSubmitting = ref(false);
-const workTaskForm = ref({
-  maintenanceItems: [],
-  maintenanceTools: '',
-  workHours: 0,
-  consumablesList: [],
-  partsList: [],
-  remark: ''
-});
-
-const currentDate = computed(() => dayjs().format('YYYY年MM月DD日'));
-
-const dailyTasks = computed(() => workTaskList.value.filter(t => t.cycleType === 'daily'));
-const weeklyTasks = computed(() => workTaskList.value.filter(t => t.cycleType === 'weekly'));
-const monthlyTasks = computed(() => workTaskList.value.filter(t => t.cycleType === 'monthly'));
-const yearlyTasks = computed(() => workTaskList.value.filter(t => t.cycleType === 'yearly'));
-
-const overdueNoticeClosed = ref(false);
-const overdueTasks = computed(() => workTaskList.value.filter(t => t.isOverdue));
-const overdueCount = computed(() => overdueTasks.value.length);
-const overdueSummaryText = computed(() => {
-  const summary = { daily: 0, weekly: 0, monthly: 0, yearly: 0 };
-  overdueTasks.value.forEach(task => {
-    if (summary[task.cycleType] !== undefined) summary[task.cycleType] += 1;
-  });
-  const parts = [];
-  if (summary.daily) parts.push(`日保养${summary.daily}项`);
-  if (summary.weekly) parts.push(`周保养${summary.weekly}项`);
-  if (summary.monthly) parts.push(`月保养${summary.monthly}项`);
-  if (summary.yearly) parts.push(`年保养${summary.yearly}项`);
-  return parts.join('，');
-});
-
-watch(overdueCount, (value, prev) => {
-  if (value > 0 && prev === 0) {
-    overdueNoticeClosed.value = false;
-  }
-});
-
-const currentCycleTasks = computed(() => {
-  switch (workCurrentCycleType.value) {
-    case 'daily': return dailyTasks.value;
-    case 'weekly': return weeklyTasks.value;
-    case 'monthly': return monthlyTasks.value;
-    case 'yearly': return yearlyTasks.value;
-    default: return [];
-  }
-});
-
-const getCycleConfig = (cycleType) => {
-  const configs = {
-    daily: { title: '日保养', color: '#67c23a', bgColor: 'linear-gradient(135deg, #67c23a 0%, #95d475 100%)', icon: Sunny },
-    weekly: { title: '周保养', color: '#e6a23c', bgColor: 'linear-gradient(135deg, #e6a23c 0%, #f0c78a 100%)', icon: Calendar },
-    monthly: { title: '月保养', color: '#409eff', bgColor: 'linear-gradient(135deg, #409eff 0%, #79bbff 100%)', icon: DataLine },
-    yearly: { title: '年保养', color: '#f56c6c', bgColor: 'linear-gradient(135deg, #f56c6c 0%, #fab6b6 100%)', icon: TrendCharts }
-  };
-  return configs[cycleType] || configs.daily;
-};
-
-const getTasksForCycle = (cycleType) => {
-  switch (cycleType) {
-    case 'daily': return dailyTasks.value;
-    case 'weekly': return weeklyTasks.value;
-    case 'monthly': return monthlyTasks.value;
-    case 'yearly': return yearlyTasks.value;
-    default: return [];
-  }
-};
-
-const getCycleStatusInfo = (cycleType) => {
-  const tasks = getTasksForCycle(cycleType);
-  if (tasks.length === 0) return { text: '今日无任务', type: 'info' };
-  const overdue = tasks.filter(t => t.isOverdue).length;
-  if (overdue > 0) return { text: `延期${overdue}项`, type: 'danger' };
-  const pending = tasks.filter(t => t.status === 'pending').length;
-  const completed = tasks.filter(t => t.status === 'completed').length;
-  const verified = tasks.filter(t => t.status === 'verified').length;
-  if (verified === tasks.length) return { text: '已全部验收', type: 'success' };
-  if (pending === 0) return { text: '已全部完成', type: 'warning' };
-  return { text: `${pending}项待完成`, type: 'danger' };
-};
-
-const getWorkStatusText = (status) => {
-  const texts = { pending: '待完成', completed: '已完成', verified: '已验收' };
-  return texts[status] || status;
-};
-
-const getWorkStatusTagType = (status) => {
-  const types = { pending: 'info', completed: 'warning', verified: 'success' };
-  return types[status] || 'info';
-};
-
-const formatTime = (time) => time ? dayjs(time).format('YYYY-MM-DD HH:mm') : '-';
-
-const loadTodayTasks = async () => {
-  workLoading.value = true;
-  try {
-    const res = await request.get('/maintenance-work-records/today-tasks');
-    const data = res.data || res.tasks || res.list || res || [];
-    workTaskList.value = (Array.isArray(data) ? data : []).map(item => ({
-      planId: item.plan_id || item.planId,
-      stationId: item.station_id || item.stationId,
-      positionName: item.position_name || item.positionName,
-      equipmentCode: item.equipment_code || item.equipmentCode,
-      equipmentName: item.equipment_name || item.equipmentName,
-      installLocation: item.install_location || item.installLocation,
-      cycleType: item.cycle_type || item.cycleType,
-      dueDate: item.due_date || item.dueDate || '',
-      isOverdue: item.is_overdue ?? item.isOverdue ?? false,
-      maintenanceStandards: item.maintenance_standards || item.maintenanceStandards || [],
-      standardCount: (item.maintenance_standards || item.maintenanceStandards || []).length,
-      status: item.existingRecord?.status || 'pending',
-      recordId: item.existingRecord?.id,
-      existingRecord: item.existingRecord || null,
-      verifyResult: item.existingRecord?.verifyResult,
-      verifierName: item.existingRecord?.verifierName,
-      verifyTime: item.existingRecord?.verifyTime,
-      verifyRemark: item.existingRecord?.verifyRemark
-    }));
-  } catch (e) {
-    ElMessage.error('加载任务失败');
-  } finally {
-    workLoading.value = false;
-  }
-};
-
-const openCycleDetail = (cycleType) => {
-  workCurrentCycleType.value = cycleType;
-  workDetailDialogVisible.value = true;
-};
-
-const openWorkTaskForm = (task) => {
-  workCurrentTask.value = { ...task };
-
-  if (task.existingRecord) {
-    const record = task.existingRecord;
-    workTaskForm.value = {
-      maintenanceItems: (record.maintenanceItems || record.maintenance_items || []).map((item) => {
-        const name = typeof item === 'string' ? item : item?.name || '';
-        return {
-          name,
-          specification: item?.specification || '',
-          points: normalizePointsValue(item?.points),
-          qualified: item?.qualified || null
-        };
-      }),
-      maintenanceTools: record.maintenanceTools || record.maintenance_tools || '',
-      workHours: record.workHours || record.work_hours || 0,
-      consumablesList: (record.consumablesList || record.consumables_list || []).map(item => ({
-        name: item.name || '',
-        model: item.model || '',
-        spec: item.spec || '',
-        quantity: item.quantity || 0
-      })),
-      partsList: (record.partsList || record.parts_list || []).map(item => ({
-        name: item.name || '',
-        model: item.model || '',
-        spec: item.spec || '',
-        quantity: item.quantity || 0,
-        reason: item.reason || ''
-      })),
-      remark: record.remark || ''
-    };
-  } else {
-    workTaskForm.value = {
-      maintenanceItems: (task.maintenanceStandards || []).map((std) => ({
-        name: std?.name || std,
-        specification: std?.specification || '',
-        points: normalizePointsValue(std?.points),
-        qualified: null
-      })),
-      maintenanceTools: '',
-      workHours: 0,
-      consumablesList: [],
-      partsList: [],
-      remark: ''
-    };
-  }
-
-  workFormDialogVisible.value = true;
-};
-
-const addWorkConsumable = () => {
-  workTaskForm.value.consumablesList.push({ name: '', model: '', spec: '', quantity: 0 });
-};
-
-const removeWorkConsumable = (idx) => {
-  workTaskForm.value.consumablesList.splice(idx, 1);
-};
-
-const addWorkPart = () => {
-  workTaskForm.value.partsList.push({ name: '', model: '', spec: '', quantity: 0, reason: '' });
-};
-
-const removeWorkPart = (idx) => {
-  workTaskForm.value.partsList.splice(idx, 1);
-};
-
-const submitWorkTask = async () => {
-  const uncheckedItems = workTaskForm.value.maintenanceItems.filter(item => item.qualified === null);
-  if (uncheckedItems.length > 0) {
-    try {
-      await ElMessageBox.confirm(
-        `还有 ${uncheckedItems.length} 项保养标准未填写是否合格，确定要提交吗？`,
-        '提示',
-        { type: 'warning' }
-      );
-    } catch {
-      return;
-    }
-  }
-
-  workSubmitting.value = true;
-  try {
-    await request.post('/maintenance-work-records', {
-      planId: workCurrentTask.value.planId,
-      stationId: workCurrentTask.value.stationId,
-      positionName: workCurrentTask.value.positionName,
-      equipmentCode: workCurrentTask.value.equipmentCode,
-      equipmentName: workCurrentTask.value.equipmentName,
-      installLocation: workCurrentTask.value.installLocation,
-      cycleType: workCurrentTask.value.cycleType,
-      workDate: dayjs().format('YYYY-MM-DD'),
-      maintenanceItems: workTaskForm.value.maintenanceItems,
-      maintenanceTools: workTaskForm.value.maintenanceTools,
-      workHours: workTaskForm.value.workHours,
-      consumablesList: workTaskForm.value.consumablesList.filter(c => c.name),
-      partsList: workTaskForm.value.partsList.filter(p => p.name),
-      remark: workTaskForm.value.remark
-    });
-    ElMessage.success('提交成功');
-    workFormDialogVisible.value = false;
-    workDetailDialogVisible.value = false;
-    loadTodayTasks();
-  } catch (e) {
-    ElMessage.error(e.message || '提交失败');
-  } finally {
-    workSubmitting.value = false;
-  }
-};
-
-// 页面挂载时加载数据
-onMounted(() => {
-  loadTodayTasks();
-});
-
-// ========== 保养工作内容组件（卡片式布局）==========
-const MaintenanceWorkContent = defineComponent({
-  name: 'MaintenanceWorkContent',
-  setup() {
-    const cycleTypes = ['daily', 'weekly', 'monthly', 'yearly'];
-
-    return () => h('div', { class: 'maintenance-work-content' }, [
-      // 页面头部
-      h('div', { class: 'page-header' }, [
-        h('h2', '设备保养工作')
-      ]),
-
-      overdueCount.value > 0 && !overdueNoticeClosed.value
-        ? h('div', { class: 'overdue-banner' }, [
-          h(resolveComponent('el-alert'), {
-            title: `当前有${overdueCount.value}条延期保养任务${overdueSummaryText.value ? `（${overdueSummaryText.value}）` : ''}`,
-            type: 'error',
-            showIcon: true,
-            closable: true,
-            onClose: () => { overdueNoticeClosed.value = true; }
-          })
-        ])
-        : null,
-
-      // 四个卡片
-      h('div', { class: 'cycle-cards-container' },
-        cycleTypes.map(cycleType => {
-          const config = getCycleConfig(cycleType);
-          const tasks = getTasksForCycle(cycleType);
-          const statusInfo = getCycleStatusInfo(cycleType);
-          const hasTasks = tasks.length > 0;
-          const pendingCount = tasks.filter(t => t.status === 'pending').length;
-          const cycleOverdueCount = tasks.filter(t => t.isOverdue).length;
-
-          const cardProps = {
-            class: ['cycle-card', { 'has-tasks': hasTasks, 'no-tasks': !hasTasks }],
-            onClick: () => hasTasks && openCycleDetail(cycleType)
-          };
-          if (cycleType !== 'daily') {
-            cardProps.key = cycleType;
-          }
-          const cardNode = h('div', cardProps, [
-            // 卡片左侧颜色条
-            h('div', { class: 'card-color-bar', style: { background: config.bgColor } }),
-            // 卡片主体
-            h('div', { class: 'card-body' }, [
-              // 左侧图标和标题
-              h('div', { class: 'card-left' }, [
-                h('div', { class: 'card-icon', style: { background: config.bgColor } }, [
-                  h(resolveComponent('el-icon'), { size: 28 }, () => h(config.icon))
-                ]),
-                h('div', { class: 'card-info' }, [
-                  h('div', { class: 'card-title' }, config.title),
-                  h('div', { class: 'card-desc' }, hasTasks
-                    ? `${tasks.length}项设备保养${cycleOverdueCount ? `，${cycleOverdueCount}项延期` : ''}`
-                    : '今日无保养任务')
-                ])
-              ]),
-              // 中间状态
-              h('div', { class: 'card-center' }, [
-                h(resolveComponent('el-tag'), { type: statusInfo.type, size: 'default' }, () => statusInfo.text)
-              ]),
-              // 右侧按钮
-              h('div', { class: 'card-right' }, [
-                hasTasks && pendingCount > 0 ?
-                  h(resolveComponent('el-button'), {
-                    type: 'primary',
-                    size: 'default',
-                    onClick: (e) => {
-                      e.stopPropagation();
-                      const firstPending = tasks.find(t => t.status === 'pending');
-                      if (firstPending) openWorkTaskForm(firstPending);
-                    }
-                  }, () => '保养') :
-                  hasTasks ?
-                    h(resolveComponent('el-button'), {
-                      type: 'info',
-                      size: 'default',
-                      plain: true,
-                      onClick: (e) => {
-                        e.stopPropagation();
-                        openCycleDetail(cycleType);
-                      }
-                    }, () => '查看') :
-                    h('span', { class: 'no-task-hint' }, '-')
-              ])
-            ])
-          ]);
-          return cycleType === 'daily'
-            ? h('div', { class: 'cycle-card-wrapper', key: cycleType }, [
-              h('div', { class: 'cycle-card-date' }, currentDate.value),
-              cardNode
-            ])
-            : cardNode;
-        })
-      ),
-
-      // 周期详情对话框
-      h(resolveComponent('el-dialog'), {
-        modelValue: workDetailDialogVisible.value,
-        'onUpdate:modelValue': (v) => workDetailDialogVisible.value = v,
-        title: getCycleConfig(workCurrentCycleType.value).title + '任务列表',
-        width: '700px',
-        destroyOnClose: true
-      }, {
-        default: () => h('div', { class: 'cycle-detail-content' },
-          currentCycleTasks.value.map((task, idx) =>
-            h('div', { key: idx, class: 'task-item' }, [
-              h('div', { class: 'task-info' }, [
-                h('div', { class: 'task-name' }, [
-                  h('span', { class: 'equipment-code' }, task.equipmentCode),
-                  h('span', { class: 'equipment-name' }, task.equipmentName)
-                ]),
-                h('div', { class: 'task-location' }, task.installLocation || '-'),
-                h('div', { class: 'task-standards' }, `${task.standardCount || 0}项保养标准`)
-              ]),
-              h('div', { class: 'task-status' }, [
-                task.isOverdue
-                  ? h(resolveComponent('el-tag'), { type: 'danger', size: 'small' }, () => '延期')
-                  : null,
-                h(resolveComponent('el-tag'), { type: getWorkStatusTagType(task.status), size: 'small' }, () => getWorkStatusText(task.status))
-              ]),
-              h('div', { class: 'task-action' }, [
-                task.status === 'pending' ?
-                  h(resolveComponent('el-button'), { type: 'primary', size: 'small', onClick: () => openWorkTaskForm(task) }, () => '填写') :
-                  h(resolveComponent('el-button'), { size: 'small', onClick: () => openWorkTaskForm(task) }, () => '查看')
-              ])
-            ])
-          )
-        ),
-        footer: () => h(resolveComponent('el-button'), { onClick: () => workDetailDialogVisible.value = false }, () => '关闭')
-      }),
-
-      // 保养任务填写对话框
-      h(resolveComponent('el-dialog'), {
-        modelValue: workFormDialogVisible.value,
-        'onUpdate:modelValue': (v) => workFormDialogVisible.value = v,
-        title: workCurrentTask.value ? `${workCurrentTask.value.equipmentName} - ${getCycleConfig(workCurrentTask.value.cycleType).title}` : '保养任务',
-        width: '800px',
-        destroyOnClose: true
-      }, {
-        default: () => workCurrentTask.value ? h(resolveComponent('el-form'), { model: workTaskForm.value, labelWidth: '100px', class: 'work-task-form' }, () => [
-          h(resolveComponent('el-divider'), { contentPosition: 'left' }, () => '任务信息'),
-          h('div', { class: 'info-grid' }, [
-            h(resolveComponent('el-form-item'), { label: '设备编号' }, () => h(resolveComponent('el-input'), { modelValue: workCurrentTask.value.equipmentCode, disabled: true })),
-            h(resolveComponent('el-form-item'), { label: '设备名称' }, () => h(resolveComponent('el-input'), { modelValue: workCurrentTask.value.equipmentName, disabled: true })),
-            h(resolveComponent('el-form-item'), { label: '安装位置' }, () => h(resolveComponent('el-input'), { modelValue: workCurrentTask.value.installLocation, disabled: true })),
-            h(resolveComponent('el-form-item'), { label: '保养周期' }, () => h(resolveComponent('el-input'), { modelValue: getCycleConfig(workCurrentTask.value.cycleType).title, disabled: true }))
-          ]),
-          h(resolveComponent('el-divider'), { contentPosition: 'left' }, () => '保养标准确认'),
-          h(resolveComponent('el-table'), { data: workTaskForm.value.maintenanceItems, border: true, size: 'small', class: 'standards-table' }, () => [
-            h(resolveComponent('el-table-column'), { label: '保养标准名称', prop: 'name', minWidth: 150 }),
-            h(resolveComponent('el-table-column'), { label: '保养规范', prop: 'specification', minWidth: 200 }),
-            h(resolveComponent('el-table-column'), { label: '是否合格', width: 150, align: 'center' }, {
-              default: ({ row }) => h(resolveComponent('el-radio-group'), {
-                modelValue: row.qualified,
-                'onUpdate:modelValue': (v) => row.qualified = v,
-                disabled: workCurrentTask.value.status !== 'pending'
-              }, () => [
-                h(resolveComponent('el-radio'), { value: 'yes' }, () => '是'),
-                h(resolveComponent('el-radio'), { value: 'no' }, () => '否')
-              ])
-            })
-          ]),
-          h(resolveComponent('el-divider'), { contentPosition: 'left' }, () => '保养信息'),
-          h(resolveComponent('el-form-item'), { label: '保养工具' }, () =>
-            h(resolveComponent('el-input'), {
-              modelValue: workTaskForm.value.maintenanceTools,
-              'onUpdate:modelValue': (v) => workTaskForm.value.maintenanceTools = v,
-              placeholder: '使用的保养工具',
-              disabled: workCurrentTask.value.status !== 'pending'
-            })
-          ),
-          h(resolveComponent('el-form-item'), { label: '保养时长' }, () => [
-            h(resolveComponent('el-input-number'), {
-              modelValue: workTaskForm.value.workHours,
-              'onUpdate:modelValue': (v) => workTaskForm.value.workHours = v,
-              min: 0,
-              max: 24,
-              step: 0.5,
-              disabled: workCurrentTask.value.status !== 'pending'
-            }),
-            h('span', { class: 'unit' }, '小时')
-          ]),
-          h(resolveComponent('el-divider'), { contentPosition: 'left' }, () => '耗材使用'),
-          h('div', { class: 'list-block' }, [
-            workCurrentTask.value.status === 'pending' ?
-              h('div', { class: 'list-actions', style: { display: 'flex', justifyContent: 'flex-end', width: '100%' } }, [
-                h(resolveComponent('el-button'), { type: 'primary', size: 'small', onClick: addWorkConsumable }, () => '新增')
-              ]) : null,
-            h('div', { class: 'list-table-wrapper', style: { overflowX: 'auto' } }, [
-              h(resolveComponent('el-table'), { data: workTaskForm.value.consumablesList, border: true, size: 'small', class: 'list-table', style: { minWidth: '820px' } }, () => [
-                h(resolveComponent('el-table-column'), { label: '名称', minWidth: 120 }, {
-                  default: ({ row }) => h(resolveComponent('el-input'), { modelValue: row.name, 'onUpdate:modelValue': (v) => row.name = v, placeholder: '名称', disabled: workCurrentTask.value.status !== 'pending' })
-                }),
-                h(resolveComponent('el-table-column'), { label: '型号', minWidth: 100 }, {
-                  default: ({ row }) => h(resolveComponent('el-input'), { modelValue: row.model, 'onUpdate:modelValue': (v) => row.model = v, placeholder: '型号', disabled: workCurrentTask.value.status !== 'pending' })
-                }),
-                h(resolveComponent('el-table-column'), { label: '规格', minWidth: 100 }, {
-                  default: ({ row }) => h(resolveComponent('el-input'), { modelValue: row.spec, 'onUpdate:modelValue': (v) => row.spec = v, placeholder: '规格', disabled: workCurrentTask.value.status !== 'pending' })
-                }),
-                h(resolveComponent('el-table-column'), { label: '数量', width: 100 }, {
-                  default: ({ row }) => h(resolveComponent('el-input-number'), { modelValue: row.quantity, 'onUpdate:modelValue': (v) => row.quantity = v, min: 0, size: 'small', disabled: workCurrentTask.value.status !== 'pending' })
-                }),
-                h(resolveComponent('el-table-column'), { label: '操作', width: 80, align: 'center' }, {
-                  default: ({ $index }) => workCurrentTask.value.status === 'pending' ?
-                    h(resolveComponent('el-button'), { link: true, type: 'danger', onClick: () => removeWorkConsumable($index) }, () => '删除') : null
-                })
-              ])
-            ])
-          ]),
-          h(resolveComponent('el-divider'), { contentPosition: 'left' }, () => '配件更换'),
-          h('div', { class: 'list-block' }, [
-            workCurrentTask.value.status === 'pending' ?
-              h('div', { class: 'list-actions', style: { display: 'flex', justifyContent: 'flex-end', width: '100%' } }, [
-                h(resolveComponent('el-button'), { type: 'primary', size: 'small', onClick: addWorkPart }, () => '新增')
-              ]) : null,
-            h('div', { class: 'list-table-wrapper', style: { overflowX: 'auto' } }, [
-              h(resolveComponent('el-table'), { data: workTaskForm.value.partsList, border: true, size: 'small', class: 'list-table', style: { minWidth: '900px' } }, () => [
-                h(resolveComponent('el-table-column'), { label: '名称', minWidth: 120 }, {
-                  default: ({ row }) => h(resolveComponent('el-input'), { modelValue: row.name, 'onUpdate:modelValue': (v) => row.name = v, placeholder: '名称', disabled: workCurrentTask.value.status !== 'pending' })
-                }),
-                h(resolveComponent('el-table-column'), { label: '型号', minWidth: 100 }, {
-                  default: ({ row }) => h(resolveComponent('el-input'), { modelValue: row.model, 'onUpdate:modelValue': (v) => row.model = v, placeholder: '型号', disabled: workCurrentTask.value.status !== 'pending' })
-                }),
-                h(resolveComponent('el-table-column'), { label: '规格', minWidth: 100 }, {
-                  default: ({ row }) => h(resolveComponent('el-input'), { modelValue: row.spec, 'onUpdate:modelValue': (v) => row.spec = v, placeholder: '规格', disabled: workCurrentTask.value.status !== 'pending' })
-                }),
-                h(resolveComponent('el-table-column'), { label: '数量', width: 100 }, {
-                  default: ({ row }) => h(resolveComponent('el-input-number'), { modelValue: row.quantity, 'onUpdate:modelValue': (v) => row.quantity = v, min: 0, size: 'small', disabled: workCurrentTask.value.status !== 'pending' })
-                }),
-                h(resolveComponent('el-table-column'), { label: '更换原因', minWidth: 120 }, {
-                  default: ({ row }) => h(resolveComponent('el-input'), { modelValue: row.reason, 'onUpdate:modelValue': (v) => row.reason = v, placeholder: '更换原因', disabled: workCurrentTask.value.status !== 'pending' })
-                }),
-                h(resolveComponent('el-table-column'), { label: '操作', width: 80, align: 'center' }, {
-                  default: ({ $index }) => workCurrentTask.value.status === 'pending' ?
-                    h(resolveComponent('el-button'), { link: true, type: 'danger', onClick: () => removeWorkPart($index) }, () => '删除') : null
-                })
-              ])
-            ])
-          ]),
-          h(resolveComponent('el-form-item'), { label: '备注' }, () =>
-            h(resolveComponent('el-input'), {
-              modelValue: workTaskForm.value.remark,
-              'onUpdate:modelValue': (v) => workTaskForm.value.remark = v,
-              type: 'textarea',
-              rows: 2,
-              placeholder: '其他需要说明的情况',
-              disabled: workCurrentTask.value.status !== 'pending'
-            })
-          ),
-          // 验收信息
-          workCurrentTask.value.status === 'completed' || workCurrentTask.value.status === 'verified' ? [
-            h(resolveComponent('el-divider'), { contentPosition: 'left' }, () => '验收信息'),
-            workCurrentTask.value.status === 'verified' ?
-              h('div', { class: 'verify-info' }, [
-                h(resolveComponent('el-form-item'), { label: '验收结果' }, () =>
-                  h(resolveComponent('el-tag'), { type: workCurrentTask.value.verifyResult === 'pass' ? 'success' : 'danger' }, () =>
-                    workCurrentTask.value.verifyResult === 'pass' ? '验收通过' : '验收不通过')
-                ),
-                h(resolveComponent('el-form-item'), { label: '验收人' }, () => h('span', workCurrentTask.value.verifierName)),
-                h(resolveComponent('el-form-item'), { label: '验收时间' }, () => h('span', formatTime(workCurrentTask.value.verifyTime))),
-                workCurrentTask.value.verifyRemark ?
-                  h(resolveComponent('el-form-item'), { label: '验收备注' }, () => h('span', workCurrentTask.value.verifyRemark)) : null
-              ]) :
-              h('div', { class: 'verify-pending' }, h(resolveComponent('el-tag'), { type: 'info' }, () => '等待管理员验收'))
-          ] : null
-        ]) : null,
-        footer: () => [
-          h(resolveComponent('el-button'), { onClick: () => workFormDialogVisible.value = false }, () => '关闭'),
-          workCurrentTask.value && workCurrentTask.value.status === 'pending' ?
-            h(resolveComponent('el-button'), { type: 'primary', onClick: submitWorkTask, loading: workSubmitting.value }, () => '提交完成') : null
-        ]
-      })
-    ]);
-  }
-});
 
 // ========== 保养计划相关 ==========
 const planList = ref([]);
@@ -1101,7 +681,7 @@ const planTableRows = computed(() => {
 });
 
 const planSpanMethod = ({ row, columnIndex }) => {
-  const groupColumns = [1, 2, 3, 4];
+  const groupColumns = [1, 2, 3, 4, 10];
   if (groupColumns.includes(columnIndex)) {
     if (row._groupRowspan > 0) {
       return { rowspan: row._groupRowspan, colspan: 1 };
@@ -1118,11 +698,35 @@ const planSpanMethod = ({ row, columnIndex }) => {
 };
 
 const planLoading = ref(false);
-const planFilters = ref({
-  stationId: null,
-  cycleType: '',
+const today = dayjs().format('YYYY-MM-DD');
+const defaultPlanFilters = {
+  stationId: 'all',
+  cycleType: 'all',
   keyword: ''
+};
+const planFilters = ref({ ...defaultPlanFilters });
+
+const planKeywordSuggestionSource = computed(() => {
+  const plans = planList.value;
+  if (!Array.isArray(plans)) return [];
+
+  const values = [];
+  plans.forEach((plan) => {
+    values.push(plan.equipmentCode);
+    values.push(plan.equipmentName);
+    const standards = Array.isArray(plan.maintenanceStandards) ? plan.maintenanceStandards : [];
+    standards.forEach((standard) => {
+      values.push(standard?.name);
+      values.push(standard?.specification);
+    });
+  });
+  return values;
 });
+const fetchPlanKeywordSuggestions = createListSuggestionFetcher(
+  () => planKeywordSuggestionSource.value,
+  (value) => value
+);
+
 const planPagination = ref({
   page: 1,
   pageSize: 5,
@@ -1156,18 +760,34 @@ const selectedPlanRows = ref([]);
 // ========== 保养计划岗位分配相关 ==========
 const stationList = ref([]);
 const positionPlanList = ref([]);
+const positionPlanSuggestionList = ref([]);
 const positionLoading = ref(false);
-const positionFilters = ref({
-  stationId: null,
-  positionName: '',
+const defaultPositionFilters = {
+  stationId: 'all',
+  positionName: 'all',
   equipmentCode: '',
   equipmentName: '',
   installLocation: '',
-  cycleType: ''
-});
+  cycleType: 'all'
+};
+const positionFilters = ref({ ...defaultPositionFilters });
+
+const fetchPositionEquipmentCodeSuggestions = createListSuggestionFetcher(
+  () => positionPlanSuggestionList.value,
+  (row) => row.equipmentCode
+);
+const fetchPositionEquipmentNameSuggestions = createListSuggestionFetcher(
+  () => positionPlanSuggestionList.value,
+  (row) => row.equipmentName
+);
+const fetchPositionInstallLocationSuggestions = createListSuggestionFetcher(
+  () => positionPlanSuggestionList.value,
+  (row) => row.installLocation
+);
+
 const positionPagination = ref({
   page: 1,
-  pageSize: 10,
+  pageSize: 5,
   total: 0
 });
 
@@ -1195,20 +815,41 @@ const allPositions = computed(() => {
 
 // ========== 保养工作记录相关 ==========
 const workRecordList = ref([]);
+const workRecordSuggestionList = ref([]);
 const recordLoading = ref(false);
-const recordFilters = ref({
-  stationId: null,
+const defaultRecordFilters = {
+  stationId: 'all',
   positionName: '',
   equipmentCode: '',
   equipmentName: '',
-  cycleType: '',
+  cycleType: 'all',
   executorName: '',
-  status: '',
-  dateRange: []
-});
+  status: 'all',
+  startDate: dayjs().subtract(5, 'day').format('YYYY-MM-DD'),
+  endDate: today
+};
+const recordFilters = ref({ ...defaultRecordFilters });
+
+const fetchRecordPositionNameSuggestions = createListSuggestionFetcher(
+  () => workRecordSuggestionList.value,
+  (row) => row.positionName
+);
+const fetchRecordEquipmentCodeSuggestions = createListSuggestionFetcher(
+  () => workRecordSuggestionList.value,
+  (row) => row.equipmentCode
+);
+const fetchRecordEquipmentNameSuggestions = createListSuggestionFetcher(
+  () => workRecordSuggestionList.value,
+  (row) => row.equipmentName
+);
+const fetchRecordExecutorNameSuggestions = createListSuggestionFetcher(
+  () => workRecordSuggestionList.value,
+  (row) => row.executorName
+);
+
 const recordPagination = ref({
   page: 1,
-  pageSize: 10,
+  pageSize: 5,
   total: 0
 });
 const recordDetailVisible = ref(false);
@@ -1222,7 +863,9 @@ const verifyForm = ref({
   equipmentName: '',
   executorName: '',
   result: 'pass',
-  remark: ''
+  remark: '',
+  deductionPoints: 0,
+  deductionRemark: ''
 });
 
 // ========== 辅助函数 ==========
@@ -1322,7 +965,7 @@ const getRecordPoints = (row) => {
 // ========== 数据加载 ==========
 const loadStations = async () => {
   try {
-    const res = await request.get('/stations');
+    const res = await request.get('/stations/all');
     stationList.value = (res.list || res || []).map(s => ({
       id: s.id,
       stationName: s.station_name || s.stationName,
@@ -1338,10 +981,10 @@ const loadPlanList = async () => {
   try {
     const params = {
       page: 1,
-      pageSize: 10000,
-      stationId: planFilters.value.stationId || undefined,
-      cycleType: planFilters.value.cycleType || undefined,
-      keyword: planFilters.value.keyword || undefined
+      pageSize: 5000,
+      stationId: planFilters.value.stationId === 'all' ? undefined : planFilters.value.stationId,
+      cycleType: planFilters.value.cycleType === 'all' ? undefined : planFilters.value.cycleType,
+      keyword: planFilters.value.keyword?.trim() || undefined
     };
     const res = await request.get('/maintenance-plan-library', { params });
 
@@ -1370,6 +1013,65 @@ const loadPlanList = async () => {
   } finally {
     planLoading.value = false;
   }
+};
+
+const normalizePositionPlan = (item) => ({
+  id: item.id,
+  stationId: item.station_id,
+  stationName: item.station?.station_name || '-',
+  positionName: item.position_name,
+  planId: item.plan_id,
+  equipmentCode: item.plan?.equipment_code || '-',
+  equipmentName: item.plan?.equipment_name || '-',
+  installLocation: item.plan?.install_location || '-',
+  hasDailyCycle: item.plan?.cycle_type === 'daily' || item.hasDailyCycle,
+  hasWeeklyCycle: item.plan?.cycle_type === 'weekly' || item.hasWeeklyCycle,
+  hasMonthlyCycle: item.plan?.cycle_type === 'monthly' || item.hasMonthlyCycle,
+  hasYearlyCycle: item.plan?.cycle_type === 'yearly' || item.hasYearlyCycle
+});
+
+const normalizeWorkRecord = (item) => ({
+  id: item.id,
+  recordCode: item.record_code,
+  stationId: item.station_id,
+  stationName: item.station?.station_name || '-',
+  planId: item.plan_id,
+  positionName: item.position_name,
+  equipmentCode: item.equipment_code,
+  equipmentName: item.equipment_name,
+  installLocation: item.install_location,
+  cycleType: item.cycle_type,
+  workDate: item.work_date,
+  executorId: item.executor_id,
+  executorName: item.executor_name || '-',
+  maintenanceItems: item.maintenance_items || [],
+  maintenanceTools: item.maintenance_tools,
+  workHours: item.work_hours,
+  consumablesList: item.consumables_list || [],
+  partsList: item.parts_list || [],
+  remark: item.remark,
+  status: item.status,
+  submitTime: item.submit_time ? dayjs(item.submit_time).format('YYYY-MM-DD HH:mm:ss') : '-',
+  verifierId: item.verifier_id,
+  verifierName: item.verifier_name,
+  verifyTime: item.verify_time ? dayjs(item.verify_time).format('YYYY-MM-DD HH:mm:ss') : '-',
+  verifyResult: item.verify_result,
+  verifyRemark: item.verify_remark,
+  deductionPoints: item.deduction_points,
+  deductionRemark: item.deduction_remark,
+  missedLabel: item.missed_label || item.missedLabel,
+  isMissing: item.is_missing || item.isMissing || item.status === 'missed'
+});
+
+const applyPlanFilters = () => {
+  planPagination.value.page = 1;
+  loadPlanList();
+};
+
+const resetPlanFilters = () => {
+  planFilters.value = { ...defaultPlanFilters };
+  planPagination.value.page = 1;
+  loadPlanList();
 };
 
 const handlePlanSelectionChange = (rows) => {
@@ -1524,26 +1226,51 @@ const batchDeletePlans = async () => {
 const showPlanDialog = (row = null) => {
   if (row) {
     planIsEdit.value = true;
+    const groupKey = row.groupKey ?? buildPlanGroupKey(row);
+    const group = groupKey ? planGroupMap.value.get(groupKey) : null;
+    const cycles = row.cycles ?? group?.cycles ?? {};
+    const rowCycleType = row.cycleType ?? '';
+    const rowPlanIds = Array.isArray(row.planIds) ? row.planIds : [];
+    const getCycleStandards = (cycleType) => {
+      const standards = cycles?.[cycleType]?.standards;
+      if (Array.isArray(standards) && standards.length > 0) {
+        return normalizeStandards(standards).map((std) => ({ ...std }));
+      }
+      if (cycleType === rowCycleType && row.standard) {
+        return normalizeStandards([row.standard]).map((std) => ({ ...std }));
+      }
+      return [];
+    };
+    const getCyclePlanIds = (cycleType) => {
+      const ids = cycles?.[cycleType]?.planIds;
+      if (Array.isArray(ids) && ids.length > 0) {
+        return [...ids];
+      }
+      if (cycleType === rowCycleType && rowPlanIds.length > 0) {
+        return [...rowPlanIds];
+      }
+      return [];
+    };
     planForm.value = {
-      stationId: row.stationId,
-      equipmentCode: row.equipmentCode,
-      equipmentName: row.equipmentName,
-      installLocation: row.installLocation,
-      weeklyDay: row.weeklyDay,
-      monthlyDay: row.monthlyDay,
-      yearlyMonth: row.yearlyMonth,
-      yearlyDay: row.yearlyDay,
+      stationId: row.stationId ?? group?.stationId ?? null,
+      equipmentCode: row.equipmentCode ?? group?.equipmentCode ?? '',
+      equipmentName: row.equipmentName ?? group?.equipmentName ?? '',
+      installLocation: row.installLocation ?? group?.installLocation ?? '',
+      weeklyDay: row.weeklyDay ?? group?.weeklyDay ?? null,
+      monthlyDay: row.monthlyDay ?? group?.monthlyDay ?? null,
+      yearlyMonth: row.yearlyMonth ?? group?.yearlyMonth ?? null,
+      yearlyDay: row.yearlyDay ?? group?.yearlyDay ?? null,
       cycleStandards: {
-        daily: row.cycles?.daily?.standards?.map(std => ({ ...std })) || [],
-        weekly: row.cycles?.weekly?.standards?.map(std => ({ ...std })) || [],
-        monthly: row.cycles?.monthly?.standards?.map(std => ({ ...std })) || [],
-        yearly: row.cycles?.yearly?.standards?.map(std => ({ ...std })) || []
+        daily: getCycleStandards('daily'),
+        weekly: getCycleStandards('weekly'),
+        monthly: getCycleStandards('monthly'),
+        yearly: getCycleStandards('yearly')
       },
       cyclePlanIds: {
-        daily: row.cycles?.daily?.planIds || [],
-        weekly: row.cycles?.weekly?.planIds || [],
-        monthly: row.cycles?.monthly?.planIds || [],
-        yearly: row.cycles?.yearly?.planIds || []
+        daily: getCyclePlanIds('daily'),
+        weekly: getCyclePlanIds('weekly'),
+        monthly: getCyclePlanIds('monthly'),
+        yearly: getCyclePlanIds('yearly')
       }
     };
   } else {
@@ -1928,10 +1655,10 @@ const loadPositionPlans = async () => {
       page: positionPagination.value.page,
       pageSize: positionPagination.value.pageSize
     };
-    if (positionFilters.value.stationId) {
+    if (positionFilters.value.stationId && positionFilters.value.stationId !== 'all') {
       params.stationId = positionFilters.value.stationId;
     }
-    if (positionFilters.value.positionName) {
+    if (positionFilters.value.positionName && positionFilters.value.positionName !== 'all') {
       params.positionName = positionFilters.value.positionName;
     }
     const equipmentCode = String(positionFilters.value.equipmentCode ?? '').trim();
@@ -1946,29 +1673,44 @@ const loadPositionPlans = async () => {
     if (installLocation) {
       params.installLocation = installLocation;
     }
-    if (positionFilters.value.cycleType) {
+    if (positionFilters.value.cycleType && positionFilters.value.cycleType !== 'all') {
       params.cycleType = positionFilters.value.cycleType;
     }
     const res = await request.get('/maintenance-position-plans', { params });
-    positionPlanList.value = (res.list || []).map(item => ({
-      id: item.id,
-      stationId: item.station_id,
-      stationName: item.station?.station_name || '-',
-      positionName: item.position_name,
-      planId: item.plan_id,
-      equipmentCode: item.plan?.equipment_code || '-',
-      equipmentName: item.plan?.equipment_name || '-',
-      installLocation: item.plan?.install_location || '-',
-      hasDailyCycle: item.plan?.cycle_type === 'daily' || item.hasDailyCycle,
-      hasWeeklyCycle: item.plan?.cycle_type === 'weekly' || item.hasWeeklyCycle,
-      hasMonthlyCycle: item.plan?.cycle_type === 'monthly' || item.hasMonthlyCycle,
-      hasYearlyCycle: item.plan?.cycle_type === 'yearly' || item.hasYearlyCycle
-    }));
+    const list = Array.isArray(res.list) ? res.list : [];
+    positionPlanList.value = list.map(normalizePositionPlan);
     positionPagination.value.total = res.total || 0;
+    loadPositionPlanSuggestions(params);
   } catch (e) {
   } finally {
     positionLoading.value = false;
   }
+};
+
+const loadPositionPlanSuggestions = async (baseParams) => {
+  try {
+    const params = {
+      ...baseParams,
+      page: 1,
+      pageSize: 5000
+    };
+    const res = await request.get('/maintenance-position-plans', { params });
+    const list = Array.isArray(res.list) ? res.list : [];
+    positionPlanSuggestionList.value = list.map(normalizePositionPlan);
+  } catch (e) {
+    positionPlanSuggestionList.value = [];
+  }
+};
+
+const applyPositionFilters = () => {
+  positionPagination.value.page = 1;
+  loadPositionPlans();
+};
+
+const resetPositionFilters = () => {
+  positionFilters.value = { ...defaultPositionFilters };
+  positionPagination.value.page = 1;
+  loadPositionPlans();
 };
 
 const loadWorkRecords = async () => {
@@ -1978,7 +1720,7 @@ const loadWorkRecords = async () => {
       page: recordPagination.value.page,
       pageSize: recordPagination.value.pageSize
     };
-    if (recordFilters.value.stationId) {
+    if (recordFilters.value.stationId && recordFilters.value.stationId !== 'all') {
       params.stationId = recordFilters.value.stationId;
     }
     const positionName = String(recordFilters.value.positionName ?? '').trim();
@@ -1993,59 +1735,57 @@ const loadWorkRecords = async () => {
     if (equipmentName) {
       params.equipmentName = equipmentName;
     }
-    if (recordFilters.value.cycleType) {
+    if (recordFilters.value.cycleType && recordFilters.value.cycleType !== 'all') {
       params.cycleType = recordFilters.value.cycleType;
     }
     const executorName = String(recordFilters.value.executorName ?? '').trim();
     if (executorName) {
       params.executorName = executorName;
     }
-    if (recordFilters.value.status) {
+    if (recordFilters.value.status && recordFilters.value.status !== 'all') {
       params.status = recordFilters.value.status;
     }
-    if (Array.isArray(recordFilters.value.dateRange) && recordFilters.value.dateRange[0]) {
-      params.startDate = recordFilters.value.dateRange[0];
+    if (recordFilters.value.startDate) {
+      params.startDate = recordFilters.value.startDate;
     }
-    if (Array.isArray(recordFilters.value.dateRange) && recordFilters.value.dateRange[1]) {
-      params.endDate = recordFilters.value.dateRange[1];
+    if (recordFilters.value.endDate) {
+      params.endDate = recordFilters.value.endDate;
     }
     const res = await request.get('/maintenance-work-records', { params });
     const records = Array.isArray(res.list) ? res.list.filter(Boolean) : [];
-    workRecordList.value = records.map(item => ({
-      id: item.id,
-      recordCode: item.record_code,
-      stationId: item.station_id,
-      stationName: item.station?.station_name || '-',
-      planId: item.plan_id,
-      positionName: item.position_name,
-      equipmentCode: item.equipment_code,
-      equipmentName: item.equipment_name,
-      installLocation: item.install_location,
-      cycleType: item.cycle_type,
-      workDate: item.work_date,
-      executorId: item.executor_id,
-      executorName: item.executor_name || '-',
-      maintenanceItems: item.maintenance_items || [],
-      maintenanceTools: item.maintenance_tools,
-      workHours: item.work_hours,
-      consumablesList: item.consumables_list || [],
-      partsList: item.parts_list || [],
-      remark: item.remark,
-      status: item.status,
-      submitTime: item.submit_time ? dayjs(item.submit_time).format('YYYY-MM-DD HH:mm:ss') : '-',
-      verifierId: item.verifier_id,
-      verifierName: item.verifier_name,
-      verifyTime: item.verify_time ? dayjs(item.verify_time).format('YYYY-MM-DD HH:mm:ss') : '-',
-      verifyResult: item.verify_result,
-      verifyRemark: item.verify_remark,
-      missedLabel: item.missed_label || item.missedLabel,
-      isMissing: item.is_missing || item.isMissing || item.status === 'missed'
-    }));
+    workRecordList.value = records.map(normalizeWorkRecord);
     recordPagination.value.total = res.total || 0;
+    loadWorkRecordSuggestions(params);
   } catch (e) {
   } finally {
     recordLoading.value = false;
   }
+};
+
+const loadWorkRecordSuggestions = async (baseParams) => {
+  try {
+    const params = {
+      ...baseParams,
+      page: 1,
+      pageSize: 5000
+    };
+    const res = await request.get('/maintenance-work-records', { params });
+    const records = Array.isArray(res.list) ? res.list.filter(Boolean) : [];
+    workRecordSuggestionList.value = records.map(normalizeWorkRecord);
+  } catch (e) {
+    workRecordSuggestionList.value = [];
+  }
+};
+
+const applyRecordFilters = () => {
+  recordPagination.value.page = 1;
+  loadWorkRecords();
+};
+
+const resetRecordFilters = () => {
+  recordFilters.value = { ...defaultRecordFilters };
+  recordPagination.value.page = 1;
+  loadWorkRecords();
 };
 
 // ========== 岗位分配操作 ==========
@@ -2074,10 +1814,17 @@ const onPositionStationChange = async (stationId) => {
 
   // 加载场站岗位
   try {
-    const res = await request.get('/hygiene-position-areas', { params: { stationId } });
+    const res = await request.get('/position-jobs/positions', { params: { stationId } });
     const positions = new Set();
-    (res.list || res || []).forEach(item => {
-      if (item.position_name) positions.add(item.position_name);
+    const source = Array.isArray(res) ? res : (res.list || res || []);
+    source.forEach((item) => {
+      if (typeof item === 'string' && item.trim()) {
+        positions.add(item.trim());
+        return;
+      }
+      if (item?.position_name) {
+        positions.add(item.position_name);
+      }
     });
     stationPositions.value = Array.from(positions);
   } catch (e) {
@@ -2094,6 +1841,7 @@ const onPositionStationChange = async (stationId) => {
         planMap.set(key, {
           key,
           planId: item.id,
+          planIds: [item.id],
           equipmentCode: item.equipment_code,
           equipmentName: item.equipment_name,
           installLocation: item.install_location,
@@ -2104,6 +1852,9 @@ const onPositionStationChange = async (stationId) => {
         });
       }
       const plan = planMap.get(key);
+      if (plan && Array.isArray(plan.planIds) && !plan.planIds.includes(item.id)) {
+        plan.planIds.push(item.id);
+      }
       if (item.cycle_type === 'daily') plan.hasDailyCycle = true;
       if (item.cycle_type === 'weekly') plan.hasWeeklyCycle = true;
       if (item.cycle_type === 'monthly') plan.hasMonthlyCycle = true;
@@ -2116,7 +1867,14 @@ const onPositionStationChange = async (stationId) => {
 };
 
 const onPlanSelectionChange = (selection) => {
-  selectedPlanIds.value = selection.map(item => item.planId);
+  const planIdSet = new Set();
+  selection.forEach((item) => {
+    const ids = Array.isArray(item.planIds) && item.planIds.length
+      ? item.planIds
+      : (item.planId ? [item.planId] : []);
+    ids.forEach((id) => planIdSet.add(id));
+  });
+  selectedPlanIds.value = Array.from(planIdSet);
   positionAssignForm.value.planIds = selectedPlanIds.value;
 };
 
@@ -2176,7 +1934,9 @@ const showVerifyDialog = (row) => {
     equipmentName: row.equipmentName,
     executorName: row.executorName,
     result: 'pass',
-    remark: ''
+    remark: '',
+    deductionPoints: 0,
+    deductionRemark: ''
   };
   verifyDialogVisible.value = true;
 };
@@ -2189,10 +1949,15 @@ const submitVerify = async () => {
 
   verifySubmitting.value = true;
   try {
-    await request.put(`/maintenance-work-records/${verifyForm.value.id}/verify`, {
+    const payload = {
       verifyResult: verifyForm.value.result,
       verifyRemark: verifyForm.value.remark
-    });
+    };
+    if (verifyForm.value.result === 'fail') {
+      payload.deductionPoints = verifyForm.value.deductionPoints;
+      payload.deductionRemark = verifyForm.value.deductionRemark;
+    }
+    await request.put(`/maintenance-work-records/${verifyForm.value.id}/verify`, payload);
     ElMessage.success('验收成功');
     verifyDialogVisible.value = false;
     loadWorkRecords();
@@ -2206,13 +1971,15 @@ const submitVerify = async () => {
 watch(
   activeTab,
   (tab) => {
+    if (tab === 'records') {
+      loadWorkRecords();
+      return;
+    }
     if (!canManage.value) return;
     if (tab === 'plan') {
       loadPlanList();
     } else if (tab === 'position') {
       loadPositionPlans();
-    } else if (tab === 'records') {
-      loadWorkRecords();
     }
   },
   { immediate: true }
@@ -2281,39 +2048,13 @@ onMounted(() => {
   }
 
   .filter-card {
-    background: #fff;
-    border-radius: 8px;
-    padding: 16px;
     margin-bottom: 16px;
-    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.1);
   }
 
   .overdue-banner {
     margin-bottom: 16px;
   }
 
-  .filter-bar {
-    display: flex;
-    gap: 12px;
-    margin-bottom: 16px;
-    flex-wrap: wrap;
-  }
-
-  .table-wrapper {
-    background: #fff;
-    border-radius: 8px;
-    padding: 16px;
-    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.1);
-  }
-
-  .pagination-wrapper {
-    display: flex;
-    justify-content: flex-end;
-    margin-top: 16px;
-    background: #fff;
-    padding: 12px 16px;
-    border-radius: 8px;
-  }
 
   .cycle-tags {
     display: flex;

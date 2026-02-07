@@ -39,6 +39,18 @@ export const getFeedbacks = async (ctx) => {
   ctx.body = { code: 200, message: 'success', data: list };
 };
 
+export const getFeedbackUnreadCount = async (ctx) => {
+  const userId = ctx.state.user?.id;
+  if (!userId) {
+    ctx.body = { code: 200, message: 'success', data: { count: 0 } };
+    return;
+  }
+  const count = await Notification.count({
+    where: { receiver_id: userId, related_type: 'feedback', is_read: 0 }
+  });
+  ctx.body = { code: 200, message: 'success', data: { count } };
+};
+
 export const submitFeedback = async (ctx) => {
   const { type, content, contact, images } = ctx.request.body || {};
   const sender = ctx.state.user;
@@ -86,5 +98,6 @@ export const submitFeedback = async (ctx) => {
 
 export default {
   getFeedbacks,
+  getFeedbackUnreadCount,
   submitFeedback
 };

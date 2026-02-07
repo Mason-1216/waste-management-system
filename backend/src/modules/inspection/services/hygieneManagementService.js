@@ -62,21 +62,31 @@ export const getHygieneAreas = async (ctx) => {
  * POST /api/hygiene-areas
  */
 export const createHygieneArea = async (ctx) => {
-  const { stationId, areaName, points, areaPoints } = ctx.request.body;
+  const { stationId, areaName, points, areaPoints, mergeMode } = ctx.request.body;
 
-  if (!stationId || !areaName) {
+  const parsedStationId = Number(stationId);
+  const normalizedAreaName = typeof areaName === 'string' ? areaName.trim() : '';
+  if (!stationId || Number.isNaN(parsedStationId) || !normalizedAreaName) {
     throw createError(400, '场站和责任区名称不能为空');
   }
+
+  const hasAreaPoints = areaPoints !== undefined && areaPoints !== null && areaPoints !== '';
+  const parsedAreaPoints = hasAreaPoints ? Number(areaPoints) : null;
+  if (hasAreaPoints && !Number.isFinite(parsedAreaPoints)) {
+    throw createError(400, '积分格式不正确');
+  }
+
+  const allowMerge = mergeMode === 'merge';
 
   // 检查是否已存在同名责任区
   const existing = await HygieneArea.findOne({
     where: {
-      station_id: stationId,
-      area_name: areaName
+      station_id: parsedStationId,
+      area_name: normalizedAreaName
     }
   });
 
-  if (existing) {
+  if (existing && !allowMerge) {
     throw createError(400, '该场站已存在同名责任区');
   }
 
@@ -84,31 +94,79 @@ export const createHygieneArea = async (ctx) => {
   const t = await sequelize.transaction();
 
   try {
-    // 创建责任区
-    const area = await HygieneArea.create({
-      station_id: stationId,
-      area_name: areaName,
-      points: areaPoints || 0
-    }, { transaction: t });
+    let area = existing;
+    if (!area) {
+      area = await HygieneArea.create({
+        station_id: parsedStationId,
+        area_name: normalizedAreaName,
+        points: hasAreaPoints ? parsedAreaPoints : 0
+      }, { transaction: t });
+    } else if (hasAreaPoints && parsedAreaPoints !== area.points) {
+      await area.update({ points: parsedAreaPoints }, { transaction: t });
+    }
 
-    // 如果提供了卫生点数据，批量创建
-    if (points && Array.isArray(points) && points.length > 0) {
-      await HygienePoint.bulkCreate(
-        points.map(p => ({
-          hygiene_area_id: area.id,
-          station_id: stationId,
-          point_name: p.pointName,
-          work_requirements: p.workRequirements
-        })),
-        { transaction: t }
+    const pointMap = new Map();
+    if (Array.isArray(points)) {
+      points.forEach((point) => {
+        const pointName = typeof point?.pointName === 'string'
+          ? point.pointName.trim()
+          : (typeof point?.point_name === 'string' ? point.point_name.trim() : '');
+        const workRequirements = typeof point?.workRequirements === 'string'
+          ? point.workRequirements.trim()
+          : (typeof point?.work_requirements === 'string' ? point.work_requirements.trim() : '');
+        if (!pointName) return;
+        if (!pointMap.has(pointName) || workRequirements) {
+          pointMap.set(pointName, workRequirements);
+        }
+      });
+    }
+
+    if (pointMap.size > 0) {
+      const existingPoints = await HygienePoint.findAll({
+        where: { hygiene_area_id: area.id },
+        attributes: ['id', 'point_name', 'work_requirements'],
+        transaction: t
+      });
+
+      const existingMap = new Map(
+        existingPoints.map(point => [
+          String(point.point_name ?? '').trim(),
+          point
+        ])
       );
+
+      const createRows = [];
+      const updateTasks = [];
+      pointMap.forEach((workRequirements, pointName) => {
+        const matched = existingMap.get(pointName);
+        if (matched) {
+          const currentRequirements = matched.work_requirements ?? '';
+          if (workRequirements && workRequirements !== currentRequirements) {
+            updateTasks.push(matched.update({ work_requirements: workRequirements }, { transaction: t }));
+          }
+          return;
+        }
+        createRows.push({
+          hygiene_area_id: area.id,
+          station_id: parsedStationId,
+          point_name: pointName,
+          work_requirements: workRequirements
+        });
+      });
+
+      if (createRows.length > 0) {
+        await HygienePoint.bulkCreate(createRows, { transaction: t });
+      }
+      if (updateTasks.length > 0) {
+        await Promise.all(updateTasks);
+      }
     }
 
     await t.commit();
 
     ctx.body = {
       code: 200,
-      message: '责任区创建成功',
+      message: existing && allowMerge ? '责任区合并成功' : '责任区创建成功',
       data: { id: area.id }
     };
   } catch (error) {

@@ -12,13 +12,19 @@
       :class="['sidebar', { 'mobile-sidebar': isMobile, 'mobile-visible': mobileMenuVisible }]"
     >
       <div class="logo">
-        <img src="/logo.svg" alt="logo" v-if="!isCollapse" />
-        <span>运行管理系统</span>
+        <div class="logo-title">
+          <img src="/logo.svg" alt="logo" v-if="!isCollapse" />
+          <span>运行项目管理系统</span>
+        </div>
+        <div v-if="!isCollapse" class="logo-date">{{ todayText }}</div>
+        <div v-if="!isCollapse" class="logo-time">{{ timeText }}</div>
       </div>
       <el-menu
+        ref="menuRef"
         :default-active="activeMenu"
         :collapse="isCollapse"
-        :unique-opened="true"
+        :unique-opened="false"
+        :default-openeds="defaultOpeneds"
         background-color="#304156"
         text-color="#bfcbd9"
         active-text-color="#409EFF"
@@ -29,19 +35,28 @@
           <el-sub-menu v-if="menu.children" :index="menu.path">
             <template #title>
               <el-icon><component :is="menu.icon" /></el-icon>
-              <span>{{ menu.name }}</span>
+              <span class="menu-title">
+                <span class="menu-text">{{ menu.name }}</span>
+                <span v-if="getMenuBadgeCount(menu) > 0" class="menu-badge">{{ getMenuBadgeCount(menu) }}</span>
+              </span>
             </template>
             <el-menu-item
               v-for="child in menu.children"
               :key="child.path"
               :index="child.path"
             >
-              {{ child.name }}
+              <span class="menu-title">
+                <span class="menu-text">{{ child.name }}</span>
+                <span v-if="getMenuBadgeCount(child) > 0" class="menu-badge">{{ getMenuBadgeCount(child) }}</span>
+              </span>
             </el-menu-item>
           </el-sub-menu>
           <el-menu-item v-else :index="menu.path">
             <el-icon><component :is="menu.icon" /></el-icon>
-            <span>{{ menu.name }}</span>
+            <span class="menu-title">
+              <span class="menu-text">{{ menu.name }}</span>
+              <span v-if="getMenuBadgeCount(menu) > 0" class="menu-badge">{{ getMenuBadgeCount(menu) }}</span>
+            </span>
           </el-menu-item>
         </template>
       </el-menu>
@@ -59,7 +74,10 @@
             @click="handleBottomMenuClick(menu)"
           >
             <el-icon><component :is="menu.icon" /></el-icon>
-            <span>{{ menu.name }}</span>
+            <span class="menu-title">
+              <span class="menu-text">{{ menu.name }}</span>
+              <span v-if="getMenuBadgeCount(menu) > 0" class="menu-badge">{{ getMenuBadgeCount(menu) }}</span>
+            </span>
           </el-menu-item>
         </el-menu>
       </div>
@@ -91,7 +109,9 @@
           <el-dropdown @command="handleCommand">
             <span class="user-info">
               <el-avatar :size="32" icon="User" />
-              <span class="username">{{ displayName }}</span>
+              <span class="user-meta">
+                <span class="user-name">{{ displayUserLabel }}</span>
+              </span>
               <el-icon><ArrowDown /></el-icon>
             </span>
             <template #dropdown>
@@ -151,22 +171,54 @@
 import { ref, computed, onMounted, onBeforeUnmount, onErrorCaptured, watch, nextTick } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
 import { useUserStore } from '@/store/modules/user';
-import { menuConfig, bottomMenus } from '@/config/menuConfig';
+import { menuConfig, bottomMenus, getMenuCatalogItemByPath } from '@/config/menuConfig';
+import { usePermissionCatalogStore } from '@/store/modules/permissionCatalog';
+import { buildAugmentedMenus, filterMenusByMenuCodes } from '@/utils/menuBuilder';
 import { getNotifications, getUnreadCount, markAsRead as markRead } from '@/api/notification';
 import { ElMessage } from 'element-plus';
+import request from '@/api/request';
 import dayjs from 'dayjs';
 
 const router = useRouter();
 const route = useRoute();
 const userStore = useUserStore();
+const permissionCatalogStore = usePermissionCatalogStore();
 const displayName = computed(() => userStore.realName || userStore.userInfo?.username || '');
+const displayRole = computed(() => {
+  return userStore.userInfo?.positionName
+    || userStore.userInfo?.position_name
+    || userStore.roleName
+    || userStore.userInfo?.roleName
+    || '';
+});
 const shouldUseTransition = computed(() => route.meta?.disableTransition !== true);
+const displayUserLabel = computed(() => {
+  const name = displayName.value;
+  const role = displayRole.value;
+  if (name && role) return `${name}_${role}`;
+  return name || role || '';
+});
 
 const isCollapse = ref(false);
+const menuRef = ref(null);
 const notificationDrawer = ref(false);
 const notifications = ref([]);
 const unreadCount = ref(0);
 const routeKey = ref(0);
+const defaultOpeneds = ref([]);
+const badgeCounts = ref({});
+const badgeLoading = ref(false);
+const badgeTimer = ref(null);
+const dateTimer = ref(null);
+const sidebarScrollTop = ref(0);
+const sidebarScrollEl = ref(null);
+const todayText = ref(dayjs().format('YYYY年MM月DD日'));
+const timeText = ref(dayjs().format('HH:mm'));
+
+const updateDateTimeText = () => {
+  todayText.value = dayjs().format('YYYY年MM月DD日');
+  timeText.value = dayjs().format('HH:mm');
+};
 
 // 移动端响应式检测
 const MOBILE_BREAKPOINT = 768;
@@ -230,10 +282,36 @@ const menus = computed(() => {
   const roleCode = userStore.roleCode;
   const baseRoleCode = userStore.baseRoleCode || roleCode;
   const roleMenus = menuConfig[roleCode] || menuConfig[baseRoleCode] || menuConfig['operator'] || [];
-  const allowedCodes = new Set(userStore.menuCodes || []);
-  const filteredMenus = allowedCodes.size > 0
-    ? filterMenusByPermissions(roleMenus, allowedCodes)
-    : roleMenus;
+
+  const allowedMenuCodes = userStore.menuCodes || [];
+  const allowedSet = new Set(allowedMenuCodes);
+
+  // Before the permission catalog is loaded, keep the legacy behavior to avoid UI flicker.
+  // The catalog is only needed to distinguish "real" menu-permission nodes vs virtual child routes.
+  if (!permissionCatalogStore.loaded) {
+    const filteredMenus = allowedSet.size > 0
+      ? filterMenusByPermissions(roleMenus, allowedSet)
+      : roleMenus;
+    return filteredMenus.filter(menu => {
+      if (menu.requiresPriceAdmin) {
+        return userStore.userInfo?.isPriceAdmin === 1;
+      }
+      return true;
+    });
+  }
+
+  const augmented = buildAugmentedMenus({
+    baseMenus: roleMenus,
+    allowedMenuCodes,
+    getCatalogItemByPath: getMenuCatalogItemByPath
+  });
+
+  const filteredMenus = filterMenusByMenuCodes({
+    menus: augmented,
+    allowedMenuCodes,
+    isKnownMenuCode: permissionCatalogStore.hasMenuCode
+  });
+
   return filteredMenus.filter(menu => {
     if (menu.requiresPriceAdmin) {
       return userStore.userInfo?.isPriceAdmin === 1;
@@ -241,6 +319,122 @@ const menus = computed(() => {
     return true;
   });
 });
+
+const collectParentMenuPaths = (items, targetPath) => {
+  const list = Array.isArray(items) ? items : [];
+  const parents = [];
+  list.forEach(item => {
+    if (!item || !Array.isArray(item.children) || item.children.length === 0) return;
+    if (item.children.some(child => child && child.path === targetPath)) {
+      if (item.path) parents.push(item.path);
+      return;
+    }
+    const childParents = collectParentMenuPaths(item.children, targetPath);
+    if (childParents.length > 0) {
+      if (item.path) parents.push(item.path);
+      parents.push(...childParents);
+    }
+  });
+  return parents;
+};
+
+const collectGroupKeys = (items) => {
+  const list = Array.isArray(items) ? items : [];
+  const keys = [];
+  list.forEach(item => {
+    if (!item || !Array.isArray(item.children) || item.children.length === 0) return;
+    if (item.path) keys.push(item.path);
+    keys.push(...collectGroupKeys(item.children));
+  });
+  return keys;
+};
+
+const mergeOpenKeys = (existingKeys, nextKeys) => {
+  const merged = Array.isArray(existingKeys) ? [...existingKeys] : [];
+  nextKeys.forEach(key => {
+    if (key && !merged.includes(key)) merged.push(key);
+  });
+  return merged;
+};
+
+const ensureActiveParentOpen = async (path) => {
+  if (!path) return;
+  const parentKeys = collectParentMenuPaths(menus.value, path);
+  if (parentKeys.length === 0) return;
+  const validKeys = new Set(collectGroupKeys(menus.value));
+  const filteredParents = parentKeys.filter(key => validKeys.has(key));
+  if (filteredParents.length === 0) return;
+  const filteredExisting = (Array.isArray(defaultOpeneds.value) ? defaultOpeneds.value : []).filter(key => validKeys.has(key));
+  defaultOpeneds.value = mergeOpenKeys(filteredExisting, filteredParents);
+  await nextTick();
+  filteredParents.forEach(key => {
+    if (menuRef.value && typeof menuRef.value.open === 'function') {
+      menuRef.value.open(key);
+    }
+  });
+  bindSidebarScroll();
+  restoreSidebarScroll();
+};
+
+const getSidebarMenuEl = () => {
+  const refEl = menuRef.value;
+  if (!refEl) return null;
+  return refEl.$el || refEl.$?.el || null;
+};
+
+const handleSidebarScroll = (event) => {
+  const target = event?.target;
+  if (!target) return;
+  sidebarScrollTop.value = target.scrollTop || 0;
+};
+
+const bindSidebarScroll = () => {
+  const el = getSidebarMenuEl();
+  if (!el) return;
+  if (sidebarScrollEl.value === el) return;
+  if (sidebarScrollEl.value) {
+    sidebarScrollEl.value.removeEventListener('scroll', handleSidebarScroll);
+  }
+  sidebarScrollEl.value = el;
+  el.addEventListener('scroll', handleSidebarScroll, { passive: true });
+};
+
+const restoreSidebarScroll = () => {
+  const el = getSidebarMenuEl();
+  if (!el) return;
+  const target = sidebarScrollTop.value || 0;
+  if (el.scrollTop !== target) {
+    el.scrollTop = target;
+  }
+};
+
+const normalizeBadgeValue = (value) => {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) return 0;
+  return parsed;
+};
+
+const setBadgeCount = (path, value) => {
+  if (!path) return;
+  const next = {
+    ...badgeCounts.value,
+    [path]: normalizeBadgeValue(value)
+  };
+  badgeCounts.value = next;
+};
+
+const getPathBadgeCount = (path) => {
+  const value = badgeCounts.value[path];
+  return normalizeBadgeValue(value);
+};
+
+const getMenuBadgeCount = (menu) => {
+  if (!menu) return 0;
+  if (!Array.isArray(menu.children) || menu.children.length === 0) {
+    return getPathBadgeCount(menu.path);
+  }
+  return menu.children.reduce((sum, child) => sum + getMenuBadgeCount(child), 0);
+};
 
 // 底部菜单
 const bottomMenuItems = computed(() => bottomMenus);
@@ -303,13 +497,226 @@ const loadNotifications = async () => {
   }
 };
 
-// 加载未读数量
-const loadUnreadCount = async () => {
+const parseScheduleData = (value) => {
+  if (!value) return null;
+  if (typeof value === 'string') {
+    try {
+      return JSON.parse(value);
+    } catch {
+      return null;
+    }
+  }
+  return value;
+};
+
+const resolveScheduleValue = (scheduleData, dateKey, dayKey) => {
+  if (!scheduleData) return null;
+  if (Object.prototype.hasOwnProperty.call(scheduleData, dateKey)) {
+    return scheduleData[dateKey];
+  }
+  if (Object.prototype.hasOwnProperty.call(scheduleData, dayKey)) {
+    return scheduleData[dayKey];
+  }
+  return null;
+};
+
+const hasScheduleForDate = (scheduleData, dateKey, dayKey) => {
+  const value = resolveScheduleValue(scheduleData, dateKey, dayKey);
+  if (!value) return false;
+  return value !== '休';
+};
+
+const resolveTodaySchedules = async () => {
+  const today = dayjs();
+  const params = {
+    year: today.year(),
+    month: today.month() + 1,
+    userId: userStore.userId
+  };
+  const res = await request.get('/schedules', { params });
+  let list = [];
+  if (Array.isArray(res?.schedules)) {
+    list = res.schedules;
+  } else if (Array.isArray(res?.list)) {
+    list = res.list;
+  } else if (Array.isArray(res)) {
+    list = res;
+  }
+  const dateKey = today.format('YYYY-MM-DD');
+  const dayKey = String(today.date());
+  return list.filter(item => {
+    const scheduleData = parseScheduleData(item?.schedules);
+    return hasScheduleForDate(scheduleData, dateKey, dayKey);
+  });
+};
+
+const resolveTotalCount = (value) => {
+  if (value && Number.isFinite(value.total)) return value.total;
+  if (value && Number.isFinite(value.count)) return value.count;
+  if (value && Array.isArray(value.list)) return value.list.length;
+  if (Array.isArray(value)) return value.length;
+  return 0;
+};
+
+const loadSidebarBadges = async () => {
+  if (!userStore.userId || badgeLoading.value) return;
+  badgeLoading.value = true;
+  const today = dayjs().format('YYYY-MM-DD');
   try {
-    const data = await getUnreadCount();
-    unreadCount.value = data.count || 0;
+    const roleCode = userStore.roleCode;
+
+    let hazardCount = 0;
+    try {
+      const pendingRes = await request.get('/hazard-inspections', {
+        params: { status: 'pending', page: 1, pageSize: 1 }
+      });
+      const rectifiedRes = await request.get('/hazard-inspections', {
+        params: { status: 'rectified', page: 1, pageSize: 1 }
+      });
+      hazardCount = resolveTotalCount(pendingRes) + resolveTotalCount(rectifiedRes);
+    } catch {
+      hazardCount = 0;
+    }
+    setBadgeCount('/safety-rectification', hazardCount);
+
+    const todaySchedules = await resolveTodaySchedules();
+    const hasTodaySchedule = todaySchedules.length > 0;
+
+    let safetyCount = 0;
+    if (hasTodaySchedule) {
+      const safetyRes = await request.get('/self-inspections/my', {
+        params: { inspectionType: 'safety', startDate: today, endDate: today }
+      });
+      safetyCount = Array.isArray(safetyRes) && safetyRes.length > 0 ? 0 : 1;
+    }
+    setBadgeCount('/safety-self-inspection', safetyCount);
+
+    let needsHygiene = false;
+    if (hasTodaySchedule) {
+      const keySet = new Set();
+      todaySchedules.forEach(item => {
+        let stationId = null;
+        if (item && item.station_id !== undefined && item.station_id !== null) {
+          stationId = item.station_id;
+        } else if (item && item.stationId !== undefined && item.stationId !== null) {
+          stationId = item.stationId;
+        }
+        let positionName = '';
+        if (item && item.position_name !== undefined && item.position_name !== null) {
+          positionName = item.position_name;
+        } else if (item && item.positionName !== undefined && item.positionName !== null) {
+          positionName = item.positionName;
+        }
+        if (!stationId || !positionName) return;
+        keySet.add(`${stationId}::${positionName}`);
+      });
+      const queries = Array.from(keySet).map((key) => {
+        const [stationIdText, positionName] = key.split('::');
+        return request.get('/hygiene-position-areas/by-position', {
+          params: { stationId: Number(stationIdText), positionName }
+        });
+      });
+      if (queries.length > 0) {
+        const results = await Promise.allSettled(queries);
+        needsHygiene = results.some(result => {
+          if (result.status !== 'fulfilled') return false;
+          const data = result.value;
+          return Array.isArray(data) && data.length > 0;
+        });
+      }
+    }
+
+    let hygieneCount = 0;
+    if (needsHygiene) {
+      const hygieneRes = await request.get('/self-inspections/my', {
+        params: { inspectionType: 'hygiene', startDate: today, endDate: today }
+      });
+      hygieneCount = Array.isArray(hygieneRes) && hygieneRes.length > 0 ? 0 : 1;
+    }
+    setBadgeCount('/hygiene-self-inspection', hygieneCount);
+
+    const workRes = await request.get('/position-work-logs/today-tasks', {
+      params: { workDate: today }
+    });
+    let workList = [];
+    if (Array.isArray(workRes?.list)) {
+      workList = workRes.list;
+    } else if (Array.isArray(workRes)) {
+      workList = workRes;
+    }
+    const pendingWork = workList.filter(item => Number(item?.isCompleted) !== 1).length;
+    setBadgeCount('/position-work', pendingWork);
+    setBadgeCount('/position-work/field', pendingWork);
+
+    const pendingTempRes = await request.get('/temporary-tasks', {
+      params: { status: 'pending', executorId: userStore.userId, page: 1, pageSize: 1 }
+    });
+    const processingTempRes = await request.get('/temporary-tasks', {
+      params: { status: 'in_progress', executorId: userStore.userId, page: 1, pageSize: 1 }
+    });
+    const tempCount = resolveTotalCount(pendingTempRes) + resolveTotalCount(processingTempRes);
+      setBadgeCount('/temporary-tasks/fill', tempCount);
+
+    const maintenanceRes = await request.get('/maintenance-work-records/today-tasks', {
+      params: { workDate: today }
+    });
+    let maintenanceList = [];
+    if (Array.isArray(maintenanceRes?.list)) {
+      maintenanceList = maintenanceRes.list;
+    } else if (Array.isArray(maintenanceRes)) {
+      maintenanceList = maintenanceRes;
+    }
+    const pendingMaintenance = maintenanceList.filter(task => {
+      let status = '';
+      if (task?.existingRecord && task.existingRecord.status !== undefined && task.existingRecord.status !== null) {
+        status = task.existingRecord.status;
+      } else if (task && task.status !== undefined && task.status !== null) {
+        status = task.status;
+      }
+      return !['completed', 'verified'].includes(status);
+    }).length;
+    setBadgeCount('/maintenance-task/work', pendingMaintenance);
+
+    const managerRoles = new Set(['station_manager', 'department_manager', 'deputy_manager', 'senior_management', 'dev_test']);
+    const maintenanceRoles = new Set(['maintenance']);
+    const reporterRoles = new Set(['operator']);
+    let faultStatus = '';
+    if (managerRoles.has(roleCode)) {
+      faultStatus = 'submitted_report,repaired_submitted';
+    } else if (maintenanceRoles.has(roleCode)) {
+      faultStatus = 'dispatched,repairing';
+    } else if (reporterRoles.has(roleCode)) {
+      faultStatus = 'submitted_report,dispatched,repairing';
+    }
+    let faultCount = 0;
+    if (faultStatus) {
+      const faultRes = await request.get('/repair-records', {
+        params: { status: faultStatus, page: 1, pageSize: 1 }
+      });
+      faultCount = resolveTotalCount(faultRes);
+    }
+    setBadgeCount('/device-faults/records', faultCount);
+
+    const notificationRes = await getUnreadCount();
+    const notificationCount = resolveTotalCount(notificationRes);
+    unreadCount.value = notificationCount;
+    if (!userStore.hasRole('admin')) {
+      setBadgeCount('/notifications', notificationCount);
+    } else {
+      setBadgeCount('/notifications', 0);
+    }
+
+    if (userStore.hasRole('admin')) {
+      const feedbackRes = await request.get('/feedback/unread-count');
+      const feedbackCount = resolveTotalCount(feedbackRes);
+      setBadgeCount('/help-feedback', feedbackCount);
+    } else {
+      setBadgeCount('/help-feedback', 0);
+    }
   } catch {
-    // 静默处理加载未读数失败
+    // 静默处理统计失败
+  } finally {
+    badgeLoading.value = false;
   }
 };
 
@@ -320,7 +727,7 @@ const getNotificationRoute = (notification) => {
     safety_rectification: '/safety-rectification',
     safety_other_inspection: '/safety-other-inspection',
     hygiene_other_inspection: '/hygiene-other-inspection',
-    temporary_task: '/temporary-tasks',
+    temporary_task: '/temporary-tasks/fill',
     repair_record: '/device-faults',
     fault_report: '/device-faults'
   };
@@ -343,6 +750,13 @@ const markAsRead = async (notification) => {
     await markRead(notification.id);
     notification.is_read = 1;
     unreadCount.value = Math.max(0, unreadCount.value - 1);
+    if (!userStore.hasRole('admin')) {
+      setBadgeCount('/notifications', unreadCount.value);
+    }
+    if (notification.related_type === 'feedback') {
+      const current = getPathBadgeCount('/help-feedback');
+      setBadgeCount('/help-feedback', Math.max(0, current - 1));
+    }
   } catch {
     // 静默处理标记已读失败
   }
@@ -362,6 +776,11 @@ const handleCommand = (command) => {
   }
 };
 
+// Keep parent menus expanded on route change
+watch([menus, () => route.path], () => {
+  ensureActiveParentOpen(route.path);
+}, { immediate: true });
+
 // 监听路由变化，强制刷新组件
 watch(() => route.path, async (newPath, oldPath) => {
   if (newPath !== oldPath) {
@@ -369,6 +788,9 @@ watch(() => route.path, async (newPath, oldPath) => {
     routeKey.value++;
     await nextTick();
     pushRouteLog({ type: 'route-change', to: newPath, from: oldPath });
+    loadSidebarBadges();
+    bindSidebarScroll();
+    restoreSidebarScroll();
   }
 }, { immediate: false });
 
@@ -381,14 +803,37 @@ onErrorCaptured((err, instance, info) => {
 });
 
 onMounted(() => {
-  loadUnreadCount();
-  setInterval(loadUnreadCount, 60000);
+  if (userStore.isLoggedIn) {
+    permissionCatalogStore.ensureLoaded();
+  }
+  loadSidebarBadges();
+  badgeTimer.value = setInterval(loadSidebarBadges, 60000);
+  updateDateTimeText();
+  dateTimer.value = setInterval(updateDateTimeText, 60000);
   // 添加窗口尺寸监听
   window.addEventListener('resize', checkMobile);
+  window.addEventListener('sidebar-badge-refresh', loadSidebarBadges);
+  nextTick(() => {
+    bindSidebarScroll();
+    restoreSidebarScroll();
+  });
 });
 
 onBeforeUnmount(() => {
   window.removeEventListener('resize', checkMobile);
+  window.removeEventListener('sidebar-badge-refresh', loadSidebarBadges);
+  if (badgeTimer.value) {
+    clearInterval(badgeTimer.value);
+    badgeTimer.value = null;
+  }
+  if (dateTimer.value) {
+    clearInterval(dateTimer.value);
+    dateTimer.value = null;
+  }
+  if (sidebarScrollEl.value) {
+    sidebarScrollEl.value.removeEventListener('scroll', handleSidebarScroll);
+    sidebarScrollEl.value = null;
+  }
 });
 </script>
 
@@ -405,15 +850,36 @@ onBeforeUnmount(() => {
   flex-direction: column;
 
   .logo {
-    height: 60px;
+    height: 84px;
     display: flex;
+    flex-direction: column;
     align-items: center;
     justify-content: center;
     color: #fff;
-    font-size: 16px;
+    font-size: 18px;
     font-weight: bold;
     white-space: nowrap;
     flex-shrink: 0;
+
+    .logo-title {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .logo-date {
+      margin-top: 2px;
+      font-size: 16px;
+      font-weight: 400;
+      color: #d6dbe5;
+    }
+
+    .logo-time {
+      margin-top: 2px;
+      font-size: 16px;
+      font-weight: 400;
+      color: #c7cdd9;
+    }
 
     img {
       width: 32px;
@@ -426,10 +892,65 @@ onBeforeUnmount(() => {
     flex: 1;
     overflow-y: auto;
     border-right: none;
+
+    // Top-level menu items (parents) should be slightly larger and bold.
+    :deep(> .el-menu-item),
+    :deep(> .el-sub-menu > .el-sub-menu__title) {
+      font-size: 15px;
+      font-weight: 600;
+    }
+
+    :deep(.el-menu--inline) {
+      background-color: #263445;
+    }
+
+    :deep(.el-menu--inline .el-menu-item) {
+      background-color: transparent;
+      border-left: 2px solid transparent;
+      // Increase indentation for sub menu items by about 50% of the default.
+      padding-left: 60px !important;
+      // Sub menu items keep the base font size (parents are +1px above).
+      font-size: 14px;
+      font-weight: 400;
+    }
+
+    :deep(.el-menu--inline .el-menu-item:hover) {
+      background-color: #2f4157;
+      border-left-color: #409EFF;
+    }
+
+    :deep(.el-menu--inline .el-menu-item.is-active) {
+      background-color: #223247;
+      border-left-color: #409EFF;
+    }
   }
 
   .el-menu {
     border-right: none;
+  }
+
+  .menu-title {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .menu-text {
+    display: inline-block;
+  }
+
+  .menu-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 18px;
+    height: 18px;
+    padding: 0 6px;
+    border-radius: 999px;
+    background-color: #F56C6C;
+    color: #fff;
+    font-size: 12px;
+    line-height: 18px;
   }
 
   .bottom-menu {
@@ -498,8 +1019,15 @@ onBeforeUnmount(() => {
       gap: 8px;
       cursor: pointer;
 
-      .username {
+      .user-meta {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+      }
+
+      .user-name {
         color: #606266;
+        font-size: 14px;
       }
     }
   }
@@ -601,7 +1129,7 @@ onBeforeUnmount(() => {
   }
 
   // 隐藏桌面用户名
-  .header-right .user-info .username {
+  .header-right .user-info .user-meta {
     display: none;
   }
 

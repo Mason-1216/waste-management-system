@@ -221,7 +221,7 @@ export const getMaintenancePositionPlans = async (ctx) => {
     where.position_name = positionName;
   }
 
-  const planWhere = {};
+  const planWhere = { is_deleted: false };
   if (equipmentCode) {
     planWhere.equipment_code = { [Op.like]: `%${equipmentCode}%` };
   }
@@ -325,21 +325,60 @@ export const deleteMaintenancePositionPlan = async (ctx) => {
  * GET /api/maintenance-work-records/today-tasks
  */
 export const getTodayMaintenanceTasks = async (ctx) => {
-  const { id: userId, realName } = ctx.state.user;
-  const today = dayjs();
-  const todayText = today.format('YYYY-MM-DD');
-  const todayStart = today.startOf('day');
-  const year = today.year();
-  const month = today.month() + 1;
-  const day = today.date();
+  const user = ctx.state.user;
+  const dataFilter = ctx.state.dataFilter ?? {};
+  const queryUserId = ctx.query?.userId;
+  const queryStationId = ctx.query?.stationId;
+  const workDate = ctx.query?.workDate;
+
+  let targetUserId = user.id;
+  if (queryUserId !== undefined && queryUserId !== null && queryUserId !== '') {
+    const parsedUserId = Number.parseInt(queryUserId, 10);
+    if (Number.isNaN(parsedUserId)) {
+      throw createError(400, '鐢ㄦ埛鍙傛暟鏃犳晥');
+    }
+    targetUserId = parsedUserId;
+  }
+
+  if (dataFilter?.userId && targetUserId !== dataFilter.userId) {
+    throw createError(403, 'Access denied.');
+  }
+  if (dataFilter?.none) {
+    throw createError(403, 'Access denied.');
+  }
+
+  const dateValue = workDate ? dayjs(workDate) : dayjs();
+  if (!dateValue.isValid()) {
+    throw createError(400, 'Invalid date format.');
+  }
+
+  const todayText = dateValue.format('YYYY-MM-DD');
+  const todayStart = dateValue.startOf('day');
+  const year = dateValue.year();
+  const month = dateValue.month() + 1;
+  const day = dateValue.date();
+
+  const scheduleWhere = { user_id: targetUserId, year, month };
+  const normalizedStationId = queryStationId !== undefined && queryStationId !== null && queryStationId !== ''
+    ? Number.parseInt(queryStationId, 10)
+    : null;
+  if (normalizedStationId && !Number.isNaN(normalizedStationId)) {
+    scheduleWhere.station_id = normalizedStationId;
+  }
+  if (!dataFilter.all && Array.isArray(dataFilter.stationIds) && dataFilter.stationIds.length > 0) {
+    if (scheduleWhere.station_id) {
+      if (!dataFilter.stationIds.includes(scheduleWhere.station_id)) {
+        ctx.body = { code: 200, message: 'success', data: [] };
+        return;
+      }
+    } else {
+      scheduleWhere.station_id = { [Op.in]: dataFilter.stationIds };
+    }
+  }
 
   // 1. 鏌ヨ鐢ㄦ埛浠婃棩鎺掔彮
   const schedules = await Schedule.findAll({
-    where: {
-      user_id: userId,
-      year,
-      month
-    }
+    where: scheduleWhere
   });
 
   // 绛涢€夊嚭浠婂ぉ鏈夋帓鐝殑璁板綍
@@ -380,7 +419,9 @@ export const getTodayMaintenanceTasks = async (ctx) => {
           model: MaintenancePlanLibrary,
           as: 'plan',
           attributes: ['id', 'equipment_code', 'equipment_name', 'install_location', 'cycle_type',
-                       'weekly_day', 'monthly_day', 'yearly_month', 'yearly_day', 'maintenance_standards']
+                       'weekly_day', 'monthly_day', 'yearly_month', 'yearly_day', 'maintenance_standards'],
+          where: { is_deleted: false },
+          required: true
         }
       ]
     });
@@ -399,7 +440,7 @@ export const getTodayMaintenanceTasks = async (ctx) => {
       const existingRecord = await MaintenanceWorkRecord.findOne({
         where: {
           plan_id: plan.id,
-          executor_id: userId,
+          executor_id: targetUserId,
           position_name: positionPlan.position_name,
           cycle_type: cycleType,
           work_date: {
@@ -555,7 +596,7 @@ export const submitMaintenanceWorkRecord = async (ctx) => {
 export const getMaintenanceWorkRecords = async (ctx) => {
   const { page, pageSize, offset, limit } = getPagination(ctx.query);
   const { stationId, positionName, executorName, cycleType, startDate, endDate, status, equipmentCode, equipmentName } = ctx.query;
-  const dataFilter = ctx.state.dataFilter;
+  const dataFilter = ctx.state.dataFilter ?? {};
   const user = ctx.state.user;
   const scopedStationId = resolveScopedStationId(user, ctx.headers['x-station-id']);
   const todayStart = dayjs().startOf('day');
@@ -572,6 +613,10 @@ export const getMaintenanceWorkRecords = async (ctx) => {
 
   if (positionName) {
     where.position_name = positionName;
+  }
+
+  if (dataFilter?.userId) {
+    where.executor_id = dataFilter.userId;
   }
 
   if (executorName) {
@@ -638,7 +683,7 @@ export const getMaintenanceWorkRecords = async (ctx) => {
     assignmentWhere.position_name = positionName;
   }
 
-  const planWhere = {};
+  const planWhere = { is_deleted: false };
   if (cycleType) {
     planWhere.cycle_type = cycleType;
   }
@@ -827,6 +872,7 @@ export const getMaintenanceWorkRecords = async (ctx) => {
  */
 export const getMaintenanceWorkRecordDetail = async (ctx) => {
   const { id } = ctx.params;
+  const dataFilter = ctx.state.dataFilter;
 
   const record = await MaintenanceWorkRecord.findByPk(id, {
     include: [
@@ -838,6 +884,10 @@ export const getMaintenanceWorkRecordDetail = async (ctx) => {
 
   if (!record) {
     throw createError(404, 'Not found');
+  }
+
+  if (dataFilter?.userId && record.executor_id !== dataFilter.userId) {
+    throw createError(403, '无权限访问');
   }
 
   ctx.body = {
@@ -854,7 +904,7 @@ export const getMaintenanceWorkRecordDetail = async (ctx) => {
 export const verifyMaintenanceWorkRecord = async (ctx) => {
   const { id } = ctx.params;
   const { id: verifierId, realName: verifierName } = ctx.state.user;
-  const { verifyResult, verifyRemark } = ctx.request.body;
+  const { verifyResult, verifyRemark, deductionPoints, deductionRemark } = ctx.request.body;
 
   if (!verifyResult || !['pass', 'fail'].includes(verifyResult)) {
     throw createError(400, '楠屾敹缁撴灉鏃犳晥');
@@ -869,13 +919,35 @@ export const verifyMaintenanceWorkRecord = async (ctx) => {
     throw createError(400, '鍙兘楠屾敹宸插畬鎴愮殑淇濆吇璁板綍');
   }
 
+  let normalizedDeductionPoints = null;
+  let normalizedDeductionRemark = null;
+  if (verifyResult === 'fail') {
+    if (deductionPoints !== undefined && deductionPoints !== null && deductionPoints !== '') {
+      const parsed = Number(deductionPoints);
+      if (Number.isNaN(parsed)) {
+        throw createError(400, '扣分必须为数字');
+      }
+      if (parsed > 0) {
+        throw createError(400, '扣分必须为 0 或负数');
+      }
+      normalizedDeductionPoints = parsed;
+    } else {
+      normalizedDeductionPoints = 0;
+    }
+    if (deductionRemark !== undefined && deductionRemark !== null && deductionRemark !== '') {
+      normalizedDeductionRemark = deductionRemark;
+    }
+  }
+
   await record.update({
     status: 'verified',
     verifier_id: verifierId,
     verifier_name: verifierName,
     verify_time: new Date(),
     verify_result: verifyResult,
-    verify_remark: verifyRemark || null
+    verify_remark: verifyRemark || null,
+    deduction_points: normalizedDeductionPoints,
+    deduction_remark: normalizedDeductionRemark
   });
 
   ctx.body = {

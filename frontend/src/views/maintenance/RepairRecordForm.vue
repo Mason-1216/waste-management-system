@@ -17,6 +17,10 @@
       </el-steps>
     </div>
 
+    <el-card class="filter-card">
+      <FilterBar />
+    </el-card>
+
     <div class="form-card">
       <!-- 表单编号和基础信息 -->
       <div class="form-section">
@@ -173,7 +177,7 @@
             <span>维修耗材明细</span>
             <el-button v-if="canRepair" type="primary" size="small" @click="addConsumable">添加耗材</el-button>
           </div>
-          <el-table :data="form.consumablesList" border size="small">
+          <el-table :data="consumableTableRows" border size="small">
             <el-table-column prop="name" label="耗材名称" min-width="120">
               <template #default="{ row, $index }">
                 <el-input v-if="canRepair" v-model="row.name" size="small" />
@@ -215,6 +219,17 @@
               </template>
             </el-table-column>
           </el-table>
+          <div class="pagination-wrapper">
+            <el-pagination
+              v-model:current-page="consumablesPagination.page"
+              v-model:page-size="consumablesPagination.pageSize"
+              :page-sizes="[5, 10, 20, 50]"
+              :total="consumablesPagination.total"
+              layout="total, sizes, prev, pager, next"
+              @current-change="handleConsumablesPageChange"
+              @size-change="handleConsumablesPageSizeChange"
+            />
+          </div>
           <div class="table-footer">
             <span>耗材合计：<strong>{{ form.consumablesTotal?.toFixed(2) || '0.00' }}</strong> 元</span>
           </div>
@@ -226,7 +241,7 @@
             <span>更换配件明细</span>
             <el-button v-if="canRepair" type="primary" size="small" @click="addPart">添加配件</el-button>
           </div>
-          <el-table :data="form.partsList" border size="small">
+          <el-table :data="partTableRows" border size="small">
             <el-table-column prop="name" label="配件名称" min-width="120">
               <template #default="{ row }">
                 <el-input v-if="canRepair" v-model="row.name" size="small" />
@@ -274,6 +289,17 @@
               </template>
             </el-table-column>
           </el-table>
+          <div class="pagination-wrapper">
+            <el-pagination
+              v-model:current-page="partsPagination.page"
+              v-model:page-size="partsPagination.pageSize"
+              :page-sizes="[5, 10, 20, 50]"
+              :total="partsPagination.total"
+              layout="total, sizes, prev, pager, next"
+              @current-change="handlePartsPageChange"
+              @size-change="handlePartsPageSizeChange"
+            />
+          </div>
           <div class="table-footer">
             <span>配件合计：<strong>{{ form.partsTotal?.toFixed(2) || '0.00' }}</strong> 元</span>
           </div>
@@ -381,9 +407,11 @@
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { useUserStore } from '@/store/modules/user';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import dayjs from 'dayjs';
+
+import FilterBar from '@/components/common/FilterBar.vue';
+import { useUserStore } from '@/store/modules/user';
 import request from '@/api/request';
 import {
   getRepairRecordById,
@@ -463,12 +491,14 @@ const form = ref({
   rating: 5,
   status: 'draft_report'
 });
+const consumablesPagination = ref({ page: 1, pageSize: 5, total: 0 });
+const partsPagination = ref({ page: 1, pageSize: 5, total: 0 });
 
 const isNew = computed(() => !route.params.id);
 const isReporter = computed(() => form.value.reporterId === userStore.userId);
 const isRepairPerson = computed(() => form.value.repairPersonId === userStore.userId);
-const isStationManager = computed(() => ['station_manager', 'admin'].includes(userStore.roleCode));
-const isMaintenance = computed(() => userStore.roleCode === 'maintenance');
+const isStationManager = computed(() => userStore.hasRole('station_manager'));
+const isMaintenance = computed(() => userStore.hasRole('maintenance'));
 
 const canEditReport = computed(() => {
   if (isNew.value) return true;
@@ -548,7 +578,7 @@ const goBack = () => {
 
 const loadStations = async () => {
   try {
-    const res = await request.get('/stations', { params: { pageSize: 200 } });
+    const res = await request.get('/stations/all');
     stations.value = (res.list || res || []).map(station => ({
       ...station,
       station_name: station.station_name || station.stationName
@@ -641,6 +671,22 @@ const calcConsumablesTotal = () => {
   }, 0);
 };
 
+const consumableTableRows = computed(() => {
+  const list = Array.isArray(form.value.consumablesList) ? form.value.consumablesList : [];
+  const startIndex = (consumablesPagination.value.page - 1) * consumablesPagination.value.pageSize;
+  const endIndex = startIndex + consumablesPagination.value.pageSize;
+  return list.slice(startIndex, endIndex);
+});
+
+const handleConsumablesPageChange = (page) => {
+  consumablesPagination.value.page = page;
+};
+
+const handleConsumablesPageSizeChange = (size) => {
+  consumablesPagination.value.pageSize = size;
+  consumablesPagination.value.page = 1;
+};
+
 const addPart = () => {
   form.value.partsList.push({ name: '', model: '', unit: '个', quantity: 1, unitPrice: 0, reason: '' });
 };
@@ -654,6 +700,22 @@ const calcPartsTotal = () => {
   form.value.partsTotal = form.value.partsList.reduce((sum, item) => {
     return sum + (item.quantity || 0) * (item.unitPrice || 0);
   }, 0);
+};
+
+const partTableRows = computed(() => {
+  const list = Array.isArray(form.value.partsList) ? form.value.partsList : [];
+  const startIndex = (partsPagination.value.page - 1) * partsPagination.value.pageSize;
+  const endIndex = startIndex + partsPagination.value.pageSize;
+  return list.slice(startIndex, endIndex);
+});
+
+const handlePartsPageChange = (page) => {
+  partsPagination.value.page = page;
+};
+
+const handlePartsPageSizeChange = (size) => {
+  partsPagination.value.pageSize = size;
+  partsPagination.value.page = 1;
 };
 
 const saveDraft = async () => {
@@ -830,6 +892,28 @@ onMounted(async () => {
     }
   }
 });
+
+watch(
+  () => form.value.consumablesList.length,
+  (total) => {
+    consumablesPagination.value.total = total;
+    const size = consumablesPagination.value.pageSize;
+    const maxPage = Math.max(1, Math.ceil(total / size));
+    if (consumablesPagination.value.page > maxPage) consumablesPagination.value.page = maxPage;
+  },
+  { immediate: true }
+);
+
+watch(
+  () => form.value.partsList.length,
+  (total) => {
+    partsPagination.value.total = total;
+    const size = partsPagination.value.pageSize;
+    const maxPage = Math.max(1, Math.ceil(total / size));
+    if (partsPagination.value.page > maxPage) partsPagination.value.page = maxPage;
+  },
+  { immediate: true }
+);
 </script>
 
 <style lang="scss" scoped>

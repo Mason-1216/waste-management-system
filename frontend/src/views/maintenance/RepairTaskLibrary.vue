@@ -1,7 +1,7 @@
-<template>
+﻿<template>
   <div class="repair-task-library">
     <div class="page-header">
-      <h2>维修任务库</h2>
+      <h2>维修任务汇总表</h2>
       <div class="header-actions" v-if="canManage">
         <el-button type="primary" @click="openDialog()">
           <el-icon><Plus /></el-icon>
@@ -16,70 +16,107 @@
           accept=".xlsx,.xls"
           :before-upload="beforeUpload"
         >
-          <el-button type="primary" plain>
+          <el-button type="success">
             <el-icon><Download /></el-icon>
             批量导入
           </el-button>
         </el-upload>
-        <el-button @click="downloadTemplate" plain>
+        <el-button type="info" @click="downloadTemplate">
           <el-icon><Download /></el-icon>
           下载模板
+        </el-button>
+        <el-button
+          v-if="canManage && selectedRows.length > 0"
+          type="danger"
+          @click="batchDeleteTasks"
+        >
+          <el-icon><Delete /></el-icon>
+          批量删除 ({{ selectedRows.length }})
         </el-button>
       </div>
     </div>
 
-    <div class="filter-bar">
-      <el-input
-        v-model="filters.taskName"
-        placeholder="任务名称"
-        clearable
-        style="width: 180px"
-        @keyup.enter="handleSearch"
-      />
-      <el-input
-        v-model="filters.taskCategory"
-        placeholder="任务类别"
-        clearable
-        style="width: 160px"
-        @keyup.enter="handleSearch"
-      />
-      <el-select
-        v-model="filters.scoreMethod"
-        placeholder="给分方式"
-        clearable
-        style="width: 160px"
-      >
-        <el-option v-for="option in scoreMethodOptions" :key="option" :label="option" :value="option" />
-      </el-select>
-      <el-select
-        v-model="filters.pointsEditable"
-        placeholder="积分是否可修改"
-        clearable
-        style="width: 160px"
-      >
-        <el-option label="是" :value="1" />
-        <el-option label="否" :value="0" />
-      </el-select>
-      <el-select
-        v-model="filters.quantityEditable"
-        placeholder="数量是否可修改"
-        clearable
-        style="width: 160px"
-      >
-        <el-option label="是" :value="1" />
-        <el-option label="否" :value="0" />
-      </el-select>
-      <el-button type="primary" @click="handleSearch">查询</el-button>
-      <el-button @click="resetFilters">重置</el-button>
-      <el-button
-        v-if="canManage"
-        type="danger"
-        :disabled="selectedRows.length === 0"
-        @click="batchDeleteTasks"
-      >
-        批量删除 ({{ selectedRows.length }})
-      </el-button>
-    </div>
+    <el-card class="filter-card">
+      <FilterBar>
+        <div class="filter-item">
+          <span class="filter-label">任务名称</span>
+          <FilterAutocomplete
+            v-model="filters.taskName"
+            :fetch-suggestions="fetchTaskNameSuggestions"
+            trigger-on-focus
+            placeholder="全部"
+            clearable
+            style="width: 180px"
+            @select="handleSearch"
+            @input="handleSearch"
+            @clear="handleSearch"
+            @keyup.enter="handleSearch"
+          />
+        </div>
+        <div class="filter-item">
+          <span class="filter-label">任务类别</span>
+          <FilterAutocomplete
+            v-model="filters.taskCategory"
+            :fetch-suggestions="fetchTaskCategorySuggestions"
+            trigger-on-focus
+            placeholder="全部"
+            clearable
+            style="width: 160px"
+            @select="handleSearch"
+            @input="handleSearch"
+            @clear="handleSearch"
+            @keyup.enter="handleSearch"
+          />
+        </div>
+        <div class="filter-item">
+          <span class="filter-label">给分方式</span>
+          <FilterSelect
+            v-model="filters.scoreMethod"
+            placeholder="全部"
+            clearable
+            filterable
+            style="width: 160px"
+            @change="handleSearch"
+            @clear="handleSearch"
+          >
+            <el-option label="全部" value="all" />
+            <el-option v-for="option in scoreMethodOptions" :key="option" :label="option" :value="option" />
+          </FilterSelect>
+        </div>
+        <div class="filter-item">
+          <span class="filter-label">积分可修改</span>
+          <FilterSelect
+            v-model="filters.pointsEditable"
+            placeholder="全部"
+            clearable
+            filterable
+            style="width: 160px"
+            @change="handleSearch"
+            @clear="handleSearch"
+          >
+            <el-option label="全部" value="all" />
+            <el-option label="是" :value="1" />
+            <el-option label="否" :value="0" />
+          </FilterSelect>
+        </div>
+        <div class="filter-item">
+          <span class="filter-label">数量可修改</span>
+          <FilterSelect
+            v-model="filters.quantityEditable"
+            placeholder="全部"
+            clearable
+            filterable
+            style="width: 160px"
+            @change="handleSearch"
+            @clear="handleSearch"
+          >
+            <el-option label="全部" value="all" />
+            <el-option label="是" :value="1" />
+            <el-option label="否" :value="0" />
+          </FilterSelect>
+        </div>
+      </FilterBar>
+    </el-card>
 
     <el-table
       ref="tableRef"
@@ -133,7 +170,7 @@
           </el-tag>
         </template>
       </el-table-column>
-      <el-table-column v-if="canManage" label="操作" width="140" fixed="right">
+      <el-table-column v-if="canManage" label="操作" width="140">
         <template #default="{ row }">
           <el-button link type="primary" @click="openDialog(row)">编辑</el-button>
           <el-button link type="danger" @click="deleteTask(row)">删除</el-button>
@@ -146,7 +183,7 @@
         v-model:current-page="pagination.page"
         v-model:page-size="pagination.pageSize"
         :total="pagination.total"
-        :page-sizes="[10, 20, 50]"
+        :page-sizes="[5, 10, 20, 50]"
         layout="total, sizes, prev, pager, next"
         @current-change="loadTasks"
         @size-change="handlePageSizeChange"
@@ -200,8 +237,11 @@
 import { computed, onMounted, reactive, ref } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { Plus, Download } from '@element-plus/icons-vue';
-import { useUserStore } from '@/store/modules/user';
+
+import FilterBar from '@/components/common/FilterBar.vue';
 import FormDialog from '@/components/system/FormDialog.vue';
+import { useUserStore } from '@/store/modules/user';
+import { createListSuggestionFetcher } from '@/utils/filterAutocomplete';
 import {
   getRepairTaskLibrary,
   createRepairTask,
@@ -212,24 +252,36 @@ import {
 } from '@/api/repairTaskLibrary';
 
 const userStore = useUserStore();
-const managerRoles = ['admin', 'station_manager', 'department_manager', 'deputy_manager'];
+const managerRoles = ['admin', 'department_manager', 'deputy_manager', 'senior_management'];
 const canManage = computed(() => userStore.hasRole(managerRoles));
 
 const tasks = ref([]);
+const taskSuggestionList = ref([]);
 const loading = ref(false);
 const tableRef = ref(null);
 const selectedRows = ref([]);
+
+const fetchTaskNameSuggestions = createListSuggestionFetcher(
+  () => taskSuggestionList.value,
+  (row) => row.task_name
+);
+
+const fetchTaskCategorySuggestions = createListSuggestionFetcher(
+  () => taskSuggestionList.value,
+  (row) => row.task_category
+);
+
 const pagination = reactive({
   page: 1,
-  pageSize: 10,
+  pageSize: 5,
   total: 0
 });
 const filters = reactive({
   taskName: '',
   taskCategory: '',
-  scoreMethod: '',
-  pointsEditable: null,
-  quantityEditable: null
+  scoreMethod: 'all',
+  pointsEditable: 'all',
+  quantityEditable: 'all'
 });
 
 const scoreMethodOptions = ['奖扣结合式', '扣分项', '奖分项'];
@@ -254,14 +306,14 @@ const uploadHeaders = computed(() => ({
 }));
 
 const resolveText = (value) => (typeof value === 'string' ? value.trim() : '');
-const hasFilterValue = (value) => value !== undefined && value !== null && value !== '';
+const hasFilterValue = (value) => value !== undefined && value !== null && value !== '' && value !== 'all';
 
 const buildQuery = () => ({
   page: pagination.page,
   pageSize: pagination.pageSize,
   taskName: resolveText(filters.taskName) ? resolveText(filters.taskName) : undefined,
   taskCategory: resolveText(filters.taskCategory) ? resolveText(filters.taskCategory) : undefined,
-  scoreMethod: resolveText(filters.scoreMethod) ? resolveText(filters.scoreMethod) : undefined,
+  scoreMethod: filters.scoreMethod === 'all' ? undefined : (resolveText(filters.scoreMethod) || undefined),
   pointsEditable: hasFilterValue(filters.pointsEditable) ? filters.pointsEditable : undefined,
   quantityEditable: hasFilterValue(filters.quantityEditable) ? filters.quantityEditable : undefined
 });
@@ -280,10 +332,24 @@ const loadTasks = async () => {
     tasks.value = result?.list ?? [];
     pagination.total = result?.total ?? 0;
     clearSelection();
+    loadTaskSuggestions();
   } catch (error) {
-    ElMessage.error('加载任务库失败');
+    ElMessage.error('加载任务汇总表失败');
   } finally {
     loading.value = false;
+  }
+};
+
+const loadTaskSuggestions = async () => {
+  try {
+    const result = await getRepairTaskLibrary({
+      ...buildQuery(),
+      page: 1,
+      pageSize: 5000
+    });
+    taskSuggestionList.value = result?.list ?? [];
+  } catch (error) {
+    taskSuggestionList.value = [];
   }
 };
 
@@ -295,9 +361,9 @@ const handleSearch = () => {
 const resetFilters = () => {
   filters.taskName = '';
   filters.taskCategory = '';
-  filters.scoreMethod = '';
-  filters.pointsEditable = null;
-  filters.quantityEditable = null;
+  filters.scoreMethod = 'all';
+  filters.pointsEditable = 'all';
+  filters.quantityEditable = 'all';
   pagination.page = 1;
   loadTasks();
 };
@@ -505,11 +571,8 @@ onMounted(() => {
     }
   }
 
-  .filter-bar {
-    display: flex;
-    gap: 10px;
+  .filter-card {
     margin-bottom: 20px;
-    flex-wrap: wrap;
   }
 
   .pagination-wrapper {
