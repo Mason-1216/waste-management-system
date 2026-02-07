@@ -1,4 +1,4 @@
-import uploadController from '../../controllers/uploadController.js';
+import uploadController from './controllers/uploadController.js';
 import { uploadToDisk } from '../../config/upload.js';
 
 export const registerUploadRoutes = (router) => {

@@ -1,4 +1,4 @@
-import maintenanceController from '../../controllers/maintenanceController.js';
+import maintenanceController from './controllers/maintenanceController.js';
 import { checkRole } from '../../middlewares/permission.js';
 
 export const registerMaintenancePlanRoutes = (router) => {

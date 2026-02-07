@@ -1,5 +1,5 @@
-import plcController from '../../controllers/plcController.js';
-import plcMonitorController from '../../controllers/plcMonitorController.js';
+import plcController from './controllers/plcController.js';
+import plcMonitorController from './controllers/plcMonitorController.js';
 import { checkRole } from '../../middlewares/permission.js';
 import { upload } from '../../config/upload.js';
 

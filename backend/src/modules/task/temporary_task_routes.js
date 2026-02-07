@@ -1,4 +1,4 @@
-import taskController from '../../controllers/taskController.js';
+import taskController from './controllers/taskController.js';
 import { checkRole } from '../../middlewares/permission.js';
 
 const managerRoles = ['station_manager', 'department_manager', 'deputy_manager', 'senior_management', 'dev_test'];

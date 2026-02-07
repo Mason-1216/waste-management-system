@@ -1,4 +1,4 @@
-import reportController from '../../controllers/reportController.js';
+import reportController from './controllers/reportController.js';
 
 export const registerRepairReportRoutes = (router) => {
   router.get('/reports/repair', reportController.getRepairReport);

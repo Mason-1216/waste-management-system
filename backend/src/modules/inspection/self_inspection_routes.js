@@ -1,4 +1,4 @@
-import inspectionController from '../../controllers/inspectionController.js';
+import inspectionController from './controllers/inspectionController.js';
 
 export const registerSelfInspectionRoutes = (router) => {
   router.get('/self-inspections', inspectionController.getSelfInspections);

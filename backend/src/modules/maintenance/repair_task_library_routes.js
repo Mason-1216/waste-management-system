@@ -1,4 +1,4 @@
-import repairTaskLibraryController from '../../controllers/repairTaskLibraryController.js';
+import repairTaskLibraryController from './controllers/repairTaskLibraryController.js';
 import { checkRole } from '../../middlewares/permission.js';
 import { upload } from '../../config/upload.js';
 

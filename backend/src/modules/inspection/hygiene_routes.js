@@ -1,4 +1,4 @@
-import hygieneManagementController from '../../controllers/hygieneManagementController.js';
+import hygieneManagementController from './controllers/hygieneManagementController.js';
 import { checkRole } from '../../middlewares/permission.js';
 
 export const registerHygieneRoutes = (router) => {

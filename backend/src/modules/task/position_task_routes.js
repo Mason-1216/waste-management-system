@@ -1,4 +1,4 @@
-import taskController from '../../controllers/taskController.js';
+import taskController from './controllers/taskController.js';
 import { checkRole } from '../../middlewares/permission.js';
 
 export const registerPositionTaskRoutes = (router) => {

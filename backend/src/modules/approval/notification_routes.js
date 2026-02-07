@@ -1,4 +1,4 @@
-import notificationController from '../../controllers/notificationController.js';
+import notificationController from './controllers/notificationController.js';
 
 export const registerNotificationRoutes = (router) => {
   router.get('/notifications', notificationController.getNotifications);

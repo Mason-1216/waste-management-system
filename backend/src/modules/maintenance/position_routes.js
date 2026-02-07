@@ -1,4 +1,4 @@
-import maintenancePositionController from '../../controllers/maintenancePositionController.js';
+import maintenancePositionController from './controllers/maintenancePositionController.js';
 import { checkRole } from '../../middlewares/permission.js';
 
 export const registerMaintenancePositionRoutes = (router) => {

@@ -1,4 +1,4 @@
-import inspectionController from '../../controllers/inspectionController.js';
+import inspectionController from './controllers/inspectionController.js';
 import { checkRole } from '../../middlewares/permission.js';
 
 export const registerSafetyRectificationRoutes = (router) => {

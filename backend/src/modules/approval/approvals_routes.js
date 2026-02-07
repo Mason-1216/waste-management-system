@@ -1,4 +1,4 @@
-import approvalController from '../../controllers/approvalController.js';
+import approvalController from './controllers/approvalController.js';
 import { checkRole } from '../../middlewares/permission.js';
 
 export const registerApprovalActionRoutes = (router) => {

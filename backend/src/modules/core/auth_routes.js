@@ -1,4 +1,4 @@
-import authController from '../../controllers/authController.js';
+import authController from './controllers/authController.js';
 
 export const registerAuthPublicRoutes = (router) => {
   router.post('/auth/login', authController.login);

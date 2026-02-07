@@ -1,6 +1,6 @@
-import departmentController from '../../controllers/departmentController.js';
-import stationController from '../../controllers/stationController.js';
-import companyController from '../../controllers/companyController.js';
+import departmentController from './controllers/departmentController.js';
+import stationController from './controllers/stationController.js';
+import companyController from './controllers/companyController.js';
 import { checkRole } from '../../middlewares/permission.js';
 
 export const registerOrgRoutes = (router) => {

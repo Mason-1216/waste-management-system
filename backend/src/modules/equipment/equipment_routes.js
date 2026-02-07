@@ -1,4 +1,4 @@
-import equipmentController from '../../controllers/equipmentController.js';
+import equipmentController from './controllers/equipmentController.js';
 import { checkRole } from '../../middlewares/permission.js';
 import { upload } from '../../config/upload.js';
 

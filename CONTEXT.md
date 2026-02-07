@@ -938,43 +938,43 @@ docker logs wms-backend --tail 50
 - PLC历史数据：筛选区移除下载模板/批量导入按钮（保留页头按钮）；汇总与历史表格不再被大卡片包裹，表格与分页分离显示。
 
 ## 2026-02-06
-- �����������ţ��� FilterBar ��������ť����ҳ��������Ͻǣ�ͳһ���Ű�������롣
-- ��ʱ����������ܱ�������ɾ��/��������/����ģ��/��������ť����ҳ��������Ͻǡ�
-- PLC ���ݱ���������ҳ����������Ͻǲ�������������������ҳͷ��
-- �����ϱ����豸���� Tab ������ģ��/��������/������ť����ҳ��������Ͻǡ�
-- �����������ţ��޸�ҳͷ��ť�İ�Ϊ����ģ��/��������/��������/����ɾ��/����������/�������䡣
-- ��֯�ܹ�������4��Tab��ɸѡ������������ͳһ��filter-card ����񱣳�һ�¼�ࣩ��
-- ��λ������������¼��ɸѡ������������ͳһ��filter-card ����񱣳�һ�¼�ࣩ��
-- ά�����ݱ�����ɸѡ���ṹ��Ĭ������ͳһ��Ĭ�Ͻ�5�죩����վ������Ϊȫ����վ��
-- ���ݷ��������ɸѡ�����ӷ�������/��������/ȡֵ����/�ɼ���ʽ��
-- ���ӻ���������ʼ/��������Ĭ�ϰ���5���Զ����벢�޸��󶨡�
-- ��֯�ܹ���������վ����ɸѡ����������Ϊȫ����վ����Դ�������ܱ����ҳÿҳ5��Ӱ�죩��
-- ά�����ݱ�����ȫ������ͼ�豸ѡ���Ϊ�豸�б�����Դ������ѡ���豸/���/Tab���Զ���������ͼ��
-- ά�����ݱ�����ȫ������ͼ���ӳ�վɸѡ������ɫ/���ó�վ���ƣ���ѡ��վ���豸��������ʾ�ó�վ�豸��ɸѡ���ǩ�ı��Ƶ��ؼ��⡣
+- 卫生工作安排：非 FilterBar 操作条按钮移至页面标题右上角，统一与排班管理对齐。
+- 临时工作任务汇总表：批量删除/批量导入/下载模板/新增任务按钮移至页面标题右上角。
+- PLC 数据报表：新增页面标题与右上角操作区，批量导出移至页头。
+- 故障上报：设备管理 Tab 的下载模板/批量导入/新增按钮移至页面标题右上角。
+- 卫生工作安排：修复页头按钮文案为下载模板/批量导入/批量导出/批量删除/新增责任区/新增分配。
+- 组织架构管理：4个Tab的筛选区与表格区间距统一（filter-card 与表格保持一致间距）。
+- 岗位工作完成情况记录：筛选区与表格区间距统一（filter-card 与表格保持一致间距）。
+- 维保数据报表：筛选区结构与默认日期统一（默认近5天），场站下拉改为全量场站。
+- 数据分类管理：筛选区增加分类名称/数据类型/取值类型/采集方式。
+- 可视化报表：开始/结束日期默认按近5天自动填入并修复绑定。
+- 组织架构管理：场站名称筛选联想下拉改为全量场站数据源（不再受表格分页每页5条影响）。
+- 维保数据报表：全年趋势图设备选项改为设备列表数据源，并在选择设备/年份/Tab后自动加载趋势图。
+- 维保数据报表：全年趋势图增加场站筛选（按角色/可用场站限制），选择场站后设备下拉仅显示该场站设备；筛选项标签文本移到控件外。
 
 ## 2026-02-07
 - ??????????????????????????????/????/????/????/????/?????/??/??/????????????????????????
 - ???????????????/??/??????????????????????????????????
 
 ## 2026-02-07
-- �û�����/Ȩ�ޣ��˵�Ȩ�ޣ�menuCodes��֧���ڻ�׼��ɫ֮�ϸ������û����Ӳ˵���·��������Ϊ���˵�Ȩ�ޣ�����Ȩ��Ŀ¼���ǰ׺ƥ�䣩����/���أ������û�������ѡ�Ĳ˵�ͻ��д���Ľ�ɫ���ƣ���֧�� deny ��Ч�����������ҳ��ݲ������˵�Ȩ�޹��˲��Զ�ע���ɫ�˵���ȱʧ���û�������Ĳ˵���� ��λ����������ܱ�����
+- 用户管理/权限：菜单权限（menuCodes）支持在基准角色之上给单个用户增加菜单；路由守卫改为按菜单权限（基于权限目录的最长前缀匹配）放行/拦截，允许用户单独勾选的菜单突破写死的角色限制，并支持 deny 生效；侧边栏与首页快捷操作按菜单权限过滤并自动注入角色菜单里缺失但用户被授予的菜单项（如 岗位工作任务汇总表）。
 - ????????? processing ?????????????/???????????????????????????????????
 
 ## 2026-02-07
-- ��ʱ�������ݿ�Ǩ�Ʋ��� temporary_tasks �� deduction_reason/deduction_points �ֶΣ��޸� /api/temporary-tasks 500��Unknown column TemporaryTask.deduction_reason����
-- ǰ�˷�����nginx ��� index.html/sw.js/registerSW.js/manifest.webmanifest ���ó��ڻ��棬���ⷢ���� chunk ���õ��� 404��PWA Service Worker �������⣩��
+- 临时任务：数据库迁移补齐 temporary_tasks 表 deduction_reason/deduction_points 字段，修复 /api/temporary-tasks 500（Unknown column TemporaryTask.deduction_reason）。
+- 前端发布：nginx 针对 index.html/sw.js/registerSW.js/manifest.webmanifest 禁用长期缓存，避免发版后旧 chunk 引用导致 404（PWA Service Worker 缓存问题）。
 
 ## 2026-02-07
-- Ȩ��Ŀ¼��������˽ӿ� GET /api/permission-catalog�������ѵ�¼�û��ɷ��ʣ������� menuCodes����ǰ��Ȩ��Ŀ¼���ظ�Ϊ���øýӿڣ��޸���ͨ��ɫ���� /api/permissions 403 ���µ�ҳ�汨����
+- 权限目录：新增后端接口 GET /api/permission-catalog（所有已登录用户可访问，仅返回 menuCodes），前端权限目录加载改为调用该接口，修复普通角色访问 /api/permissions 403 导致的页面报错。
 
 
 ## 2026-02-07
-- ���ݱ���: backups/db_dump_20260207_134103.sql
-- ��Ϣ֪ͨ: ����Ϊ6��ģ�鿨Ƭ; ÿģ��ÿҳ���2��; ��Ƭ�ڷ�ҳ; ��� /api/notifications ֧�� relatedTypes/notifyTypes ����.
-- ��λ������������¼: ��վɸѡ��Ϊ�� /stations/all ��ȡȫ���ɼ���վ, �� stationId ɸѡ; �޸���������ʾ��ǰ���ݵ�����.
-- ά�����ݱ���(ȫ������): δѡ���豸ʱչʾȫ���豸��������; ����� stationId; �豸�����泡վ����.
-- ����: ���ؽ������� backend/frontend ����������(PLC ����δ��).
+- 数据备份: backups/db_dump_20260207_134103.sql
+- 消息通知: 调整为6个模块卡片; 每模块每页最多2条; 卡片内分页; 后端 /api/notifications 支持 relatedTypes/notifyTypes 过滤.
+- 岗位工作完成情况记录: 场站筛选改为从 /stations/all 获取全量可见场站, 按 stationId 筛选; 修复下拉仅显示当前数据的问题.
+- 维保数据报表(全年趋势): 未选择设备时展示全部设备汇总趋势; 请求带 stationId; 设备下拉随场站过滤.
+- 发布: 已重建并重启 backend/frontend 镜像与容器(PLC 容器未动).
 
-- ��Ϣ֪ͨ: �������δ������: ҳ�����Ͻ�֧��ȫ�����δ��; ÿ��ģ�鿨Ƭ֧�ֵ������δ��(������� /api/notifications/read-by-filter).
+- 消息通知: 增加清除未读功能: 页面右上角支持全部清除未读; 每个模块卡片支持单独清除未读(后端新增 /api/notifications/read-by-filter).
 
-- ǰ�˻�������: ��⵽��̬ģ��/��chunk����ʧ��ʱ, �Զ�ע�� Service Worker + ���� CacheStorage ��ǿ��ˢ��һ��, ���ⷢ����û�Ƶ������ js chunk 404.
+- 前端缓存自愈: 检测到动态模块/旧chunk加载失败时, 自动注销 Service Worker + 清理 CacheStorage 并强制刷新一次, 避免发版后用户频繁遇到 js chunk 404.

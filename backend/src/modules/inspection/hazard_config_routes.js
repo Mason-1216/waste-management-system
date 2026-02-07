@@ -1,4 +1,4 @@
-import hazardConfigController from '../../controllers/hazardConfigController.js';
+import hazardConfigController from './controllers/hazardConfigController.js';
 import { checkRole } from '../../middlewares/permission.js';
 
 export const registerHazardConfigRoutes = (router) => {

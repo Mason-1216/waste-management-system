@@ -1,5 +1,5 @@
-import roleController from '../../controllers/roleController.js';
-import permissionController from '../../controllers/permissionController.js';
+import roleController from './controllers/roleController.js';
+import permissionController from './controllers/permissionController.js';
 import { checkRole } from '../../middlewares/permission.js';
 
 export const registerAccessRoutes = (router) => {

@@ -1,4 +1,4 @@
-import safetyCheckController from '../../controllers/safetyCheckController.js';
+import safetyCheckController from './controllers/safetyCheckController.js';
 import { checkRole } from '../../middlewares/permission.js';
 import { uploadToDisk } from '../../config/upload.js';
 

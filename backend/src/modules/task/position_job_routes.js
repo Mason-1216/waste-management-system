@@ -1,4 +1,4 @@
-import positionJobController from '../../controllers/positionJobController.js';
+import positionJobController from './controllers/positionJobController.js';
 import { checkRole } from '../../middlewares/permission.js';
 import { upload } from '../../config/upload.js';
 

@@ -1,4 +1,4 @@
-import temporaryTaskLibraryController from '../../controllers/temporaryTaskLibraryController.js';
+import temporaryTaskLibraryController from './controllers/temporaryTaskLibraryController.js';
 import { checkRole } from '../../middlewares/permission.js';
 
 export const registerTemporaryTaskLibraryRoutes = (router) => {

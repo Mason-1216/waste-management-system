@@ -1,4 +1,4 @@
-import positionWorkLogController from '../../controllers/positionWorkLogController.js';
+import positionWorkLogController from './controllers/positionWorkLogController.js';
 import { checkRole } from '../../middlewares/permission.js';
 
 const managerRoles = ['station_manager', 'department_manager', 'deputy_manager', 'senior_management'];

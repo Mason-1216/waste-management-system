@@ -1,4 +1,4 @@
-import taskController from '../../controllers/taskController.js';
+import taskController from './controllers/taskController.js';
 
 export const registerDailyTaskRoutes = (router) => {
   router.get('/daily-tasks', taskController.getDailyTasks);

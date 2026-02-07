@@ -1,4 +1,4 @@
-import scheduleController from '../../controllers/scheduleController.js';
+import scheduleController from './controllers/scheduleController.js';
 
 export const registerScheduleReadRoutes = (router) => {
   router.get('/schedules', scheduleController.getSchedules);

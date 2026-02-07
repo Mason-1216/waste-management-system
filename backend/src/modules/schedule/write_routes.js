@@ -1,4 +1,4 @@
-import scheduleController from '../../controllers/scheduleController.js';
+import scheduleController from './controllers/scheduleController.js';
 import { checkRole } from '../../middlewares/permission.js';
 
 export const registerScheduleWriteRoutes = (router) => {

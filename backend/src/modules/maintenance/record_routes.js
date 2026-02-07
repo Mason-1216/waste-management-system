@@ -1,4 +1,4 @@
-import maintenanceController from '../../controllers/maintenanceController.js';
+import maintenanceController from './controllers/maintenanceController.js';
 
 export const registerMaintenanceRecordRoutes = (router) => {
   router.get('/maintenance-records', maintenanceController.getMaintenanceRecords);

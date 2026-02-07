@@ -1,4 +1,4 @@
-import maintenancePlanLibraryController from '../../controllers/maintenancePlanLibraryController.js';
+import maintenancePlanLibraryController from './controllers/maintenancePlanLibraryController.js';
 import { checkRole } from '../../middlewares/permission.js';
 
 export const registerMaintenancePlanLibraryRoutes = (router) => {

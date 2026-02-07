@@ -1,4 +1,4 @@
-import userController from '../../controllers/userController.js';
+import userController from './controllers/userController.js';
 import { checkRole } from '../../middlewares/permission.js';
 
 export const registerUserRoutes = (router) => {
