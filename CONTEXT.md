@@ -999,3 +999,4 @@ docker logs wms-backend --tail 50
 - 后端(Task): position-jobs 接口接入 Joi 入参校验（保持接口不变）。
 - 后端(Task): position-work-logs 接口接入 Joi 入参校验（保持接口不变）。
 - 后端(Task): temporary-task-library 接口接入 Joi 入参校验（保持接口不变）。
+- 后端(Inspection): safety/hygiene/hazard-config 接口接入 Joi 入参校验（保持接口不变）。

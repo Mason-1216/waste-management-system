@@ -3,6 +3,18 @@ import { SafetyWorkType, SafetyCheckItem, sequelize } from '../../../models/inde
 import { createError } from '../../../middlewares/error.js';
 import ExcelJS from 'exceljs';
 import { addTemplateInstructionSheet, applyTemplateHeaderStyle } from '../../import_export/utils/excelTemplate.js';
+import { validateBody, validateParams, validateQuery } from '../../core/validators/validate.js';
+import {
+  batchCreateCheckItemsBodySchema,
+  createCheckItemBodySchema,
+  createWorkTypeBodySchema,
+  getCheckItemsByWorkTypesQuerySchema,
+  getCheckItemsQuerySchema,
+  getWorkTypesQuerySchema,
+  idParamSchema,
+  updateCheckItemBodySchema,
+  updateWorkTypeBodySchema
+} from '../validators/safetyCheckSchemas.js';
 
 const normalizeParentId = (value) => {
   if (value === undefined || value === null || value === '') {
@@ -51,6 +63,7 @@ const parseSortOrder = (value) => {
  * GET /api/safety-work-types
  */
 export const getWorkTypes = async (ctx) => {
+  await validateQuery(ctx, getWorkTypesQuerySchema);
   const { status, includeItems } = ctx.query;
 
   const where = {};
@@ -87,7 +100,7 @@ export const getWorkTypes = async (ctx) => {
  * POST /api/safety-work-types
  */
 export const createWorkType = async (ctx) => {
-  const { workTypeName, isDefault, sortOrder, points } = ctx.request.body;
+  const { workTypeName, isDefault, sortOrder, points } = await validateBody(ctx, createWorkTypeBodySchema);
 
   if (!workTypeName) {
     throw createError(400, '工作性质名称不能为空');
@@ -121,8 +134,8 @@ export const createWorkType = async (ctx) => {
  * PUT /api/safety-work-types/:id
  */
 export const updateWorkType = async (ctx) => {
-  const { id } = ctx.params;
-  const { workTypeName, isDefault, sortOrder, status, points } = ctx.request.body;
+  const { id } = await validateParams(ctx, idParamSchema);
+  const { workTypeName, isDefault, sortOrder, status, points } = await validateBody(ctx, updateWorkTypeBodySchema);
 
   const workType = await SafetyWorkType.findByPk(id);
   
@@ -164,7 +177,7 @@ export const updateWorkType = async (ctx) => {
  * DELETE /api/safety-work-types/:id
  */
 export const deleteWorkType = async (ctx) => {
-  const { id } = ctx.params;
+  const { id } = await validateParams(ctx, idParamSchema);
 
   const workType = await SafetyWorkType.findByPk(id);
   if (!workType) {
@@ -202,6 +215,7 @@ export const deleteWorkType = async (ctx) => {
  * GET /api/safety-check-items
  */
 export const getCheckItems = async (ctx) => {
+  await validateQuery(ctx, getCheckItemsQuerySchema);
   const { workTypeId, status } = ctx.query;
 
   const where = {};
@@ -241,7 +255,7 @@ export const createCheckItem = async (ctx) => {
     enableChildren,
     triggerValue,
     status
-  } = ctx.request.body;
+  } = await validateBody(ctx, createCheckItemBodySchema);
 
   if (!workTypeId || !itemName) {
     throw createError(400, '工作性质和检查项目名称不能为空');
@@ -320,7 +334,7 @@ export const createCheckItem = async (ctx) => {
  * POST /api/safety-check-items/batch
  */
 export const batchCreateCheckItems = async (ctx) => {
-  const { workTypeId, items } = ctx.request.body;
+  const { workTypeId, items } = await validateBody(ctx, batchCreateCheckItemsBodySchema);
 
   if (!workTypeId || !items || !Array.isArray(items) || items.length === 0) {
     throw createError(400, '工作性质和检查项目列表不能为空');
@@ -408,7 +422,7 @@ export const batchCreateCheckItems = async (ctx) => {
  * PUT /api/safety-check-items/:id
  */
 export const updateCheckItem = async (ctx) => {
-  const { id } = ctx.params;
+  const { id } = await validateParams(ctx, idParamSchema);
   const {
     itemName,
     itemStandard,
@@ -417,7 +431,7 @@ export const updateCheckItem = async (ctx) => {
     parentId,
     enableChildren,
     triggerValue
-  } = ctx.request.body;
+  } = await validateBody(ctx, updateCheckItemBodySchema);
 
   const item = await SafetyCheckItem.findByPk(id);
   if (!item) {
@@ -511,7 +525,7 @@ export const updateCheckItem = async (ctx) => {
  * DELETE /api/safety-check-items/:id
  */
 export const deleteCheckItem = async (ctx) => {
-  const { id } = ctx.params;
+  const { id } = await validateParams(ctx, idParamSchema);
 
   const item = await SafetyCheckItem.findByPk(id);
   if (!item) {
@@ -533,6 +547,7 @@ export const deleteCheckItem = async (ctx) => {
  * GET /api/safety-check-items/by-work-types
  */
 export const getCheckItemsByWorkTypes = async (ctx) => {
+  await validateQuery(ctx, getCheckItemsByWorkTypesQuerySchema);
   const { workTypeIds } = ctx.query;
 
   if (!workTypeIds) {

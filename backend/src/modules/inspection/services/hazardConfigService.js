@@ -1,5 +1,15 @@
 import { HazardCategory, HazardRootCause } from '../../../models/index.js';
 import { Op } from 'sequelize';
+import { validateBody, validateParams, validateQuery } from '../../core/validators/validate.js';
+import {
+  createHazardCategoryBodySchema,
+  createHazardRootCauseBodySchema,
+  getHazardCategoriesQuerySchema,
+  getHazardRootCausesQuerySchema,
+  idParamSchema,
+  updateHazardCategoryBodySchema,
+  updateHazardRootCauseBodySchema
+} from '../validators/hazardConfigSchemas.js';
 
 const decodeMojibake = (value) => {
   if (value === null || value === undefined) return value;
@@ -29,6 +39,7 @@ const mapDecodedRows = (rows, field) => rows.map((row) => {
 // 获取隐患类别列表
 export const getHazardCategories = async (ctx) => {
   try {
+    await validateQuery(ctx, getHazardCategoriesQuerySchema);
     const { status } = ctx.query;
     const where = {};
 
@@ -47,15 +58,16 @@ export const getHazardCategories = async (ctx) => {
       message: '获取成功'
     };
   } catch (error) {
-    ctx.status = 500;
-    ctx.body = { code: 500, message: error.message };
+    const statusCode = error?.isJoi ? 400 : 500;
+    ctx.status = statusCode;
+    ctx.body = { code: statusCode, message: error.message };
   }
 };
 
 // 创建隐患类别
 export const createHazardCategory = async (ctx) => {
   try {
-    const { categoryName } = ctx.request.body;
+    const { categoryName } = await validateBody(ctx, createHazardCategoryBodySchema);
 
     if (!categoryName) {
       ctx.status = 400;
@@ -90,16 +102,17 @@ export const createHazardCategory = async (ctx) => {
       message: '创建成功'
     };
   } catch (error) {
-    ctx.status = 500;
-    ctx.body = { code: 500, message: error.message };
+    const statusCode = error?.isJoi ? 400 : 500;
+    ctx.status = statusCode;
+    ctx.body = { code: statusCode, message: error.message };
   }
 };
 
 // 更新隐患类别
 export const updateHazardCategory = async (ctx) => {
   try {
-    const { id } = ctx.params;
-    const { categoryName, sortOrder, status } = ctx.request.body;
+    const { id } = await validateParams(ctx, idParamSchema);
+    const { categoryName, sortOrder, status } = await validateBody(ctx, updateHazardCategoryBodySchema);
 
     const category = await HazardCategory.findByPk(id);
     if (!category) {
@@ -135,15 +148,16 @@ export const updateHazardCategory = async (ctx) => {
       message: '更新成功'
     };
   } catch (error) {
-    ctx.status = 500;
-    ctx.body = { code: 500, message: error.message };
+    const statusCode = error?.isJoi ? 400 : 500;
+    ctx.status = statusCode;
+    ctx.body = { code: statusCode, message: error.message };
   }
 };
 
 // 删除隐患类别
 export const deleteHazardCategory = async (ctx) => {
   try {
-    const { id } = ctx.params;
+    const { id } = await validateParams(ctx, idParamSchema);
 
     const category = await HazardCategory.findByPk(id);
     if (!category) {
@@ -166,8 +180,9 @@ export const deleteHazardCategory = async (ctx) => {
       message: '删除成功'
     };
   } catch (error) {
-    ctx.status = 500;
-    ctx.body = { code: 500, message: error.message };
+    const statusCode = error?.isJoi ? 400 : 500;
+    ctx.status = statusCode;
+    ctx.body = { code: statusCode, message: error.message };
   }
 };
 
@@ -176,6 +191,7 @@ export const deleteHazardCategory = async (ctx) => {
 // 获取根本原因列表
 export const getHazardRootCauses = async (ctx) => {
   try {
+    await validateQuery(ctx, getHazardRootCausesQuerySchema);
     const { status } = ctx.query;
     const where = {};
 
@@ -194,15 +210,16 @@ export const getHazardRootCauses = async (ctx) => {
       message: '获取成功'
     };
   } catch (error) {
-    ctx.status = 500;
-    ctx.body = { code: 500, message: error.message };
+    const statusCode = error?.isJoi ? 400 : 500;
+    ctx.status = statusCode;
+    ctx.body = { code: statusCode, message: error.message };
   }
 };
 
 // 创建根本原因
 export const createHazardRootCause = async (ctx) => {
   try {
-    const { causeName } = ctx.request.body;
+    const { causeName } = await validateBody(ctx, createHazardRootCauseBodySchema);
 
     if (!causeName) {
       ctx.status = 400;
@@ -237,16 +254,17 @@ export const createHazardRootCause = async (ctx) => {
       message: '创建成功'
     };
   } catch (error) {
-    ctx.status = 500;
-    ctx.body = { code: 500, message: error.message };
+    const statusCode = error?.isJoi ? 400 : 500;
+    ctx.status = statusCode;
+    ctx.body = { code: statusCode, message: error.message };
   }
 };
 
 // 更新根本原因
 export const updateHazardRootCause = async (ctx) => {
   try {
-    const { id } = ctx.params;
-    const { causeName, sortOrder, status } = ctx.request.body;
+    const { id } = await validateParams(ctx, idParamSchema);
+    const { causeName, sortOrder, status } = await validateBody(ctx, updateHazardRootCauseBodySchema);
 
     const cause = await HazardRootCause.findByPk(id);
     if (!cause) {
@@ -282,15 +300,16 @@ export const updateHazardRootCause = async (ctx) => {
       message: '更新成功'
     };
   } catch (error) {
-    ctx.status = 500;
-    ctx.body = { code: 500, message: error.message };
+    const statusCode = error?.isJoi ? 400 : 500;
+    ctx.status = statusCode;
+    ctx.body = { code: statusCode, message: error.message };
   }
 };
 
 // 删除根本原因
 export const deleteHazardRootCause = async (ctx) => {
   try {
-    const { id } = ctx.params;
+    const { id } = await validateParams(ctx, idParamSchema);
 
     const cause = await HazardRootCause.findByPk(id);
     if (!cause) {
@@ -313,8 +332,9 @@ export const deleteHazardRootCause = async (ctx) => {
       message: '删除成功'
     };
   } catch (error) {
-    ctx.status = 500;
-    ctx.body = { code: 500, message: error.message };
+    const statusCode = error?.isJoi ? 400 : 500;
+    ctx.status = statusCode;
+    ctx.body = { code: statusCode, message: error.message };
   }
 };
 

@@ -2,6 +2,19 @@ import { Op } from 'sequelize';
 import { HygieneArea, HygienePoint, HygienePositionArea, Station, sequelize } from '../../../models/index.js';
 import { createError } from '../../../middlewares/error.js';
 import { getPagination, formatPaginationResponse } from '../../../utils/helpers.js';
+import { validateBody, validateParams, validateQuery } from '../../core/validators/validate.js';
+import {
+  createHygieneAreaBodySchema,
+  createHygienePointBodySchema,
+  createHygienePositionAreaBodySchema,
+  getHygieneAreasByPositionQuerySchema,
+  getHygieneAreasQuerySchema,
+  getHygienePointsQuerySchema,
+  getHygienePositionAreasQuerySchema,
+  idParamSchema,
+  updateHygieneAreaBodySchema,
+  updateHygienePointBodySchema
+} from '../validators/hygieneSchemas.js';
 
 /**
  * ============================================
@@ -14,6 +27,7 @@ import { getPagination, formatPaginationResponse } from '../../../utils/helpers.
  * GET /api/hygiene-areas
  */
 export const getHygieneAreas = async (ctx) => {
+  await validateQuery(ctx, getHygieneAreasQuerySchema);
   const { stationId } = ctx.query;
   const dataFilter = ctx.state.dataFilter;
 
@@ -62,7 +76,7 @@ export const getHygieneAreas = async (ctx) => {
  * POST /api/hygiene-areas
  */
 export const createHygieneArea = async (ctx) => {
-  const { stationId, areaName, points, areaPoints, mergeMode } = ctx.request.body;
+  const { stationId, areaName, points, areaPoints, mergeMode } = await validateBody(ctx, createHygieneAreaBodySchema);
 
   const parsedStationId = Number(stationId);
   const normalizedAreaName = typeof areaName === 'string' ? areaName.trim() : '';
@@ -180,8 +194,8 @@ export const createHygieneArea = async (ctx) => {
  * PUT /api/hygiene-areas/:id
  */
 export const updateHygieneArea = async (ctx) => {
-  const { id } = ctx.params;
-  const { stationId, areaName, areaPoints } = ctx.request.body;
+  const { id } = await validateParams(ctx, idParamSchema);
+  const { stationId, areaName, areaPoints } = await validateBody(ctx, updateHygieneAreaBodySchema);
 
   const area = await HygieneArea.findByPk(id);
   if (!area) {
@@ -257,7 +271,7 @@ export const updateHygieneArea = async (ctx) => {
  * DELETE /api/hygiene-areas/:id
  */
 export const deleteHygieneArea = async (ctx) => {
-  const { id } = ctx.params;
+  const { id } = await validateParams(ctx, idParamSchema);
 
   const area = await HygieneArea.findByPk(id);
   if (!area) {
@@ -302,6 +316,7 @@ export const deleteHygieneArea = async (ctx) => {
  * GET /api/hygiene-points
  */
 export const getHygienePoints = async (ctx) => {
+  await validateQuery(ctx, getHygienePointsQuerySchema);
   const { hygieneAreaId, stationId } = ctx.query;
   const dataFilter = ctx.state.dataFilter;
 
@@ -338,7 +353,7 @@ export const getHygienePoints = async (ctx) => {
  * POST /api/hygiene-points
  */
 export const createHygienePoint = async (ctx) => {
-  const { hygieneAreaId, pointName, workRequirements } = ctx.request.body;
+  const { hygieneAreaId, pointName, workRequirements } = await validateBody(ctx, createHygienePointBodySchema);
 
   if (!hygieneAreaId || !pointName) {
     throw createError(400, '责任区和卫生点名称不能为空');
@@ -381,8 +396,8 @@ export const createHygienePoint = async (ctx) => {
  * PUT /api/hygiene-points/:id
  */
 export const updateHygienePoint = async (ctx) => {
-  const { id } = ctx.params;
-  const { pointName, workRequirements } = ctx.request.body;
+  const { id } = await validateParams(ctx, idParamSchema);
+  const { pointName, workRequirements } = await validateBody(ctx, updateHygienePointBodySchema);
 
   const point = await HygienePoint.findByPk(id);
   if (!point) {
@@ -421,7 +436,7 @@ export const updateHygienePoint = async (ctx) => {
  * DELETE /api/hygiene-points/:id
  */
 export const deleteHygienePoint = async (ctx) => {
-  const { id } = ctx.params;
+  const { id } = await validateParams(ctx, idParamSchema);
 
   const point = await HygienePoint.findByPk(id);
   if (!point) {
@@ -448,6 +463,7 @@ export const deleteHygienePoint = async (ctx) => {
  * GET /api/hygiene-position-areas
  */
 export const getHygienePositionAreas = async (ctx) => {
+  await validateQuery(ctx, getHygienePositionAreasQuerySchema);
   const { stationId, positionName } = ctx.query;
   const dataFilter = ctx.state.dataFilter;
 
@@ -506,7 +522,7 @@ export const getHygienePositionAreas = async (ctx) => {
  * POST /api/hygiene-position-areas
  */
 export const createHygienePositionArea = async (ctx) => {
-  const { stationId, positionName, hygieneAreaId, areaId } = ctx.request.body;
+  const { stationId, positionName, hygieneAreaId, areaId } = await validateBody(ctx, createHygienePositionAreaBodySchema);
   const resolvedAreaId = (hygieneAreaId !== undefined && hygieneAreaId !== null && hygieneAreaId !== '')
     ? hygieneAreaId
     : areaId;
@@ -558,7 +574,7 @@ export const createHygienePositionArea = async (ctx) => {
  * DELETE /api/hygiene-position-areas/:id
  */
 export const deleteHygienePositionArea = async (ctx) => {
-  const { id } = ctx.params;
+  const { id } = await validateParams(ctx, idParamSchema);
 
   const assignment = await HygienePositionArea.findByPk(id);
   if (!assignment) {
@@ -579,6 +595,7 @@ export const deleteHygienePositionArea = async (ctx) => {
  * GET /api/hygiene-position-areas/by-position
  */
 export const getHygieneAreasByPosition = async (ctx) => {
+  await validateQuery(ctx, getHygieneAreasByPositionQuerySchema);
   const { stationId, positionName } = ctx.query;
 
   if (!stationId || !positionName) {
