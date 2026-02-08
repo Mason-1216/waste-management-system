@@ -1008,3 +1008,4 @@ docker logs wms-backend --tail 50
 - 前端(Schedule): 路由指向 modules/schedule/pages（薄包装 views/schedule，便于后续迁移页面实现）。
 - 前端(Task): 路由指向 modules/task/pages（薄包装 views/task，便于后续迁移页面实现）。
 - 前端(Inspection): 路由指向 modules/inspection/pages（薄包装 views/inspection，便于后续迁移页面实现）。
+- 前端(Maintenance): 路由指向 modules/maintenance/pages（薄包装 views/maintenance，便于后续迁移页面实现）。
