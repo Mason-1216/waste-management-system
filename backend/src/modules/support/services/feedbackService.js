@@ -1,6 +1,8 @@
 import { Role, User, Notification } from '../../../models/index.js';
 import { createError } from '../../../middlewares/error.js';
 import { publishNotifications } from '../../notification/services/notificationPublisher.js';
+import { validateBody } from '../../core/validators/validate.js';
+import { submitFeedbackBodySchema } from '../validators/schemas.js';
 
 /**
  * 提交帮助与反馈
@@ -53,12 +55,9 @@ export const getFeedbackUnreadCount = async (ctx) => {
 };
 
 export const submitFeedback = async (ctx) => {
-  const { type, content, contact, images } = ctx.request.body || {};
+  const { type, content, contact, images } = await validateBody(ctx, submitFeedbackBodySchema);
   const sender = ctx.state.user;
 
-  if (!type || !content) {
-    throw createError(400, 'Feedback type and content are required');
-  }
 
   const adminRole = await Role.findOne({ where: { role_code: 'admin' } });
   if (!adminRole) {
