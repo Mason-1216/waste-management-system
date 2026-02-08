@@ -2,6 +2,8 @@ import { Op } from 'sequelize';
 import { PlcScaleRecord } from '../../../models/index.js';
 import { generateRecordCode, getPagination, formatPaginationResponse } from '../../../utils/helpers.js';
 import { scanPlcUploadDir } from '../services/plcIngestion.js';
+import { validateQuery } from '../../core/validators/validate.js';
+import { plcRecordsQuerySchema } from '../validators/schemas.js';
 
 const normalizePayload = (payload) => {
   const raw = payload || {};
@@ -44,6 +46,7 @@ export const scanPlcFiles = async (ctx) => {
 };
 
 export const getPlcRecords = async (ctx) => {
+  await validateQuery(ctx, plcRecordsQuerySchema);
   const { page, pageSize, offset, limit } = getPagination(ctx.query);
   const { stationId, scaleId, vehicleNo, startDate, endDate } = ctx.query;
 

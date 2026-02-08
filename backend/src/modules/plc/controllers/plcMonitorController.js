@@ -1,3 +1,5 @@
+import { validateBody, validateParams, validateQuery } from '../../core/validators/validate.js';
+import { idParamSchema, plcCategoryBodySchema, plcCategoryQuerySchema, plcConfigsQuerySchema, plcCumulativeQuerySchema, plcExportReportQuerySchema, plcFluctuatingQuerySchema, plcHistoryQuerySchema, plcHistorySummaryQuerySchema, plcMonitorConfigBodySchema, plcRealtimeQuerySchema, plcReportStatsQuerySchema, plcTrendsQuerySchema, plcWriteValueBodySchema } from '../validators/schemas.js';
 // PLC Monitor Controller
 import { Op } from 'sequelize';
 import { PlcMonitorConfig, PlcCategory, PlcReading, Station, sequelize } from '../../../models/index.js';
@@ -11,6 +13,7 @@ import { addTemplateInstructionSheet, applyTemplateHeaderStyle } from '../../imp
  * 获取实时数据
  */
 export const getRealtimeData = async (ctx) => {
+  await validateQuery(ctx, plcRealtimeQuerySchema);
   try {
     const { stationId, categoryId } = ctx.query;
 
@@ -106,6 +109,7 @@ export const getRealtimeData = async (ctx) => {
  * 获取历史数据
  */
 export const getHistoryData = async (ctx) => {
+  await validateQuery(ctx, plcHistoryQuerySchema);
   try {
     const {
       stationId, categoryId, configId,
@@ -176,6 +180,7 @@ export const getHistoryData = async (ctx) => {
  * 获取监控配置列表
  */
 export const getConfigs = async (ctx) => {
+  await validateQuery(ctx, plcConfigsQuerySchema);
   try {
     const { stationId, categoryId, isActive, page = 1, pageSize = 20 } = ctx.query;
 
@@ -214,6 +219,7 @@ export const getConfigs = async (ctx) => {
  * 创建监控配置
  */
 export const createConfig = async (ctx) => {
+  await validateBody(ctx, plcMonitorConfigBodySchema);
   try {
     const data = ctx.request.body;
     const hasCategoryId = data.categoryId !== null && data.categoryId !== undefined && data.categoryId !== '';
@@ -249,6 +255,8 @@ export const createConfig = async (ctx) => {
  * 更新监控配置
  */
 export const updateConfig = async (ctx) => {
+  await validateParams(ctx, idParamSchema);
+  await validateBody(ctx, plcMonitorConfigBodySchema);
   try {
     const { id } = ctx.params;
     const data = ctx.request.body;
@@ -292,6 +300,7 @@ export const updateConfig = async (ctx) => {
  * 删除监控配置
  */
 export const deleteConfig = async (ctx) => {
+  await validateParams(ctx, idParamSchema);
   try {
     const { id } = ctx.params;
 
@@ -483,6 +492,7 @@ export const importConfigs = async (ctx) => {
  * 获取分类列表
  */
 export const getCategories = async (ctx) => {
+  await validateQuery(ctx, plcCategoryQuerySchema);
   try {
     const { isEnabled } = ctx.query;
 
@@ -506,6 +516,7 @@ export const getCategories = async (ctx) => {
  * 创建分类
  */
 export const createCategory = async (ctx) => {
+  await validateBody(ctx, plcCategoryBodySchema);
   try {
     const data = ctx.request.body;
 
@@ -534,6 +545,8 @@ export const createCategory = async (ctx) => {
  * 更新分类
  */
 export const updateCategory = async (ctx) => {
+  await validateParams(ctx, idParamSchema);
+  await validateBody(ctx, plcCategoryBodySchema);
   try {
     const { id } = ctx.params;
     const data = ctx.request.body;
@@ -570,6 +583,7 @@ export const updateCategory = async (ctx) => {
  * 删除分类
  */
 export const deleteCategory = async (ctx) => {
+  await validateParams(ctx, idParamSchema);
   try {
     const { id } = ctx.params;
 
@@ -601,6 +615,7 @@ export const deleteCategory = async (ctx) => {
  * 导出报表
  */
 export const exportReport = async (ctx) => {
+  await validateQuery(ctx, plcExportReportQuerySchema);
   try {
     const { stationId, categoryId, startDate, endDate, format = 'xlsx' } = ctx.query;
 
@@ -668,6 +683,7 @@ export const exportReport = async (ctx) => {
  * 写入 PLC 值
  */
 export const writeConfigValue = async (ctx) => {
+  await validateBody(ctx, plcWriteValueBodySchema);
   try {
     const { configId, value } = ctx.request.body || {};
 
@@ -768,6 +784,7 @@ export const downloadConfigTemplate = async (ctx) => {
  * 获取报表统计数据
  */
 export const getReportStats = async (ctx) => {
+  await validateQuery(ctx, plcReportStatsQuerySchema);
   try {
     const { stationId, categoryId, configId, startDate, endDate, groupBy = 'hour' } = ctx.query;
 
@@ -817,6 +834,7 @@ export const getReportStats = async (ctx) => {
  * 历史汇总（按站点+分类+时间分组，净增/均值）
  */
 export const getHistorySummary = async (ctx) => {
+  await validateQuery(ctx, plcHistorySummaryQuerySchema);
   try {
     const { stationId, categoryId, categoryKey, startDate, endDate, timeType = 'day' } = ctx.query;
     const page = parseInt(ctx.query.page || '1', 10);
@@ -1022,6 +1040,7 @@ export const getHistorySummary = async (ctx) => {
  * 可视化趋势（按分类返回时间序列）
  */
 export const getReportTrends = async (ctx) => {
+  await validateQuery(ctx, plcTrendsQuerySchema);
   try {
     const {
       stationId,
@@ -1494,6 +1513,7 @@ export const importHistoryData = async (ctx) => {
  * 计量型数据报表（用电量/用水量）
  */
 export const getCumulativeReport = async (ctx) => {
+  await validateQuery(ctx, plcCumulativeQuerySchema);
   try {
     const {
       stationId,
@@ -1660,6 +1680,7 @@ export const getCumulativeReport = async (ctx) => {
  * 变化型数据报表（温度/压力）
  */
 export const getFluctuatingReport = async (ctx) => {
+  await validateQuery(ctx, plcFluctuatingQuerySchema);
   try {
     const {
       stationId,
