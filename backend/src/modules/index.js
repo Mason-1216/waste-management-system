@@ -9,6 +9,7 @@ import { registerNotificationRoutes } from './notification/routes.js';
 import { registerReportRoutes } from './report/routes.js';
 import { registerPlcPublicRoutes, registerPlcRoutes } from './plc/routes.js';
 import { registerSupportRoutes } from './support/routes.js';
+import { registerSystemConfigRoutes } from './system_config/routes.js';
 
 export const publicModules = [
   registerCorePublicRoutes,
