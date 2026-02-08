@@ -1,6 +1,6 @@
 import positionJobController from './controllers/positionJobController.js';
 import { checkRole } from '../../middlewares/permission.js';
-import { upload } from '../../config/upload.js';
+import { upload } from '../file_storage/upload.js';
 
 export const registerPositionJobRoutes = (router) => {
   router.get('/position-jobs', positionJobController.getPositionJobs);

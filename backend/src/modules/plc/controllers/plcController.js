@@ -1,7 +1,7 @@
 import { Op } from 'sequelize';
 import { PlcScaleRecord } from '../../../models/index.js';
 import { generateRecordCode, getPagination, formatPaginationResponse } from '../../../utils/helpers.js';
-import { scanPlcUploadDir } from '../../../services/plcIngestion.js';
+import { scanPlcUploadDir } from '../services/plcIngestion.js';
 
 const normalizePayload = (payload) => {
   const raw = payload || {};

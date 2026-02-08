@@ -12,11 +12,11 @@ import fs from 'fs';
 import sequelize, { testConnection } from './config/database.js';
 import { errorHandler, requestLogger } from './middlewares/error.js';
 import router from './routes/index.js';
-import { startCronJobs } from './services/cronJobs.js';
-import { startPlcWatcher } from './services/plcIngestion.js';
+import { startCronJobs } from './modules/jobs/services/cronJobs.js';
+import { startPlcWatcher } from './modules/plc/services/plcIngestion.js';
 import logger from './config/logger.js';
 import { defineAssociations } from './models/index.js';
-import { ensureDevTestAccount } from './services/devTestGuard.js';
+import { ensureDevTestAccount } from './modules/core/services/devTestGuard.js';
 
 // 加载环境变量
 dotenv.config();

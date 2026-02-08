@@ -1,7 +1,7 @@
 import plcController from './controllers/plcController.js';
 import plcMonitorController from './controllers/plcMonitorController.js';
 import { checkRole } from '../../middlewares/permission.js';
-import { upload } from '../../config/upload.js';
+import { upload } from '../file_storage/upload.js';
 
 export const registerPlcPublicRoutes = (router) => {
   router.post('/plc/upload', plcController.uploadPlcRecord);

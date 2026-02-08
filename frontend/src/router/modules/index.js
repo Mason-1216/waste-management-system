@@ -1,19 +1,25 @@
 import { coreRoutes, coreChildRoutes, fallbackRoutes } from './core';
+import { accountRoutes } from './account';
+import { adminRoutes } from './admin';
 import { inspectionRoutes } from './inspection';
 import { maintenanceRoutes } from './maintenance';
 import { plcRoutes } from './plc';
 import { reportRoutes } from './report';
 import { scheduleRoutes } from './schedule';
-import { systemRoutes } from './system';
+import { supportRoutes } from './support';
 import { taskRoutes } from './task';
+import { notificationRoutes } from './notification';
 
 export const layoutChildren = [
   ...coreChildRoutes,
+  ...accountRoutes,
+  ...adminRoutes,
   ...scheduleRoutes,
   ...taskRoutes,
   ...maintenanceRoutes,
   ...inspectionRoutes,
-  ...systemRoutes,
+  ...notificationRoutes,
+  ...supportRoutes,
   ...reportRoutes,
   ...plcRoutes
 ];

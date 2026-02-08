@@ -1,6 +1,6 @@
 // PLC Bridge Service - 调用 Python 微服务
 import axios from 'axios';
-import logger from '../config/logger.js';
+import logger from '../../../config/logger.js';
 
 const PLC_SERVICE_URL = process.env.PLC_SERVICE_URL || 'http://localhost:5001';
 

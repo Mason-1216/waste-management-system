@@ -1,11 +1,11 @@
 import { Op } from 'sequelize';
-import { Permission, Role, RolePermission, UserPermission } from '../models/index.js';
+import { Permission, Role, RolePermission, UserPermission } from '../../../models/index.js';
 import {
   flattenMenuPermissions,
   flattenModulePermissions,
   roleMenuDefaults,
   roleModuleDefaults
-} from '../config/permissionSeeds.js';
+} from '../../../config/permissionSeeds.js';
 
 const upsertPermission = async (permission, existingMap) => {
   const existing = existingMap.get(permission.code);

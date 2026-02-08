@@ -1,9 +1,9 @@
 import cron from 'node-cron';
 import { Op } from 'sequelize';
 import dayjs from 'dayjs';
-import { Station, User, Role, Schedule, SafetySelfInspection, Notification } from '../models/index.js';
-import logger from '../config/logger.js';
-import { ensureDevTestAccount } from './devTestGuard.js';
+import { Station, User, Role, Schedule, SafetySelfInspection, Notification } from '../../../models/index.js';
+import logger from '../../../config/logger.js';
+import { ensureDevTestAccount } from '../../core/services/devTestGuard.js';
 
 /**
  * 启动所有定时任务
@@ -182,7 +182,7 @@ async function notifyByRole(station, overdueUsers, roleCodes, level, io) {
  * 清理旧日志
  */
 async function cleanOldLogs() {
-  const { OperationLog } = await import('../models/index.js');
+  const { OperationLog } = await import('../../../models/index.js');
   const thirtyDaysAgo = dayjs().subtract(30, 'day').toDate();
 
   const result = await OperationLog.destroy({

@@ -8,3 +8,4 @@ export const registerNotificationRoutes = (router) => {
   router.put('/notifications/read-by-filter', notificationController.markByFilterAsRead);
   router.delete('/notifications/:id', notificationController.deleteNotification);
 };
+

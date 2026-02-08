@@ -1,5 +1,5 @@
 import { Permission } from '../../../models/index.js';
-import { ensurePermissions } from '../../../services/permissionService.js';
+import { ensurePermissions } from './permissionService.js';
 
 export const getPermissions = async (ctx) => {
   await ensurePermissions();

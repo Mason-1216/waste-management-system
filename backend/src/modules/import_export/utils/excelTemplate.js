@@ -4,7 +4,7 @@ const headerFill = {
   fgColor: { argb: 'FFD9EAF7' }
 };
 
-const defaultFont = { name: '宋体', size: 12 };
+const defaultFont = { name: '瀹嬩綋', size: 12 };
 
 const getTextWidth = (text) => {
   if (!text) return 0;
@@ -42,9 +42,9 @@ export const applyTemplateHeaderStyle = (worksheet, headerRowIndex = 1) => {
 };
 
 export const addTemplateInstructionSheet = (workbook, rows = []) => {
-  const sheet = workbook.addWorksheet('填写说明');
+  const sheet = workbook.addWorksheet('濉啓璇存槑');
   sheet.columns = [{ width: 20 }, { width: 60 }];
-  sheet.addRow(['表头', '填写说明']);
+  sheet.addRow(['琛ㄥご', '濉啓璇存槑']);
 
   const dataRows = Array.isArray(rows) ? rows : [];
   dataRows.forEach((line) => {
@@ -57,3 +57,4 @@ export const addTemplateInstructionSheet = (workbook, rows = []) => {
 
   return sheet;
 };
+

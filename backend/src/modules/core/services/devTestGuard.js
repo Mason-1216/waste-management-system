@@ -1,7 +1,7 @@
 import { Op } from 'sequelize';
-import { Role, User } from '../models/index.js';
+import { Role, User } from '../../../models/index.js';
 import { ensureRolePermissions } from './permissionService.js';
-import logger from '../config/logger.js';
+import logger from '../../../config/logger.js';
 import {
   DEV_TEST_ROLE_CODE,
   DEV_TEST_USERNAME,
@@ -9,7 +9,7 @@ import {
   DEV_TEST_BASE_ROLE_CODE,
   DEV_TEST_DESCRIPTION,
   DEV_TEST_PASSWORD_HASH
-} from '../config/dev_test.js';
+} from '../../../config/dev_test.js';
 
 const normalizeText = (value) => (value === undefined || value === null ? '' : String(value));
 

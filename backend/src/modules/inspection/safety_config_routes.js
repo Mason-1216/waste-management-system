@@ -1,6 +1,6 @@
 import safetyCheckController from './controllers/safetyCheckController.js';
 import { checkRole } from '../../middlewares/permission.js';
-import { uploadToDisk } from '../../config/upload.js';
+import { uploadToDisk } from '../file_storage/upload.js';
 
 export const registerSafetyConfigRoutes = (router) => {
   router.get('/safety-work-types', safetyCheckController.getWorkTypes);

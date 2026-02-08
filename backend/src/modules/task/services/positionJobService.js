@@ -3,7 +3,7 @@ import { Op } from 'sequelize';
 import { createError } from '../../../middlewares/error.js';
 import { getPagination, formatPaginationResponse, getOrderBy } from '../../../utils/helpers.js';
 import ExcelJS from 'exceljs';
-import { addTemplateInstructionSheet, applyTemplateHeaderStyle } from '../../../utils/excelTemplate.js';
+import { addTemplateInstructionSheet, applyTemplateHeaderStyle } from '../../import_export/utils/excelTemplate.js';
 
 /**
  * 查询岗位任务列表

@@ -1,8 +1,8 @@
 import bcrypt from 'bcryptjs';
 import { User, Role, Station, RolePermission, Permission } from '../../../models/index.js';
-import { generateToken } from '../../../middlewares/auth.js';
+import { generateToken } from '../middlewares/auth.js';
 import { createError } from '../../../middlewares/error.js';
-import { ensureRolePermissions, getUserPermissionOverrides, mergePermissionCodes } from '../../../services/permissionService.js';
+import { ensureRolePermissions, getUserPermissionOverrides, mergePermissionCodes } from './permissionService.js';
 
 const loadRolePermissions = async (roleId) => {
   const rolePermissions = await RolePermission.findAll({ where: { role_id: roleId } });

@@ -2,7 +2,7 @@ import { Op } from 'sequelize';
 import { SafetyWorkType, SafetyCheckItem, sequelize } from '../../../models/index.js';
 import { createError } from '../../../middlewares/error.js';
 import ExcelJS from 'exceljs';
-import { addTemplateInstructionSheet, applyTemplateHeaderStyle } from '../../../utils/excelTemplate.js';
+import { addTemplateInstructionSheet, applyTemplateHeaderStyle } from '../../import_export/utils/excelTemplate.js';
 
 const normalizeParentId = (value) => {
   if (value === undefined || value === null || value === '') {

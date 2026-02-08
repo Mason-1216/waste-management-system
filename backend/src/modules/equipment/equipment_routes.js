@@ -1,6 +1,6 @@
 import equipmentController from './controllers/equipmentController.js';
 import { checkRole } from '../../middlewares/permission.js';
-import { upload } from '../../config/upload.js';
+import { upload } from '../file_storage/upload.js';
 
 export const registerEquipmentResourceRoutes = (router) => {
   router.get('/equipment', equipmentController.getEquipment);

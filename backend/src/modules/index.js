@@ -5,6 +5,7 @@ import { registerInspectionRoutes } from './inspection/routes.js';
 import { registerMaintenanceRoutes } from './maintenance/routes.js';
 import { registerEquipmentRoutes } from './equipment/routes.js';
 import { registerApprovalRoutes } from './approval/routes.js';
+import { registerNotificationRoutes } from './notification/routes.js';
 import { registerReportRoutes } from './report/routes.js';
 import { registerPlcPublicRoutes, registerPlcRoutes } from './plc/routes.js';
 import { registerSupportRoutes } from './support/routes.js';
@@ -22,6 +23,7 @@ export const privateModules = [
   registerMaintenanceRoutes,
   registerEquipmentRoutes,
   registerApprovalRoutes,
+  registerNotificationRoutes,
   registerReportRoutes,
   registerPlcRoutes,
   registerSupportRoutes

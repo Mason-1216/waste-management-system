@@ -1,7 +1,7 @@
 import { Op } from 'sequelize';
 import { Role, RolePermission, Permission, User } from '../../../models/index.js';
 import { createError } from '../../../middlewares/error.js';
-import { ensureRolePermissions, copyRolePermissions } from '../../../services/permissionService.js';
+import { ensureRolePermissions, copyRolePermissions } from './permissionService.js';
 import { systemRoleCodes } from '../../../config/permissionSeeds.js';
 import { DEV_TEST_ROLE_CODE } from '../../../config/dev_test.js';
 

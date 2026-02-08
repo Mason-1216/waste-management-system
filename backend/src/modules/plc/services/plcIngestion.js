@@ -1,7 +1,7 @@
 import fs from 'fs';
 import path from 'path';
-import { PlcScaleRecord, PlcFileImport } from '../models/index.js';
-import { generateRecordCode } from '../utils/helpers.js';
+import { PlcScaleRecord, PlcFileImport } from '../../../models/index.js';
+import { generateRecordCode } from '../../../utils/helpers.js';
 
 const getUploadDir = () => {
   return process.env.PLC_FTP_DIR || path.join(process.cwd(), 'plc_uploads');

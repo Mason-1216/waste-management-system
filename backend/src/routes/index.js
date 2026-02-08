@@ -1,5 +1,5 @@
 ﻿import Router from 'koa-router';
-import { authMiddleware } from '../middlewares/auth.js';
+import { authMiddleware } from '../modules/core/middlewares/auth.js';
 import { checkDataPermission } from '../middlewares/permission.js';
 
 // 导入控制器

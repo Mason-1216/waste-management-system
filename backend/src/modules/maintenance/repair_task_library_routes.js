@@ -1,6 +1,6 @@
 import repairTaskLibraryController from './controllers/repairTaskLibraryController.js';
 import { checkRole } from '../../middlewares/permission.js';
-import { upload } from '../../config/upload.js';
+import { upload } from '../file_storage/upload.js';
 
 export const registerRepairTaskLibraryRoutes = (router) => {
   router.get(

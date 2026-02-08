@@ -9,7 +9,7 @@ dotenv.config();
 const uploadDir = process.env.UPLOAD_DIR || './uploads';
 const maxFileSize = parseInt(process.env.MAX_FILE_SIZE) || 20 * 1024 * 1024; // 20MB
 
-// 确保上传目录存在
+// Ensure upload directory exists.
 if (!fs.existsSync(uploadDir)) {
   fs.mkdirSync(uploadDir, { recursive: true });
 }
@@ -27,7 +27,6 @@ const resolveFileExtension = (file) => {
   return '';
 };
 
-// 磁盘存储配置（用于图片等需要持久化的文件）
 const diskStorage = multer.diskStorage({
   destination: (req, file, cb) => {
     cb(null, uploadDir);
@@ -39,7 +38,6 @@ const diskStorage = multer.diskStorage({
   }
 });
 
-// 内存存储配置（用于Excel导入等临时文件）
 const memoryStorage = multer.memoryStorage();
 
 const fileFilter = (req, file, cb) => {
@@ -52,10 +50,10 @@ const fileFilter = (req, file, cb) => {
   if (extname || mimetype) {
     return cb(null, true);
   }
-  cb(new Error('不支持的文件类型，只允许上传图片、PDF和Office文档'));
+  cb(new Error('不支持的文件类型，只允许上传图片、PDF 和 Office 文档。'));
 };
 
-// 默认使用内存存储（适合Excel导入等场景）
+// In-memory upload (good for Excel import etc.)
 export const upload = multer({
   storage: memoryStorage,
   limits: {
@@ -64,7 +62,7 @@ export const upload = multer({
   fileFilter
 });
 
-// 磁盘存储上传（适合图片等需要持久化的文件）
+// Disk upload (good for persistent files like images).
 export const uploadToDisk = multer({
   storage: diskStorage,
   limits: {
@@ -78,3 +76,4 @@ export default {
   maxFileSize,
   upload
 };
+

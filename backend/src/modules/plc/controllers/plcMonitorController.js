@@ -1,11 +1,11 @@
 // PLC Monitor Controller
 import { Op } from 'sequelize';
 import { PlcMonitorConfig, PlcCategory, PlcReading, Station, sequelize } from '../../../models/index.js';
-import plcBridgeService from '../../../services/plcBridgeService.js';
+import plcBridgeService from '../services/plcBridgeService.js';
 import logger from '../../../config/logger.js';
 import ExcelJS from 'exceljs';
 import { QueryTypes } from 'sequelize';
-import { addTemplateInstructionSheet, applyTemplateHeaderStyle } from '../../../utils/excelTemplate.js';
+import { addTemplateInstructionSheet, applyTemplateHeaderStyle } from '../../import_export/utils/excelTemplate.js';
 
 /**
  * 获取实时数据

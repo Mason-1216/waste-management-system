@@ -1,7 +1,7 @@
 import { Op } from 'sequelize';
 import { Equipment, Station, sequelize } from '../../../models/index.js';
 import { createError } from '../../../middlewares/error.js';
-import { addTemplateInstructionSheet, applyTemplateHeaderStyle } from '../../../utils/excelTemplate.js';
+import { addTemplateInstructionSheet, applyTemplateHeaderStyle } from '../../import_export/utils/excelTemplate.js';
 
 /**
  * 查询设备列表
