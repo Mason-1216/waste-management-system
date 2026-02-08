@@ -988,7 +988,7 @@ docker logs wms-backend --tail 50
 - 后端(Audit): 新增 modules/audit/services/auditService（OperationLog 记录/清理），并将 cronJobs 的日志清理迁移到 auditService。
 - 后端(SystemConfig): 新增 modules/system_config（SystemConfig 读写服务与 /api/system-configs 接口）。
 - 后端(Permissions): 将 permissionSeeds 拆分到各模块的 permissions.js，并由 core/config/permissionSeeds.js 聚合导出（保持权限 code 与顺序不变）。
-- 后端(Validation): 新增 modules/core/validators/validate.js，并在 system_config、notification、support(feedback)、approval 模块接入 Joi 校验（不改接口返回结构）。
+- 后端(Validation): 新增 modules/core/validators/validate.js，并在 system_config、notification、support(feedback)、approval、equipment 模块接入 Joi 校验（不改接口返回结构）。
 - 后端(ImportExport): 将 excelTemplate 下沉到 backend/src/modules/import_export/utils，并更新引用方。
 - 后端(FileStorage): 将 upload 配置下沉到 backend/src/modules/file_storage/upload.js，并更新引用方。
 - 后端(Auth): 将 auth 中间件与 jwt 配置下沉到 backend/src/modules/core/middlewares 与 backend/src/modules/core/config，并修正引用。

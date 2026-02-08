@@ -2,12 +2,15 @@ import { Op } from 'sequelize';
 import { Equipment, Station, sequelize } from '../../../models/index.js';
 import { createError } from '../../../middlewares/error.js';
 import { addTemplateInstructionSheet, applyTemplateHeaderStyle } from '../../import_export/utils/excelTemplate.js';
+import { validateBody, validateParams, validateQuery } from '../../core/validators/validate.js';
+import { batchCreateEquipmentBodySchema, createEquipmentBodySchema, equipmentIdParamSchema, getEquipmentByCodeQuerySchema, getEquipmentQuerySchema, updateEquipmentBodySchema } from '../validators/schemas.js';
 
 /**
  * 查询设备列表
  * GET /api/equipment
  */
 export const getEquipment = async (ctx) => {
+  await validateQuery(ctx, getEquipmentQuerySchema);
   const { stationId, equipmentCode, equipmentName, installationLocation } = ctx.query;
   const dataFilter = ctx.state.dataFilter;
 
@@ -55,6 +58,7 @@ export const getEquipment = async (ctx) => {
  * GET /api/equipment/by-code
  */
 export const getEquipmentByCode = async (ctx) => {
+  await validateQuery(ctx, getEquipmentByCodeQuerySchema);
   const { stationId, equipmentCode } = ctx.query;
 
   if (!stationId || !equipmentCode) {
@@ -80,7 +84,7 @@ export const getEquipmentByCode = async (ctx) => {
  * POST /api/equipment
  */
 export const createEquipment = async (ctx) => {
-  const { stationId, equipmentCode, equipmentName, installationLocation, specification, model, material } = ctx.request.body;
+  const { stationId, equipmentCode, equipmentName, installationLocation, specification, model, material } = await validateBody(ctx, createEquipmentBodySchema);
 
   if (!stationId || !equipmentCode || !equipmentName) {
     throw createError(400, '场站、设备编号和设备名称不能为空');
@@ -199,8 +203,8 @@ export const batchCreateEquipment = async (ctx) => {
  * PUT /api/equipment/:id
  */
 export const updateEquipment = async (ctx) => {
-  const { id } = ctx.params;
-  const { equipmentCode, equipmentName, installationLocation, specification, model, material } = ctx.request.body;
+  const { id } = await validateParams(ctx, equipmentIdParamSchema);
+  const { equipmentCode, equipmentName, installationLocation, specification, model, material } = await validateBody(ctx, updateEquipmentBodySchema);
 
   const equipment = await Equipment.findByPk(id);
   if (!equipment) {
@@ -254,7 +258,7 @@ export const updateEquipment = async (ctx) => {
  * DELETE /api/equipment/:id
  */
 export const deleteEquipment = async (ctx) => {
-  const { id } = ctx.params;
+  const { id } = await validateParams(ctx, equipmentIdParamSchema);
 
   const equipment = await Equipment.findByPk(id);
   if (!equipment) {
