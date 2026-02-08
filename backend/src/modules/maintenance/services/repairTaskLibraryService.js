@@ -1,4 +1,4 @@
-import { Op } from 'sequelize';
+﻿import { Op } from 'sequelize';
 import ExcelJS from 'exceljs';
 import fs from 'fs/promises';
 import path from 'path';
@@ -449,7 +449,7 @@ export const getRepairTaskLibraryTemplate = async (ctx) => {
     const currentDir = path.dirname(fileURLToPath(import.meta.url));
     const templatePath = path.resolve(
       currentDir,
-      '../../../../templates/repair_task_library_import_template.xlsx'
+      '../templates/repair_task_library_import_template.xlsx'
     );
     const buffer = await fs.readFile(templatePath);
     ctx.set('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
@@ -469,3 +469,4 @@ export default {
   importRepairTaskLibrary,
   getRepairTaskLibraryTemplate
 };
+

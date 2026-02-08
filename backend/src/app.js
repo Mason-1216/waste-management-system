@@ -1,13 +1,10 @@
-import Koa from 'koa';
+﻿import Koa from 'koa';
 import bodyParser from 'koa-bodyparser';
 import cors from '@koa/cors';
-import koaStatic from 'koa-static';
 import { createServer } from 'http';
-import { Server } from 'socket.io';
 import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import fs from 'fs';
 
 import sequelize, { testConnection } from './config/database.js';
 import { errorHandler, requestLogger } from './middlewares/error.js';
@@ -17,6 +14,10 @@ import { startPlcWatcher } from './modules/plc/services/plcIngestion.js';
 import logger from './config/logger.js';
 import { defineAssociations } from './models/index.js';
 import { ensureDevTestAccount } from './modules/core/services/devTestGuard.js';
+import { createSocketServer } from './modules/core/app/socket.js';
+import { registerGracefulShutdown } from './modules/core/app/gracefulShutdown.js';
+import { ensureDir } from './modules/core/app/runtimeDirs.js';
+import { registerUploadsStatic } from './modules/file_storage/app/uploadsStatic.js';
 
 // 加载环境变量
 dotenv.config();
@@ -24,42 +25,20 @@ dotenv.config();
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// 创建上传目录
+// 运行时目录
 const uploadDir = path.join(__dirname, '..', 'uploads');
-if (!fs.existsSync(uploadDir)) {
-  fs.mkdirSync(uploadDir, { recursive: true });
-}
-
-// 创建日志目录
 const logDir = path.join(__dirname, '..', 'logs');
-if (!fs.existsSync(logDir)) {
-  fs.mkdirSync(logDir, { recursive: true });
-}
+
+ensureDir(uploadDir);
+ensureDir(logDir);
 
 const app = new Koa();
 const httpServer = createServer(app.callback());
 
-// Socket.IO 配置
-const io = new Server(httpServer, {
-  cors: {
-    origin: process.env.CORS_ORIGIN || '*',
-    methods: ['GET', 'POST']
-  }
-});
-
-// WebSocket 连接处理
-io.on('connection', (socket) => {
-  logger.info(`客户端已连接: ${socket.id}`);
-
-  // 用户加入自己的房间（用于点对点通知）
-  socket.on('join', (userId) => {
-    socket.join(`user_${userId}`);
-    logger.info(`用户 ${userId} 加入房间`);
-  });
-
-  socket.on('disconnect', () => {
-    logger.info(`客户端已断开: ${socket.id}`);
-  });
+// Socket.IO
+const io = createSocketServer(httpServer, {
+  corsOrigin: process.env.CORS_ORIGIN || '*',
+  logger
 });
 
 // 将io实例挂载到app.context，便于全局访问
@@ -84,21 +63,7 @@ app.use(bodyParser({
 }));
 
 // 静态文件服务（上传的文件）
-const uploadStatic = koaStatic(uploadDir);
-app.use(async (ctx, next) => {
-  if (!ctx.path.startsWith('/uploads/')) {
-    await next();
-    return;
-  }
-  const originalPath = ctx.path;
-  const originalUrl = ctx.url;
-  ctx.path = ctx.path.replace(/^\/uploads/, '');
-  ctx.url = ctx.url.replace(/^\/uploads/, '');
-  await uploadStatic(ctx, next);
-  ctx.path = originalPath;
-  ctx.url = originalUrl;
-});
-app.use(uploadStatic);
+registerUploadsStatic(app, { uploadDir });
 
 // API 路由
 app.use(router.routes());
@@ -124,7 +89,7 @@ async function start() {
     } catch (error) {
       logger.error('开发测试账号守护失败', error);
     }
-    
+
     // 同步数据库模型（开发环境）
     if (process.env.NODE_ENV === 'development') {
       await sequelize.sync({ alter: false });
@@ -133,6 +98,7 @@ async function start() {
 
     // 启动定时任务
     startCronJobs(io);
+
     const plcDir = startPlcWatcher();
     logger.info(`PLC uploads dir: ${plcDir}`);
 
@@ -140,7 +106,7 @@ async function start() {
     httpServer.listen(PORT, () => {
       logger.info(`🚀 服务器运行在 http://localhost:${PORT}`);
       logger.info(`📚 API 文档: http://localhost:${PORT}/api`);
-      logger.info(`🔌 WebSocket 已启用`);
+      logger.info('🔌 WebSocket 已启用');
     });
   } catch (error) {
     logger.error('服务器启动失败:', error);
@@ -149,19 +115,7 @@ async function start() {
 }
 
 // 优雅关闭
-const gracefulShutdown = (signal) => {
-  logger.info(`收到 ${signal} 信号，正在关闭服务器...`);
-  httpServer.close(() => {
-    logger.info('HTTP 服务器已关闭');
-    sequelize.close().then(() => {
-      logger.info('数据库连接已关闭');
-      process.exit(0);
-    });
-  });
-};
-
-process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
-process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+registerGracefulShutdown({ httpServer, sequelize, logger });
 
 // 启动应用
 start();

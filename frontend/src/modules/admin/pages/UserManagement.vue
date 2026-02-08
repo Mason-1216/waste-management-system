@@ -288,7 +288,7 @@ import { addTemplateInstructionSheet, applyTemplateHeaderStyle } from '@/utils/e
 import request from '@/api/request';
 import roleApi from '@/api/role';
 import permissionApi from '@/api/permission';
-import ModulePermissionConfig from '@/components/ModulePermissionConfig.vue';
+import ModulePermissionConfig from '@/modules/admin/components/ModulePermissionConfig.vue';
 import FormDialog from '@/components/system/FormDialog.vue';
 import { useUserStore } from '@/store/modules/user';
 
@@ -1054,3 +1054,4 @@ onActivated(async () => {
   }
 }
 </style>
+

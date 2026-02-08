@@ -1,2 +1,2 @@
-export * from '@/modules/notification/api';
+﻿export * from '@/modules/notification/api/notification.js';
 

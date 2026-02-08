@@ -1,6 +1,6 @@
 【编码要求】本文件必须使用UTF-8保存与写入，禁止使用其它编码。
 # 运行项目管理系统 - 上下文摘要
-> 最后更新 2026-02-07
+> 最后更新 2026-02-08
 
 ## 项目目标
 构建废弃物处理场站的运行管理系统，覆盖多角色、多场站的日常运营管理：
@@ -1011,3 +1011,32 @@ docker logs wms-backend --tail 50
 - 前端(Maintenance): 路由指向 modules/maintenance/pages（薄包装 views/maintenance，便于后续迁移页面实现）。
 - 前端(Report): 路由指向 modules/report/pages（薄包装 views/reports，便于后续迁移页面实现）。
 - 前端(PLC): 路由指向 modules/plc/pages（薄包装 views/plc，便于后续迁移页面实现）。
+- 前端(清理): 删除无引用 legacy views/approval、views/inbound-outbound，并移除未使用 api/approval 聚合出口。
+- 后端(Core): 修复 core/middlewares/auth.js 的 models 引用路径，避免重建镜像后启动报错。
+
+
+- 前端(Report): 反转薄包装：modules/report/pages 为真实实现；views/reports 仅保留 re-export 壳。
+
+- 前端(Task): 反转薄包装：modules/task/pages 为真实实现；views/task 仅保留 re-export 壳（岗位工作/临时任务相关页）。
+
+- 前端(Inspection): 反转薄包装：modules/inspection/pages 为真实实现；views/inspection 仅保留 re-export 壳。
+
+- 前端(PLC): 反转薄包装：modules/plc/pages 为真实实现；views/plc 仅保留 re-export 壳（含 PlcRecords tabs 子视图一并迁移）。
+
+- 前端(Schedule): 反转薄包装：modules/schedule/pages 为真实实现；views/schedule 仅保留 re-export 壳。
+
+- 前端(Refactor): 修复 views 薄包装 re-export 文件的换行写入，避免内容出现字面量 \\n 导致潜在语法问题。
+
+- 前端(Maintenance): 反转薄包装：modules/maintenance/pages 为真实实现；views/maintenance 仅保留 re-export 壳。
+
+- 前端(Components): 模块专用组件迁移至 modules/<module>/components；共享 FormDialog 下沉到 components/common，并保留旧路径 re-export 兼容层。
+
+- 前端(API): 按模块迁移 api 实现到 modules/<module>/api；保留 src/api/*.js re-export 兼容层，src/api/index.js 聚合出口不变。
+
+- 后端(App): 抽离 Socket.IO 初始化、uploads 静态服务与优雅关闭逻辑到 modules/*/app，app.js 聚焦装配与启动流程。
+
+- 后端(Maintenance): 将维修任务库导入模板迁移到模块 templates，并修正读取路径（不再依赖 backend/templates）。
+
+- 工程化: 修复 .gitignore 的 templates 忽略规则(仅忽略根目录 /templates/)，并将新增模块化文件纳入 git 跟踪，避免他人拉代码缺文件无法构建/运行。
+
+- 后端(Validation): 放宽列表接口 pageSize 上限到 5000（兼容前端 pageSize=5000 的拉取/导出需求，修复 /api/hazard-inspections 等接口 400）。

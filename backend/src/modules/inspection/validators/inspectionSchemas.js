@@ -16,7 +16,7 @@ export const idParamSchema = Joi.object({
 
 export const getSelfInspectionsQuerySchema = Joi.object({
   page: Joi.number().integer().min(1).optional(),
-  pageSize: Joi.number().integer().min(1).max(200).optional(),
+  pageSize: Joi.number().integer().min(1).max(5000).optional(),
   stationId: intOrEmpty.optional(),
   inspectionType: Joi.string().allow('').max(50).optional(),
   startDate: Joi.string().allow('').max(20).optional(),
@@ -40,7 +40,7 @@ export const createSelfInspectionBodySchema = Joi.object({
 
 export const getMySelfInspectionsQuerySchema = Joi.object({
   page: Joi.number().integer().min(1).optional(),
-  pageSize: Joi.number().integer().min(1).max(200).optional(),
+  pageSize: Joi.number().integer().min(1).max(5000).optional(),
   inspectionType: Joi.string().allow('').max(50).optional(),
   startDate: Joi.string().allow('').max(20).optional(),
   endDate: Joi.string().allow('').max(20).optional(),
@@ -57,7 +57,7 @@ export const getOverdueUsersQuerySchema = Joi.object({
 
 export const getOtherInspectionsQuerySchema = Joi.object({
   page: Joi.number().integer().min(1).optional(),
-  pageSize: Joi.number().integer().min(1).max(200).optional(),
+  pageSize: Joi.number().integer().min(1).max(5000).optional(),
   stationId: intOrEmpty.optional(),
   inspectionType: Joi.string().allow('').max(50).optional(),
   startDate: Joi.string().allow('').max(20).optional(),
@@ -89,7 +89,7 @@ export const createOtherInspectionBodySchema = Joi.object({
 
 export const getHazardInspectionsQuerySchema = Joi.object({
   page: Joi.number().integer().min(1).optional(),
-  pageSize: Joi.number().integer().min(1).max(200).optional(),
+  pageSize: Joi.number().integer().min(1).max(5000).optional(),
   stationName: Joi.string().allow('').max(200).optional(),
   hazardCategory: Joi.string().allow('').max(200).optional(),
   status: Joi.string().allow('').max(50).optional(),
@@ -118,7 +118,7 @@ export const updateHazardInspectionBodySchema = Joi.object({
 
 export const getSafetyRectificationsQuerySchema = Joi.object({
   page: Joi.number().integer().min(1).optional(),
-  pageSize: Joi.number().integer().min(1).max(200).optional(),
+  pageSize: Joi.number().integer().min(1).max(5000).optional(),
   status: Joi.string().allow('').max(50).optional()
 });
 

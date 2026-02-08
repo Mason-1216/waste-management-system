@@ -1,5 +1,4 @@
-import * as approvalApi from './approval';
-import * as authApi from './auth';
+﻿import * as authApi from './auth';
 import * as companyApi from './company';
 import * as departmentApi from './department';
 import * as equipmentApi from './equipment';
@@ -18,7 +17,6 @@ import permissionApi from './permission';
 import roleApi from './role';
 
 export {
-  approvalApi,
   authApi,
   companyApi,
   departmentApi,
@@ -37,3 +35,4 @@ export {
   stationApi,
   temporaryTaskLibraryApi
 };
+

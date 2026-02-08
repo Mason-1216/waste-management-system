@@ -1,6 +1,6 @@
-import jwt from 'jsonwebtoken';
+﻿import jwt from 'jsonwebtoken';
 import jwtConfig from '../config/jwt.js';
-import { User, Role, Station } from '../models/index.js';
+import { User, Role, Station } from '../../../models/index.js';
 
 /**
  * JWT认证中间件
@@ -127,3 +127,4 @@ export const generateToken = (user) => {
 };
 
 export default { authMiddleware, optionalAuth, generateToken };
+

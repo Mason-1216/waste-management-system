@@ -38,7 +38,7 @@ export const savePositionTasksBodySchema = Joi.object({
 
 export const getDailyTasksQuerySchema = Joi.object({
   page: Joi.number().integer().min(1).optional(),
-  pageSize: Joi.number().integer().min(1).max(200).optional(),
+  pageSize: Joi.number().integer().min(1).max(5000).optional(),
   sortBy: Joi.string().allow('').max(50).optional(),
   sortOrder: Joi.string().valid('asc', 'desc', 'ASC', 'DESC').optional(),
   userId: intOrEmpty.optional(),
@@ -75,7 +75,7 @@ export const getDailyTaskSummaryQuerySchema = Joi.object({
 
 export const getTemporaryTasksQuerySchema = Joi.object({
   page: Joi.number().integer().min(1).optional(),
-  pageSize: Joi.number().integer().min(1).max(200).optional(),
+  pageSize: Joi.number().integer().min(1).max(5000).optional(),
   sortBy: Joi.string().allow('').max(50).optional(),
   sortOrder: Joi.string().valid('asc', 'desc', 'ASC', 'DESC').optional(),
   executorId: intOrEmpty.optional(),

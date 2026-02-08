@@ -1,9 +1,3 @@
-import request from './request';
+﻿export * from '@/modules/core/api/permission.js';
+export { default } from '@/modules/core/api/permission.js';
 
-export const getPermissions = () => request.get('/permissions');
-export const getPermissionCatalog = () => request.get('/permission-catalog');
-
-export default {
-  getPermissions,
-  getPermissionCatalog
-};

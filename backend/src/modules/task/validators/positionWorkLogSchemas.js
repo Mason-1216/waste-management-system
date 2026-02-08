@@ -11,7 +11,7 @@ export const idParamSchema = Joi.object({
 
 export const getTodayTasksQuerySchema = Joi.object({
   page: Joi.number().integer().min(1).optional(),
-  pageSize: Joi.number().integer().min(1).max(200).optional(),
+  pageSize: Joi.number().integer().min(1).max(5000).optional(),
   workDate: Joi.string().allow('').max(20).optional()
 });
 
@@ -56,7 +56,7 @@ export const dispatchWorkLogBodySchema = Joi.object({
 
 export const getWorkLogsQuerySchema = Joi.object({
   page: Joi.number().integer().min(1).optional(),
-  pageSize: Joi.number().integer().min(1).max(200).optional(),
+  pageSize: Joi.number().integer().min(1).max(5000).optional(),
   sortBy: Joi.string().allow('').max(100).optional(),
   sortOrder: Joi.string().valid('asc', 'desc', 'ASC', 'DESC').optional(),
   startDate: Joi.string().allow('').max(20).optional(),
@@ -69,7 +69,7 @@ export const getWorkLogsQuerySchema = Joi.object({
 
 export const getUserWorkLogsQuerySchema = Joi.object({
   page: Joi.number().integer().min(1).optional(),
-  pageSize: Joi.number().integer().min(1).max(200).optional(),
+  pageSize: Joi.number().integer().min(1).max(5000).optional(),
   userId: intOrEmpty.optional(),
   startDate: Joi.string().allow('').max(20).optional(),
   endDate: Joi.string().allow('').max(20).optional(),
@@ -80,7 +80,7 @@ export const getUserWorkLogsQuerySchema = Joi.object({
 
 export const getWorkRecordsQuerySchema = Joi.object({
   page: Joi.number().integer().min(1).optional(),
-  pageSize: Joi.number().integer().min(1).max(200).optional(),
+  pageSize: Joi.number().integer().min(1).max(5000).optional(),
   sortBy: Joi.string().allow('').max(100).optional(),
   sortOrder: Joi.string().valid('asc', 'desc', 'ASC', 'DESC').optional(),
 

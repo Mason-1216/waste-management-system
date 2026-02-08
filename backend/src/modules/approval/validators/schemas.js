@@ -6,7 +6,7 @@ export const idParamSchema = Joi.object({
 
 export const getApprovalsQuerySchema = Joi.object({
   page: Joi.number().integer().min(1).optional(),
-  pageSize: Joi.number().integer().min(1).max(200).optional(),
+  pageSize: Joi.number().integer().min(1).max(5000).optional(),
   status: Joi.string().max(50).optional(),
   stationId: Joi.number().integer().min(1).optional(),
   keyword: Joi.string().allow('').max(200).optional(),

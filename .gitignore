@@ -1,4 +1,4 @@
-﻿# dependencies
+# dependencies
 **/node_modules/
 
 # build output
@@ -24,7 +24,7 @@ db_dump_*.sql
 mysql_data_*.tar.gz
 .tmp_wx_images/
 _tmp/
-templates/
+/templates/
 frontend/test-results/
 frontend/playwright-report/
 

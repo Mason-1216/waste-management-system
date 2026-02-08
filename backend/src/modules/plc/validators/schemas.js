@@ -7,7 +7,7 @@ const intOrEmpty = Joi.alternatives().try(
 
 export const plcRecordsQuerySchema = Joi.object({
   page: Joi.number().integer().min(1).optional(),
-  pageSize: Joi.number().integer().min(1).max(200).optional(),
+  pageSize: Joi.number().integer().min(1).max(5000).optional(),
   stationId: intOrEmpty.optional(),
   scaleId: Joi.string().allow('').max(200).optional(),
   vehicleNo: Joi.string().allow('').max(200).optional(),
@@ -27,7 +27,7 @@ export const plcHistoryQuerySchema = Joi.object({
   startDate: Joi.string().allow('').max(30).optional(),
   endDate: Joi.string().allow('').max(30).optional(),
   page: Joi.number().integer().min(1).optional(),
-  pageSize: Joi.number().integer().min(1).max(200).optional()
+  pageSize: Joi.number().integer().min(1).max(5000).optional()
 });
 
 export const plcConfigsQuerySchema = Joi.object({
@@ -35,7 +35,7 @@ export const plcConfigsQuerySchema = Joi.object({
   categoryId: intOrEmpty.optional(),
   isActive: Joi.string().valid('true', 'false', '0', '1').optional(),
   page: Joi.number().integer().min(1).optional(),
-  pageSize: Joi.number().integer().min(1).max(200).optional()
+  pageSize: Joi.number().integer().min(1).max(5000).optional()
 });
 
 export const idParamSchema = Joi.object({
@@ -103,7 +103,7 @@ export const plcHistorySummaryQuerySchema = Joi.object({
   endDate: Joi.string().allow('').max(30).optional(),
   timeType: Joi.string().valid('day', 'month', 'year').optional(),
   page: Joi.number().integer().min(1).optional(),
-  pageSize: Joi.number().integer().min(1).max(200).optional()
+  pageSize: Joi.number().integer().min(1).max(5000).optional()
 });
 
 export const plcTrendsQuerySchema = Joi.object({
@@ -122,7 +122,7 @@ export const plcCumulativeQuerySchema = Joi.object({
   timeGranularity: Joi.string().valid('day', 'week', 'month', 'year').optional(),
   groupBy: Joi.string().valid('address', 'station', 'category').optional(),
   page: Joi.number().integer().min(1).optional(),
-  pageSize: Joi.number().integer().min(1).max(200).optional()
+  pageSize: Joi.number().integer().min(1).max(5000).optional()
 });
 
 export const plcFluctuatingQuerySchema = plcCumulativeQuerySchema;

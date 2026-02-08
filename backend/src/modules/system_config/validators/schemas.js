@@ -2,7 +2,7 @@ import { Joi } from '../../core/validators/validate.js';
 
 export const listSystemConfigsQuerySchema = Joi.object({
   page: Joi.number().integer().min(1).optional(),
-  pageSize: Joi.number().integer().min(1).max(200).optional(),
+  pageSize: Joi.number().integer().min(1).max(5000).optional(),
   configType: Joi.string().valid('system', 'business', 'device').optional(),
   keyword: Joi.string().allow('').optional(),
   sortBy: Joi.string().allow('').optional(),

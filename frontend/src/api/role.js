@@ -1,19 +1,3 @@
-import request from './request';
+﻿export * from '@/modules/core/api/role.js';
+export { default } from '@/modules/core/api/role.js';
 
-export const getRoles = (params) => request.get('/roles', { params });
-
-export const getRolePermissions = (id) => request.get(`/roles/${id}/permissions`);
-
-export const createRole = (data) => request.post('/roles', data);
-
-export const updateRole = (id, data) => request.put(`/roles/${id}`, data);
-
-export const deleteRole = (id) => request.delete(`/roles/${id}`);
-
-export default {
-  getRoles,
-  getRolePermissions,
-  createRole,
-  updateRole,
-  deleteRole
-};

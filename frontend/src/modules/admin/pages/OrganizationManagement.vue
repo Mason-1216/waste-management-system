@@ -416,7 +416,7 @@ import { getDepartments, createDepartment, updateDepartment, deleteDepartment as
 import { getCompanies, createCompany, updateCompany, deleteCompany as deleteCompanyApi } from '@/api/company'
 import roleApi from '@/api/role'
 import permissionApi from '@/api/permission'
-import ModulePermissionConfig from '@/components/ModulePermissionConfig.vue'
+import ModulePermissionConfig from '@/modules/admin/components/ModulePermissionConfig.vue'
 import FormDialog from '@/components/system/FormDialog.vue'
 import { useUserStore } from '@/store/modules/user'
 import { createListSuggestionFetcher } from '@/utils/filterAutocomplete'
@@ -1160,3 +1160,4 @@ onMounted(() => {
   }
 }
 </style>
+
