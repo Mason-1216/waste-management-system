@@ -3,6 +3,8 @@ import { DailyTask, MaintenanceRecord, RepairRecord, MaterialRequisition, Safety
 import { createError } from '../../../middlewares/error.js';
 import { getPagination, formatPaginationResponse, getOrderBy } from '../../../utils/helpers.js';
 import { publishNotification } from '../../notification/services/notificationPublisher.js';
+import { validateBody, validateParams, validateQuery } from '../../core/validators/validate.js';
+import { approveActionBodySchema, approveRectificationBodySchema, batchIdsBodySchema, batchRejectBodySchema, getApprovalsQuerySchema, idParamSchema, rejectReasonBodySchema } from '../validators/schemas.js';
 
 const approveRecord = async (Model, id, action, rejectReason, user, typeName) => {
   const record = await Model.findByPk(id);
@@ -66,6 +68,7 @@ const safeCount = async (Model, options) => {
 
 // GET /api/approvals
 export const getApprovals = async (ctx) => {
+  await validateQuery(ctx, getApprovalsQuerySchema);
   const { page, pageSize, offset, limit } = getPagination(ctx.query);
   const order = getOrderBy(ctx.query, { field: 'created_at', order: 'DESC' });
   const { status, stationId, keyword, startDate, endDate, type } = ctx.query;
@@ -129,22 +132,23 @@ export const getApprovals = async (ctx) => {
 
 // PUT /api/approvals/:id/approve
 export const approveApproval = async (ctx) => {
-  const { id } = ctx.params;
+  const { id } = await validateParams(ctx, idParamSchema);
   await approveRecord(DailyTask, id, 'approve', null, ctx.state.user, '工时记录');
   ctx.body = { code: 200, message: '操作成功', data: null };
 };
 
 // PUT /api/approvals/:id/reject
 export const rejectApproval = async (ctx) => {
-  const { id } = ctx.params;
-  const rejectReason = ctx.request.body?.reason || ctx.request.body?.rejectReason || '';
+  const { id } = await validateParams(ctx, idParamSchema);
+  const { reason, rejectReason } = await validateBody(ctx, rejectReasonBodySchema);
+  const finalReason = reason ?? rejectReason ?? '';
   await approveRecord(DailyTask, id, 'reject', rejectReason, ctx.state.user, '工时记录');
   ctx.body = { code: 200, message: '操作成功', data: null };
 };
 
 // PUT /api/approvals/batch-approve
 export const batchApproveApprovals = async (ctx) => {
-  const { ids } = ctx.request.body || {};
+  const { ids } = await validateBody(ctx, batchIdsBodySchema);
   if (!Array.isArray(ids) || ids.length === 0) {
     throw createError(400, '参数不能为空');
   }
@@ -156,8 +160,8 @@ export const batchApproveApprovals = async (ctx) => {
 
 // PUT /api/approvals/batch-reject
 export const batchRejectApprovals = async (ctx) => {
-  const { ids, reason, rejectReason } = ctx.request.body || {};
-  const finalReason = reason || rejectReason || '';
+  const { ids, reason, rejectReason } = await validateBody(ctx, batchRejectBodySchema);
+  const finalReason = reason ?? rejectReason ?? '';
   if (!Array.isArray(ids) || ids.length === 0) {
     throw createError(400, '参数不能为空');
   }
@@ -169,8 +173,8 @@ export const batchRejectApprovals = async (ctx) => {
 
 // POST /api/approval/task-hours/:id
 export const approveTaskHours = async (ctx) => {
-  const { id } = ctx.params;
-  const { action, rejectReason } = ctx.request.body;
+  const { id } = await validateParams(ctx, idParamSchema);
+  const { action, rejectReason } = await validateBody(ctx, approveActionBodySchema);
 
   await approveRecord(DailyTask, id, action, rejectReason, ctx.state.user, '工时记录');
   ctx.body = { code: 200, message: '操作成功', data: null };
@@ -178,7 +182,7 @@ export const approveTaskHours = async (ctx) => {
 
 // POST /api/approval/task-hours/batch
 export const batchApproveTaskHours = async (ctx) => {
-  const { ids, action, rejectReason } = ctx.request.body;
+  const { ids, action, rejectReason } = await validateBody(ctx, batchApproveTaskHoursBodySchema);
 
   for (const id of ids) {
     await approveRecord(DailyTask, id, action, rejectReason, ctx.state.user, '工时记录');
@@ -189,8 +193,8 @@ export const batchApproveTaskHours = async (ctx) => {
 
 // POST /api/approval/maintenance/:id
 export const approveMaintenance = async (ctx) => {
-  const { id } = ctx.params;
-  const { action, rejectReason } = ctx.request.body;
+  const { id } = await validateParams(ctx, idParamSchema);
+  const { action, rejectReason } = await validateBody(ctx, approveActionBodySchema);
 
   await approveRecord(MaintenanceRecord, id, action, rejectReason, ctx.state.user, '保养记录');
   ctx.body = { code: 200, message: '操作成功', data: null };
@@ -198,8 +202,8 @@ export const approveMaintenance = async (ctx) => {
 
 // POST /api/approval/repair/:id
 export const approveRepair = async (ctx) => {
-  const { id } = ctx.params;
-  const { action, rejectReason } = ctx.request.body;
+  const { id } = await validateParams(ctx, idParamSchema);
+  const { action, rejectReason } = await validateBody(ctx, approveActionBodySchema);
 
   await approveRecord(RepairRecord, id, action, rejectReason, ctx.state.user, '维修记录');
   ctx.body = { code: 200, message: '操作成功', data: null };
@@ -207,8 +211,8 @@ export const approveRepair = async (ctx) => {
 
 // POST /api/approval/requisition/:id
 export const approveRequisition = async (ctx) => {
-  const { id } = ctx.params;
-  const { action, rejectReason } = ctx.request.body;
+  const { id } = await validateParams(ctx, idParamSchema);
+  const { action, rejectReason } = await validateBody(ctx, approveActionBodySchema);
 
   const requisition = await MaterialRequisition.findByPk(id);
   if (!requisition) throw createError(404, '领料申请不存在');
@@ -226,8 +230,8 @@ export const approveRequisition = async (ctx) => {
 
 // POST /api/approval/rectification/:id
 export const approveRectification = async (ctx) => {
-  const { id } = ctx.params;
-  const { action, rejectReason, rootCauseCategory, approveComment } = ctx.request.body;
+  const { id } = await validateParams(ctx, idParamSchema);
+  const { action, rejectReason, rootCauseCategory, approveComment } = await validateBody(ctx, approveRectificationBodySchema);
 
   const rectification = await SafetyRectification.findByPk(id, {
     include: [{ model: SafetyHazardInspection, as: 'inspection' }]
