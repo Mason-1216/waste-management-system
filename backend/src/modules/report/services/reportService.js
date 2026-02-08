@@ -1,6 +1,8 @@
 import { Op, fn, col, literal } from 'sequelize';
 import { DailyTask, MaintenanceRecord, RepairRecord, SafetySelfInspection, SafetyOtherInspection, SafetyWorkType, HygieneArea, Schedule, TemporaryTask, User, MaintenanceWorkRecord, PositionWorkLog } from '../../../models/index.js';
 import dayjs from 'dayjs';
+import { validateQuery } from '../../core/validators/validate.js';
+import { byMonthQuerySchema, dateRangeStationQuerySchema, pointsSummaryReportQuerySchema, scheduleReportQuerySchema, temporaryTasksReportQuerySchema, workHoursReportQuerySchema } from '../validators/schemas.js';
 
 const resolveText = (value) => (typeof value === 'string' ? value.trim() : '');
 
@@ -109,6 +111,7 @@ const resolvePageSize = (value, fallback) => {
  * GET /api/reports/work-hours
  */
 export const getWorkHoursReport = async (ctx) => {
+  await validateQuery(ctx, workHoursReportQuerySchema);
   const { stationId, startDate, endDate, groupBy } = ctx.query;
   const dataFilter = ctx.state.dataFilter;
 
@@ -175,6 +178,7 @@ export const getWorkHoursReport = async (ctx) => {
  * GET /api/reports/maintenance
  */
 export const getMaintenanceReport = async (ctx) => {
+  await validateQuery(ctx, dateRangeStationQuerySchema);
   const { stationId, startDate, endDate } = ctx.query;
 
   const where = {};
@@ -215,6 +219,7 @@ export const getMaintenanceReport = async (ctx) => {
  * GET /api/reports/repair
  */
 export const getRepairReport = async (ctx) => {
+  await validateQuery(ctx, dateRangeStationQuerySchema);
   const { startDate, endDate } = ctx.query;
 
   const where = {};
@@ -255,6 +260,7 @@ export const getRepairReport = async (ctx) => {
  * GET /api/reports/safety
  */
 export const getSafetyReport = async (ctx) => {
+  await validateQuery(ctx, dateRangeStationQuerySchema);
   const { stationId, startDate, endDate } = ctx.query;
 
   const where = {};
@@ -297,6 +303,7 @@ export const getSafetyReport = async (ctx) => {
  * GET /api/reports/schedule
  */
 export const getScheduleReport = async (ctx) => {
+  await validateQuery(ctx, scheduleReportQuerySchema);
   const { stationId, year, month } = ctx.query;
 
   const where = {};
@@ -336,6 +343,7 @@ export const getScheduleReport = async (ctx) => {
  * GET /api/reports/temporary-tasks
  */
 export const getTemporaryTasksReport = async (ctx) => {
+  await validateQuery(ctx, temporaryTasksReportQuerySchema);
   const { startDate, endDate, status } = ctx.query;
 
   const where = {};
@@ -376,6 +384,7 @@ export const getTemporaryTasksReport = async (ctx) => {
  * GET /api/reports/points-summary
  */
 export const getPointsSummaryReport = async (ctx) => {
+  await validateQuery(ctx, pointsSummaryReportQuerySchema);
   const { startDate, endDate, keyword } = ctx.query;
   const dataFilter = ctx.state.dataFilter ?? {};
   const range = resolveDateRange(startDate, endDate);
@@ -982,6 +991,7 @@ export const getPointsSummaryReport = async (ctx) => {
  * GET /api/reports/maintenance-by-month
  */
 export const getMaintenanceByMonth = async (ctx) => {
+  await validateQuery(ctx, byMonthQuerySchema);
   const { stationId, equipmentCode, year } = ctx.query;
   const targetYear = Number(year) || dayjs().year();
 
@@ -1012,6 +1022,7 @@ export const getMaintenanceByMonth = async (ctx) => {
  * GET /api/reports/repair-by-month
  */
 export const getRepairByMonth = async (ctx) => {
+  await validateQuery(ctx, byMonthQuerySchema);
   const { stationId, equipmentCode, year } = ctx.query;
   const targetYear = Number(year) || dayjs().year();
 
