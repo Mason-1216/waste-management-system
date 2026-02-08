@@ -1010,3 +1010,4 @@ docker logs wms-backend --tail 50
 - 前端(Inspection): 路由指向 modules/inspection/pages（薄包装 views/inspection，便于后续迁移页面实现）。
 - 前端(Maintenance): 路由指向 modules/maintenance/pages（薄包装 views/maintenance，便于后续迁移页面实现）。
 - 前端(Report): 路由指向 modules/report/pages（薄包装 views/reports，便于后续迁移页面实现）。
+- 前端(PLC): 路由指向 modules/plc/pages（薄包装 views/plc，便于后续迁移页面实现）。
