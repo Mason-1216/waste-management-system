@@ -4,12 +4,23 @@ import { createError } from '../../../middlewares/error.js';
 import { getPagination, formatPaginationResponse, getOrderBy } from '../../../utils/helpers.js';
 import ExcelJS from 'exceljs';
 import { addTemplateInstructionSheet, applyTemplateHeaderStyle } from '../../import_export/utils/excelTemplate.js';
+import { validateBody, validateParams, validateQuery } from '../../core/validators/validate.js';
+import {
+  createPositionJobBodySchema,
+  deletePositionJobQuerySchema,
+  getPositionJobsByPositionQuerySchema,
+  getPositionJobsQuerySchema,
+  getPositionNamesQuerySchema,
+  idParamSchema,
+  updatePositionJobBodySchema
+} from '../validators/positionJobSchemas.js';
 
 /**
  * 查询岗位任务列表
  * GET /api/position-jobs
  */
 export const getPositionJobs = async (ctx) => {
+  await validateQuery(ctx, getPositionJobsQuerySchema);
   const { page, pageSize, offset, limit } = getPagination(ctx.query);
   const order = ctx.query.sortBy
     ? getOrderBy(ctx.query)
@@ -187,7 +198,7 @@ export const createPositionJob = async (ctx) => {
     dispatchReviewRequired,
     sortOrder,
     stationId
-  } = ctx.request.body;
+  } = await validateBody(ctx, createPositionJobBodySchema);
   const { roleCode, stations } = ctx.state.user;
 
   if (!positionName || !jobName) {
@@ -270,7 +281,7 @@ export const createPositionJob = async (ctx) => {
  * PUT /api/position-jobs/:id
  */
 export const updatePositionJob = async (ctx) => {
-  const { id } = ctx.params;
+  const { id } = await validateParams(ctx, idParamSchema);
   const {
     positionName,
     jobName,
@@ -287,7 +298,7 @@ export const updatePositionJob = async (ctx) => {
     stationId,
     isActive,
     renamePosition
-  } = ctx.request.body;
+  } = await validateBody(ctx, updatePositionJobBodySchema);
   const { roleCode, stations } = ctx.state.user;
 
   const positionJob = await PositionJob.findByPk(id);
@@ -481,7 +492,8 @@ export const updatePositionJob = async (ctx) => {
  * Query 参数: confirmed=true 表示用户已确认删除
  */
 export const deletePositionJob = async (ctx) => {
-  const { id } = ctx.params;
+  const { id } = await validateParams(ctx, idParamSchema);
+  await validateQuery(ctx, deletePositionJobQuerySchema);
   const { confirmed } = ctx.query;
   const { roleCode, stations } = ctx.state.user;
 
@@ -929,6 +941,7 @@ export const getPositionJobsTemplate = async (ctx) => {
  * GET /api/position-jobs/by-position
  */
 export const getPositionJobsByPosition = async (ctx) => {
+  await validateQuery(ctx, getPositionJobsByPositionQuerySchema);
   const { positionName, stationId } = ctx.query;
   const dataFilter = ctx.state.dataFilter;
 
@@ -968,6 +981,7 @@ export const getPositionJobsByPosition = async (ctx) => {
  */
 export const getPositionNames = async (ctx) => {
   const dataFilter = ctx.state.dataFilter;
+  await validateQuery(ctx, getPositionNamesQuerySchema);
   const { stationId } = ctx.query;
 
   const where = {
