@@ -985,6 +985,7 @@ docker logs wms-backend --tail 50
 - 后端(Core): 将 permissionService/devTestGuard 下沉到 backend/src/modules/core/services，并修正 core/jobs/app 引用。
 - 后端(Notification): 从 approval 中拆出独立 modules/notification（保持 /api/notifications* 路由不变），并在 modules/index.js 注册路由。
 - 后端(Notification): 新增 notificationPublisher，收口各模块对 Notification.create/bulkCreate 的调用点（发送逻辑集中）。
+- 后端(Audit): 新增 modules/audit/services/auditService（OperationLog 记录/清理），并将 cronJobs 的日志清理迁移到 auditService。
 - 后端(ImportExport): 将 excelTemplate 下沉到 backend/src/modules/import_export/utils，并更新引用方。
 - 后端(FileStorage): 将 upload 配置下沉到 backend/src/modules/file_storage/upload.js，并更新引用方。
 - 后端(Auth): 将 auth 中间件与 jwt 配置下沉到 backend/src/modules/core/middlewares 与 backend/src/modules/core/config，并修正引用。

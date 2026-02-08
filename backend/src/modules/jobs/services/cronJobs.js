@@ -5,6 +5,7 @@ import { Station, User, Role, Schedule, SafetySelfInspection, Notification } fro
 import logger from '../../../config/logger.js';
 import { ensureDevTestAccount } from '../../core/services/devTestGuard.js';
 import { publishNotification } from '../../notification/services/notificationPublisher.js';
+import { cleanupOldOperationLogs } from '../../audit/services/auditService.js';
 
 /**
  * 启动所有定时任务
@@ -183,16 +184,7 @@ async function notifyByRole(station, overdueUsers, roleCodes, level, io) {
  * 清理旧日志
  */
 async function cleanOldLogs() {
-  const { OperationLog } = await import('../../../models/index.js');
-  const thirtyDaysAgo = dayjs().subtract(30, 'day').toDate();
-
-  const result = await OperationLog.destroy({
-    where: {
-      created_at: { [Op.lt]: thirtyDaysAgo }
-    }
-  });
-
-  logger.info(`已清理 ${result} 条30天前的操作日志`);
+  await cleanupOldOperationLogs({ days: 30 });
 }
 
 /**
