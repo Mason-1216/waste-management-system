@@ -3,6 +3,27 @@ import * as repairService from '../services/repairService.js';
 import * as planService from '../services/planService.js';
 import * as recordService from '../services/recordService.js';
 import * as materialService from '../services/materialService.js';
+import { validateBody, validateParams, validateQuery } from '../../core/validators/validate.js';
+import {
+  assignFaultReportBodySchema,
+  completeRepairBodySchema,
+  createFaultReportBodySchema,
+  createMaintenancePlanBodySchema,
+  createMaintenanceRecordBodySchema,
+  createMaterialRequisitionBodySchema,
+  createRepairRecordBodySchema,
+  dispatchRepairRecordBodySchema,
+  getFaultReportsQuerySchema,
+  getMaintenancePlansQuerySchema,
+  getMaintenanceRecordsQuerySchema,
+  getMaterialRequisitionsQuerySchema,
+  getRepairRecordsQuerySchema,
+  idParamSchema,
+  startRepairBodySchema,
+  updateMaintenancePlanBodySchema,
+  updateRepairRecordBodySchema,
+  verifyRepairRecordBodySchema
+} from '../validators/maintenanceControllerSchemas.js';
 
 // ============================================
 // 保养计划
@@ -13,6 +34,7 @@ import * as materialService from '../services/materialService.js';
  * GET /api/maintenance-plans
  */
 export const getMaintenancePlans = async (ctx) => {
+  await validateQuery(ctx, getMaintenancePlansQuerySchema);
   const data = await planService.getMaintenancePlans({
     query: ctx.query,
     dataFilter: ctx.state.dataFilter,
@@ -31,6 +53,7 @@ export const getMaintenancePlans = async (ctx) => {
  * POST /api/maintenance-plans
  */
 export const createMaintenancePlan = async (ctx) => {
+  await validateBody(ctx, createMaintenancePlanBodySchema);
   const data = await planService.createMaintenancePlan({
     body: ctx.request.body,
     user: ctx.state.user
@@ -48,8 +71,10 @@ export const createMaintenancePlan = async (ctx) => {
  * PUT /api/maintenance-plans/:id
  */
 export const updateMaintenancePlan = async (ctx) => {
+  const { id } = await validateParams(ctx, idParamSchema);
+  await validateBody(ctx, updateMaintenancePlanBodySchema);
   await planService.updateMaintenancePlan({
-    id: ctx.params.id,
+    id,
     body: ctx.request.body
   });
 
@@ -61,7 +86,8 @@ export const updateMaintenancePlan = async (ctx) => {
  * DELETE /api/maintenance-plans/:id
  */
 export const deleteMaintenancePlan = async (ctx) => {
-  await planService.deleteMaintenancePlan({ id: ctx.params.id });
+  const { id } = await validateParams(ctx, idParamSchema);
+  await planService.deleteMaintenancePlan({ id });
   ctx.body = { code: 200, message: '删除成功', data: null };
 };
 
@@ -74,6 +100,7 @@ export const deleteMaintenancePlan = async (ctx) => {
  * GET /api/maintenance-records
  */
 export const getMaintenanceRecords = async (ctx) => {
+  await validateQuery(ctx, getMaintenanceRecordsQuerySchema);
   const data = await recordService.getMaintenanceRecords({
     query: ctx.query,
     dataFilter: ctx.state.dataFilter,
@@ -92,6 +119,7 @@ export const getMaintenanceRecords = async (ctx) => {
  * POST /api/maintenance-records
  */
 export const createMaintenanceRecord = async (ctx) => {
+  await validateBody(ctx, createMaintenanceRecordBodySchema);
   const data = await recordService.createMaintenanceRecord({
     body: ctx.request.body,
     user: ctx.state.user
@@ -113,6 +141,7 @@ export const createMaintenanceRecord = async (ctx) => {
  * GET /api/fault-reports
  */
 export const getFaultReports = async (ctx) => {
+  await validateQuery(ctx, getFaultReportsQuerySchema);
   const data = await faultService.getFaultReports({
     query: ctx.query,
     dataFilter: ctx.state.dataFilter,
@@ -130,6 +159,7 @@ export const getFaultReports = async (ctx) => {
  * POST /api/fault-reports
  */
 export const createFaultReport = async (ctx) => {
+  await validateBody(ctx, createFaultReportBodySchema);
   const data = await faultService.createFaultReport({
     body: ctx.request.body,
     user: ctx.state.user
@@ -146,8 +176,10 @@ export const createFaultReport = async (ctx) => {
  * POST /api/fault-reports/:id/assign
  */
 export const assignFaultReport = async (ctx) => {
+  const { id } = await validateParams(ctx, idParamSchema);
+  await validateBody(ctx, assignFaultReportBodySchema);
   await faultService.assignFaultReport({
-    id: ctx.params.id,
+    id,
     body: ctx.request.body,
     user: ctx.state.user
   });
@@ -164,6 +196,7 @@ export const assignFaultReport = async (ctx) => {
  * GET /api/repair-records
  */
 export const getRepairRecords = async (ctx) => {
+  await validateQuery(ctx, getRepairRecordsQuerySchema);
   const data = await repairService.getRepairRecords({
     query: ctx.query,
     dataFilter: ctx.state.dataFilter,
@@ -181,7 +214,8 @@ export const getRepairRecords = async (ctx) => {
  * GET /api/repair-records/:id
  */
 export const getRepairRecordById = async (ctx) => {
-  const record = await repairService.getRepairRecordById(ctx.params.id);
+  const { id } = await validateParams(ctx, idParamSchema);
+  const record = await repairService.getRepairRecordById(id);
   ctx.body = {
     code: 200,
     message: 'success',
@@ -194,6 +228,7 @@ export const getRepairRecordById = async (ctx) => {
  * POST /api/repair-records
  */
 export const createRepairRecord = async (ctx) => {
+  await validateBody(ctx, createRepairRecordBodySchema);
   const result = await repairService.createRepairRecord({
     body: ctx.request.body,
     user: ctx.state.user
@@ -210,8 +245,10 @@ export const createRepairRecord = async (ctx) => {
  * PUT /api/repair-records/:id
  */
 export const updateRepairRecord = async (ctx) => {
+  const { id } = await validateParams(ctx, idParamSchema);
+  await validateBody(ctx, updateRepairRecordBodySchema);
   await repairService.updateRepairRecord({
-    id: ctx.params.id,
+    id,
     body: ctx.request.body,
     user: ctx.state.user
   });
@@ -223,8 +260,9 @@ export const updateRepairRecord = async (ctx) => {
  * POST /api/repair-records/:id/submit
  */
 export const submitRepairRecord = async (ctx) => {
+  const { id } = await validateParams(ctx, idParamSchema);
   await repairService.submitRepairRecord({
-    id: ctx.params.id,
+    id,
     user: ctx.state.user
   });
 
@@ -236,8 +274,10 @@ export const submitRepairRecord = async (ctx) => {
  * POST /api/repair-records/:id/dispatch
  */
 export const dispatchRepairRecord = async (ctx) => {
+  const { id } = await validateParams(ctx, idParamSchema);
+  await validateBody(ctx, dispatchRepairRecordBodySchema);
   await repairService.dispatchRepairRecord({
-    id: ctx.params.id,
+    id,
     body: ctx.request.body,
     user: ctx.state.user
   });
@@ -250,8 +290,10 @@ export const dispatchRepairRecord = async (ctx) => {
  * POST /api/repair-records/:id/start
  */
 export const startRepair = async (ctx) => {
+  const { id } = await validateParams(ctx, idParamSchema);
+  await validateBody(ctx, startRepairBodySchema);
   await repairService.startRepair({
-    id: ctx.params.id,
+    id,
     body: ctx.request.body,
     user: ctx.state.user
   });
@@ -264,8 +306,10 @@ export const startRepair = async (ctx) => {
  * POST /api/repair-records/:id/complete
  */
 export const completeRepair = async (ctx) => {
+  const { id } = await validateParams(ctx, idParamSchema);
+  await validateBody(ctx, completeRepairBodySchema);
   await repairService.completeRepair({
-    id: ctx.params.id,
+    id,
     body: ctx.request.body,
     user: ctx.state.user
   });
@@ -278,9 +322,11 @@ export const completeRepair = async (ctx) => {
  * POST /api/repair-records/:id/verify
  */
 export const verifyRepairRecord = async (ctx) => {
+  const { id } = await validateParams(ctx, idParamSchema);
+  await validateBody(ctx, verifyRepairRecordBodySchema);
   const isPass = ctx.request.body?.verifyResult === 'pass';
   await repairService.verifyRepairRecord({
-    id: ctx.params.id,
+    id,
     body: ctx.request.body,
     user: ctx.state.user
   });
@@ -293,8 +339,9 @@ export const verifyRepairRecord = async (ctx) => {
  * DELETE /api/repair-records/:id
  */
 export const deleteRepairRecord = async (ctx) => {
+  const { id } = await validateParams(ctx, idParamSchema);
   await repairService.deleteRepairRecord({
-    id: ctx.params.id,
+    id,
     user: ctx.state.user
   });
   ctx.body = { code: 200, message: '删除成功', data: null };
@@ -309,6 +356,7 @@ export const deleteRepairRecord = async (ctx) => {
  * POST /api/material-requisitions
  */
 export const createMaterialRequisition = async (ctx) => {
+  await validateBody(ctx, createMaterialRequisitionBodySchema);
   const data = await materialService.createMaterialRequisition({
     body: ctx.request.body,
     user: ctx.state.user
@@ -326,6 +374,7 @@ export const createMaterialRequisition = async (ctx) => {
  * GET /api/material-requisitions
  */
 export const getMaterialRequisitions = async (ctx) => {
+  await validateQuery(ctx, getMaterialRequisitionsQuerySchema);
   const data = await materialService.getMaterialRequisitions({ query: ctx.query });
 
   ctx.body = {
