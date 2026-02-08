@@ -3,6 +3,8 @@ import { Schedule, User, Station, UserStation, PositionWorkLog, MaintenanceWorkR
 import { createError } from '../../../middlewares/error.js';
 import { getDaysInMonth } from '../../../utils/helpers.js';
 import sequelize from '../../../config/database.js';
+import { validateBody, validateParams, validateQuery } from '../../core/validators/validate.js';
+import { batchDeleteSchedulesBodySchema, batchSaveSchedulesBodySchema, getMyScheduleQuerySchema, getSchedulesOverviewQuerySchema, getSchedulesQuerySchema, getTodayScheduledUsersQuerySchema, saveScheduleBodySchema, scheduleIdParamSchema } from '../validators/schemas.js';
 
 const resolveProjectId = async (projectId, stationId, user) => {
   if (projectId) return projectId;
@@ -88,6 +90,7 @@ const updateUserStationFromSchedule = async (userId, year, month) => {
  * GET /api/schedules
  */
 export const getSchedules = async (ctx) => {
+  await validateQuery(ctx, getSchedulesQuerySchema);
   const { year, month, stationId, userId } = ctx.query;
   const dataFilter = ctx.state.dataFilter;
   const roleCode = ctx.state.user?.baseRoleCode || ctx.state.user?.roleCode;
@@ -158,6 +161,7 @@ export const getSchedules = async (ctx) => {
  * GET /api/schedules/overview
  */
 export const getSchedulesOverview = async (ctx) => {
+  await validateQuery(ctx, getSchedulesOverviewQuerySchema);
   const { startDate, endDate, stationId, userId, includeTasks } = ctx.query;
   const dataFilter = ctx.state.dataFilter;
   const roleCode = ctx.state.user?.baseRoleCode ?? ctx.state.user?.roleCode;
@@ -325,7 +329,7 @@ export const getSchedulesOverview = async (ctx) => {
  * POST /api/schedules
  */
 export const saveSchedule = async (ctx) => {
-  const { stationId, userId, userName, positionName, year, month, schedules, projectId } = ctx.request.body;
+  const { stationId, userId, userName, positionName, year, month, schedules, projectId } = await validateBody(ctx, saveScheduleBodySchema);
   const resolvedProjectId = await resolveProjectId(projectId, stationId, ctx.state.user);
 
   if (!resolvedProjectId || !userId || !year || !month) {
@@ -384,7 +388,7 @@ export const saveSchedule = async (ctx) => {
  * POST /api/schedules/batch
  */
 export const batchSaveSchedules = async (ctx) => {
-  const { stationId, year, month, scheduleList, projectId } = ctx.request.body;
+  const { stationId, year, month, scheduleList, projectId } = await validateBody(ctx, batchSaveSchedulesBodySchema);
   const resolvedProjectId = await resolveProjectId(projectId, stationId, ctx.state.user);
 
   if (!resolvedProjectId || !year || !month || !scheduleList?.length) {
@@ -441,6 +445,7 @@ export const batchSaveSchedules = async (ctx) => {
  * GET /api/schedules/my
  */
 export const getMySchedule = async (ctx) => {
+  await validateQuery(ctx, getMyScheduleQuerySchema);
   const { year, month } = ctx.query;
   const userId = ctx.state.user.id;
 
@@ -487,6 +492,7 @@ export const getMySchedule = async (ctx) => {
  * GET /api/schedules/today
  */
 export const getTodayScheduledUsers = async (ctx) => {
+  await validateQuery(ctx, getTodayScheduledUsersQuerySchema);
   const { stationId } = ctx.query;
   const today = new Date();
   const year = today.getFullYear();
@@ -529,7 +535,7 @@ export const getTodayScheduledUsers = async (ctx) => {
  * DELETE /api/schedules/:id
  */
 export const deleteSchedule = async (ctx) => {
-  const { id } = ctx.params;
+  const { id } = await validateParams(ctx, scheduleIdParamSchema);
   const dataFilter = ctx.state.dataFilter;
   const roleCode = ctx.state.user?.baseRoleCode || ctx.state.user?.roleCode;
   const roleName = ctx.state.user?.roleName || '';
@@ -564,7 +570,7 @@ export const deleteSchedule = async (ctx) => {
  * POST /api/schedules/batch-delete
  */
 export const batchDeleteSchedules = async (ctx) => {
-  const { ids } = ctx.request.body;
+  const { ids } = await validateBody(ctx, batchDeleteSchedulesBodySchema);
   const dataFilter = ctx.state.dataFilter;
   const roleCode = ctx.state.user?.baseRoleCode || ctx.state.user?.roleCode;
   const roleName = ctx.state.user?.roleName || '';
