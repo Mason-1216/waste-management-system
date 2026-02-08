@@ -2,12 +2,21 @@ import { Op } from 'sequelize';
 import { TemporaryTaskLibrary, Station, User } from '../../../models/index.js';
 import { createError } from '../../../middlewares/error.js';
 import { getPagination, formatPaginationResponse, getOrderBy } from '../../../utils/helpers.js';
+import { validateBody, validateParams, validateQuery } from '../../core/validators/validate.js';
+import {
+  batchImportTemporaryTaskLibraryBodySchema,
+  createTemporaryTaskLibraryBodySchema,
+  getTemporaryTaskLibraryQuerySchema,
+  idParamSchema,
+  updateTemporaryTaskLibraryBodySchema
+} from '../validators/temporaryTaskLibrarySchemas.js';
 
 /**
  * 获取临时工作任务汇总表列表（共享，所有站长/部门经理/部门副经理可见）
  * GET /api/temporary-task-library
  */
 export const getTemporaryTaskLibrary = async (ctx) => {
+  await validateQuery(ctx, getTemporaryTaskLibraryQuerySchema);
   const { page, pageSize, offset, limit } = getPagination(ctx.query);
   const order = getOrderBy(ctx.query);
   const {
@@ -78,7 +87,7 @@ export const createTemporaryTaskLibrary = async (ctx) => {
     quantityEditable,
     dispatchReviewRequired,
     stationId
-  } = ctx.request.body;
+  } = await validateBody(ctx, createTemporaryTaskLibraryBodySchema);
   const user = ctx.state.user;
 
   if (!taskName || !taskContent) {
@@ -127,7 +136,7 @@ export const createTemporaryTaskLibrary = async (ctx) => {
  * PUT /api/temporary-task-library/:id
  */
 export const updateTemporaryTaskLibrary = async (ctx) => {
-  const { id } = ctx.params;
+  const { id } = await validateParams(ctx, idParamSchema);
   const {
     taskName,
     taskContent,
@@ -141,7 +150,7 @@ export const updateTemporaryTaskLibrary = async (ctx) => {
     quantityEditable,
     dispatchReviewRequired,
     stationId
-  } = ctx.request.body;
+  } = await validateBody(ctx, updateTemporaryTaskLibraryBodySchema);
 
   const record = await TemporaryTaskLibrary.findByPk(id);
   if (!record) {
@@ -192,7 +201,7 @@ export const updateTemporaryTaskLibrary = async (ctx) => {
  * DELETE /api/temporary-task-library/:id
  */
 export const deleteTemporaryTaskLibrary = async (ctx) => {
-  const { id } = ctx.params;
+  const { id } = await validateParams(ctx, idParamSchema);
 
   const record = await TemporaryTaskLibrary.findByPk(id);
   if (!record) {
@@ -213,7 +222,7 @@ export const deleteTemporaryTaskLibrary = async (ctx) => {
  * POST /api/temporary-task-library/batch-import
  */
 export const batchImportTemporaryTaskLibrary = async (ctx) => {
-  const { tasks } = ctx.request.body;
+  const { tasks } = await validateBody(ctx, batchImportTemporaryTaskLibraryBodySchema);
   const user = ctx.state.user;
 
   if (!tasks || !Array.isArray(tasks) || tasks.length === 0) {
