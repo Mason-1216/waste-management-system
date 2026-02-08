@@ -6,6 +6,14 @@ import { fileURLToPath } from 'url';
 import { RepairTaskLibrary } from '../../../models/index.js';
 import { createError } from '../../../middlewares/error.js';
 import { formatPaginationResponse, getOrderBy, getPagination } from '../../../utils/helpers.js';
+import { validateBody, validateParams, validateQuery } from '../../core/validators/validate.js';
+import {
+  batchDeleteRepairTaskLibraryBodySchema,
+  createRepairTaskLibraryBodySchema,
+  getRepairTaskLibraryQuerySchema,
+  idParamSchema,
+  updateRepairTaskLibraryBodySchema
+} from '../validators/repairTaskLibrarySchemas.js';
 
 const hasValue = (value) => value !== undefined && value !== null && value !== '';
 const resolveText = (value) => (typeof value === 'string' ? value.trim() : '');
@@ -23,6 +31,7 @@ const ensureQuantity = (value) => {
 };
 
 export const getRepairTaskLibrary = async (ctx) => {
+  await validateQuery(ctx, getRepairTaskLibraryQuerySchema);
   const { page, pageSize, offset, limit } = getPagination(ctx.query);
   const order = getOrderBy(ctx.query);
   const {
@@ -110,7 +119,7 @@ export const createRepairTaskLibrary = async (ctx) => {
     pointsRule,
     quantityEditable,
     pointsEditable
-  } = ctx.request.body;
+  } = await validateBody(ctx, createRepairTaskLibraryBodySchema);
 
   if (!taskName || !resolveText(taskName)) {
     throw createError(400, '任务名称不能为空');
@@ -164,7 +173,7 @@ export const createRepairTaskLibrary = async (ctx) => {
 };
 
 export const updateRepairTaskLibrary = async (ctx) => {
-  const { id } = ctx.params;
+  const { id } = await validateParams(ctx, idParamSchema);
   const {
     taskName,
     taskCategory,
@@ -175,7 +184,7 @@ export const updateRepairTaskLibrary = async (ctx) => {
     quantityEditable,
     pointsEditable,
     isActive
-  } = ctx.request.body;
+  } = await validateBody(ctx, updateRepairTaskLibraryBodySchema);
 
   const record = await RepairTaskLibrary.findByPk(id);
   if (!record) {
@@ -251,7 +260,7 @@ export const updateRepairTaskLibrary = async (ctx) => {
 };
 
 export const deleteRepairTaskLibrary = async (ctx) => {
-  const { id } = ctx.params;
+  const { id } = await validateParams(ctx, idParamSchema);
   const record = await RepairTaskLibrary.findByPk(id);
   if (!record) {
     throw createError(404, '任务不存在');
@@ -264,7 +273,7 @@ export const deleteRepairTaskLibrary = async (ctx) => {
 };
 
 export const batchDeleteRepairTaskLibrary = async (ctx) => {
-  const { ids } = ctx.request.body;
+  const { ids } = await validateBody(ctx, batchDeleteRepairTaskLibraryBodySchema);
   if (!Array.isArray(ids) || ids.length === 0) {
     throw createError(400, '请选择要删除的任务');
   }
