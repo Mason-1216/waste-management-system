@@ -3,6 +3,19 @@ import dayjs from 'dayjs';
 import { MaintenancePlanLibrary, MaintenanceAssignment, MaintenancePositionPlan, MaintenanceWorkRecord, Station, User } from '../../../models/index.js';
 import { createError } from '../../../middlewares/error.js';
 import { getPagination, formatPaginationResponse, getOrderBy, generateRecordCode } from '../../../utils/helpers.js';
+import { validateBody, validateParams, validateQuery } from '../../core/validators/validate.js';
+import {
+  batchImportMaintenancePlanLibraryBodySchema,
+  completeMaintenanceAssignmentBodySchema,
+  createMaintenanceAssignmentBodySchema,
+  createMaintenancePlanLibraryBodySchema,
+  getMaintenanceAssignmentsQuerySchema,
+  getMaintenancePlanLibraryQuerySchema,
+  idParamSchema,
+  updateMaintenanceAssignmentBodySchema,
+  updateMaintenancePlanLibraryBodySchema,
+  verifyMaintenanceAssignmentBodySchema
+} from '../validators/planLibrarySchemas.js';
 
 const resolveScopedStationId = (user, headerStationId) => {
   if (!user) return null;
@@ -106,6 +119,7 @@ const inferCycleTypeFromSchedule = (record) => {
  * GET /api/maintenance-plan-library
  */
 export const getMaintenancePlanLibrary = async (ctx) => {
+  await validateQuery(ctx, getMaintenancePlanLibraryQuerySchema);
   const { page, pageSize, offset, limit } = getPagination(ctx.query);
   const order = getOrderBy(ctx.query);
   const { stationId, cycleType, keyword } = ctx.query;
@@ -194,7 +208,7 @@ export const getMaintenancePlanLibrary = async (ctx) => {
  * POST /api/maintenance-plan-library
  */
 export const createMaintenancePlanLibrary = async (ctx) => {
-  const { stationId, equipmentCode, equipmentName, installLocation, cycleType, maintenanceStandards, weeklyDay, monthlyDay, yearlyMonth, yearlyDay } = ctx.request.body;
+  const { stationId, equipmentCode, equipmentName, installLocation, cycleType, maintenanceStandards, weeklyDay, monthlyDay, yearlyMonth, yearlyDay } = await validateBody(ctx, createMaintenancePlanLibraryBodySchema);
   const user = ctx.state.user;
 
   if (!equipmentCode || !equipmentName) {
@@ -232,8 +246,8 @@ export const createMaintenancePlanLibrary = async (ctx) => {
  * PUT /api/maintenance-plan-library/:id
  */
 export const updateMaintenancePlanLibrary = async (ctx) => {
-  const { id } = ctx.params;
-  const { stationId, equipmentCode, equipmentName, installLocation, cycleType, maintenanceStandards, weeklyDay, monthlyDay, yearlyMonth, yearlyDay } = ctx.request.body;
+  const { id } = await validateParams(ctx, idParamSchema);
+  const { stationId, equipmentCode, equipmentName, installLocation, cycleType, maintenanceStandards, weeklyDay, monthlyDay, yearlyMonth, yearlyDay } = await validateBody(ctx, updateMaintenancePlanLibraryBodySchema);
 
   const record = await MaintenancePlanLibrary.findByPk(id);
   if (!record || record.is_deleted) {
@@ -265,7 +279,7 @@ export const updateMaintenancePlanLibrary = async (ctx) => {
  * DELETE /api/maintenance-plan-library/:id
  */
 export const deleteMaintenancePlanLibrary = async (ctx) => {
-  const { id } = ctx.params;
+  const { id } = await validateParams(ctx, idParamSchema);
 
   const record = await MaintenancePlanLibrary.findByPk(id);
   if (!record) {
@@ -301,7 +315,7 @@ export const deleteMaintenancePlanLibrary = async (ctx) => {
  * POST /api/maintenance-plan-library/batch-import
  */
 export const batchImportMaintenancePlanLibrary = async (ctx) => {
-  const { plans } = ctx.request.body;
+  const { plans } = await validateBody(ctx, batchImportMaintenancePlanLibraryBodySchema);
   const user = ctx.state.user;
   const scopedStationId = resolveScopedStationId(user, ctx.headers['x-station-id']);
 
@@ -420,6 +434,7 @@ export const batchImportMaintenancePlanLibrary = async (ctx) => {
  * GET /api/maintenance-assignments
  */
 export const getMaintenanceAssignments = async (ctx) => {
+  await validateQuery(ctx, getMaintenanceAssignmentsQuerySchema);
   const { page, pageSize, offset, limit } = getPagination(ctx.query);
   const order = getOrderBy(ctx.query);
   const { stationId, status, startDate, endDate, executorId } = ctx.query;
@@ -485,7 +500,7 @@ export const getMaintenanceAssignments = async (ctx) => {
  * POST /api/maintenance-assignments
  */
 export const createMaintenanceAssignment = async (ctx) => {
-  const { stationId, planId, cycleType, equipmentCode, equipmentName, installLocation, executorId, executorName, assignerName, planStartDate, planEndDate, planStartTime, planEndTime } = ctx.request.body;
+  const { stationId, planId, cycleType, equipmentCode, equipmentName, installLocation, executorId, executorName, assignerName, planStartDate, planEndDate, planStartTime, planEndTime } = await validateBody(ctx, createMaintenanceAssignmentBodySchema);
   const user = ctx.state.user;
 
   if (!stationId || !equipmentCode || !equipmentName || !executorId) {
@@ -565,7 +580,7 @@ export const createMaintenanceAssignment = async (ctx) => {
  * PUT /api/maintenance-assignments/:id
  */
 export const updateMaintenanceAssignment = async (ctx) => {
-  const { id } = ctx.params;
+  const { id } = await validateParams(ctx, idParamSchema);
   const {
     status,
     actualStartDate,
@@ -582,7 +597,7 @@ export const updateMaintenanceAssignment = async (ctx) => {
     unsolvedReason,
     consumablesList,
     partsList
-  } = ctx.request.body;
+  } = await validateBody(ctx, updateMaintenanceAssignmentBodySchema);
 
   const assignment = await MaintenanceAssignment.findByPk(id);
   if (!assignment) {
@@ -626,7 +641,7 @@ export const updateMaintenanceAssignment = async (ctx) => {
  * DELETE /api/maintenance-assignments/:id
  */
 export const deleteMaintenanceAssignment = async (ctx) => {
-  const { id } = ctx.params;
+  const { id } = await validateParams(ctx, idParamSchema);
 
   const assignment = await MaintenanceAssignment.findByPk(id);
   if (!assignment) {
@@ -647,7 +662,7 @@ export const deleteMaintenanceAssignment = async (ctx) => {
  * PUT /api/maintenance-assignments/:id/start
  */
 export const startMaintenanceAssignment = async (ctx) => {
-  const { id } = ctx.params;
+  const { id } = await validateParams(ctx, idParamSchema);
 
   const assignment = await MaintenanceAssignment.findByPk(id);
   if (!assignment) {
@@ -673,7 +688,7 @@ export const startMaintenanceAssignment = async (ctx) => {
  * PUT /api/maintenance-assignments/:id/complete
  */
 export const completeMaintenanceAssignment = async (ctx) => {
-  const { id } = ctx.params;
+  const { id } = await validateParams(ctx, idParamSchema);
   const {
     completionNote,
     workHours,
@@ -683,7 +698,7 @@ export const completeMaintenanceAssignment = async (ctx) => {
     maintenanceTools,
     consumablesList,
     partsList
-  } = ctx.request.body;
+  } = await validateBody(ctx, completeMaintenanceAssignmentBodySchema);
 
   const assignment = await MaintenanceAssignment.findByPk(id);
   if (!assignment) {
@@ -716,7 +731,7 @@ export const completeMaintenanceAssignment = async (ctx) => {
  * POST /api/maintenance-assignments/:id/verify
  */
 export const verifyMaintenanceAssignment = async (ctx) => {
-  const { id } = ctx.params;
+  const { id } = await validateParams(ctx, idParamSchema);
   const {
     result,
     verifyComment,
@@ -724,7 +739,7 @@ export const verifyMaintenanceAssignment = async (ctx) => {
     verifyQuality,
     verifyProgress,
     verifyHygiene
-  } = ctx.request.body;
+  } = await validateBody(ctx, verifyMaintenanceAssignmentBodySchema);
   const user = ctx.state.user;
 
   const assignment = await MaintenanceAssignment.findByPk(id);
