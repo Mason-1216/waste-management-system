@@ -980,14 +980,14 @@ docker logs wms-backend --tail 50
 - 前端缓存自愈: 检测到动态模块/旧chunk加载失败时, 自动注销 Service Worker + 清理 CacheStorage 并强制刷新一次, 避免发版后用户频繁遇到 js chunk 404.
 
 ## 2026-02-08
-- ??(PLC): ? plcIngestion/plcBridgeService ??? backend/src/modules/plc/services???? app/??????
-- ??(Jobs): ? cronJobs ??? backend/src/modules/jobs/services???? app ???
-- ??(Core): ? permissionService/devTestGuard ??? backend/src/modules/core/services???? core/jobs/app ???
-- ??(Notification): ? approval ????? modules/notification??? /api/notifications* ???????? modules/index.js ?????
-- ??(Notification): ?? notificationPublisher??????? Notification.create/bulkCreate ?????????????
-- ??(ImportExport): ? excelTemplate ??? backend/src/modules/import_export/utils????????
-- ??(FileStorage): ? upload ????? backend/src/modules/file_storage/upload.js????????
-- ??(Auth): ? auth ???? jwt ????? backend/src/modules/core/middlewares ? backend/src/modules/core/config???????
-- ??(Notification): ?? router/modules/notification.js???? API ??? frontend/src/modules/notification????? api re-export ????
-- ??(SystemRoutes): ?? system ????? support/admin/account ???????????? frontend/src/modules/*/pages?
-- ??(CoreInfra): ? config(database/logger/dev_test/permissionSeeds)?middlewares(error/permission)?utils(helpers) ????? backend/src/modules/core???????? re-export ???????????
+- 后端(PLC): 将 plcIngestion/plcBridgeService 下沉到 backend/src/modules/plc/services，并修正 app/控制器引用。
+- 后端(Jobs): 将 cronJobs 下沉到 backend/src/modules/jobs/services，并修正 app 引用。
+- 后端(Core): 将 permissionService/devTestGuard 下沉到 backend/src/modules/core/services，并修正 core/jobs/app 引用。
+- 后端(Notification): 从 approval 中拆出独立 modules/notification（保持 /api/notifications* 路由不变），并在 modules/index.js 注册路由。
+- 后端(Notification): 新增 notificationPublisher，收口各模块对 Notification.create/bulkCreate 的调用点（发送逻辑集中）。
+- 后端(ImportExport): 将 excelTemplate 下沉到 backend/src/modules/import_export/utils，并更新引用方。
+- 后端(FileStorage): 将 upload 配置下沉到 backend/src/modules/file_storage/upload.js，并更新引用方。
+- 后端(Auth): 将 auth 中间件与 jwt 配置下沉到 backend/src/modules/core/middlewares 与 backend/src/modules/core/config，并修正引用。
+- 前端(Notification): 抽离 router/modules/notification.js；页面与 API 迁移到 frontend/src/modules/notification，并保留旧 api re-export 兼容层。
+- 前端(SystemRoutes): 将原 system 路由拆分为 support/admin/account 路由模块；对应页面迁移到 frontend/src/modules/*/pages。
+- 后端(CoreInfra): 将 config(database/logger/dev_test/permissionSeeds)、middlewares(error/permission)、utils(helpers) 实现下沉到 backend/src/modules/core，并在原路径保留 re-export 兼容层以减少全局改动。
