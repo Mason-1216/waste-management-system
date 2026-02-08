@@ -1,6 +1,8 @@
 import { Op } from 'sequelize';
 import { Notification } from '../../../models/index.js';
 import { getPagination, formatPaginationResponse } from '../../../utils/helpers.js';
+import { validateParams, validateQuery } from '../../core/validators/validate.js';
+import { listNotificationsQuerySchema, markByFilterQuerySchema, notificationIdParamSchema } from '../validators/schemas.js';
 
 const parseCsvList = (value) => String(value)
   .split(',')
@@ -12,6 +14,7 @@ const parseCsvList = (value) => String(value)
  * GET /api/notifications
  */
 export const getNotifications = async (ctx) => {
+  await validateQuery(ctx, listNotificationsQuerySchema);
   const { page, pageSize, offset, limit } = getPagination(ctx.query);
   const { isRead, notifyType, notifyTypes, relatedType, relatedTypes } = ctx.query;
   const userId = ctx.state.user.id;
@@ -68,6 +71,7 @@ export const getNotifications = async (ctx) => {
  * Query: relatedType / relatedTypes=csv, notifyType / notifyTypes=csv
  */
 export const markByFilterAsRead = async (ctx) => {
+  await validateQuery(ctx, markByFilterQuerySchema);
   const { notifyType, notifyTypes, relatedType, relatedTypes } = ctx.query;
   const userId = ctx.state.user.id;
 
@@ -129,7 +133,7 @@ export const getUnreadCount = async (ctx) => {
  * PUT /api/notifications/:id/read
  */
 export const markAsRead = async (ctx) => {
-  const { id } = ctx.params;
+  const { id } = await validateParams(ctx, notificationIdParamSchema);
   const userId = ctx.state.user.id;
 
   const notification = await Notification.findOne({
@@ -166,7 +170,7 @@ export const markAllAsRead = async (ctx) => {
  * DELETE /api/notifications/:id
  */
 export const deleteNotification = async (ctx) => {
-  const { id } = ctx.params;
+  const { id } = await validateParams(ctx, notificationIdParamSchema);
   const userId = ctx.state.user.id;
 
   await Notification.destroy({
