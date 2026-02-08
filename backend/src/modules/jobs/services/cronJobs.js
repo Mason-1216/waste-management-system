@@ -4,6 +4,7 @@ import dayjs from 'dayjs';
 import { Station, User, Role, Schedule, SafetySelfInspection, Notification } from '../../../models/index.js';
 import logger from '../../../config/logger.js';
 import { ensureDevTestAccount } from '../../core/services/devTestGuard.js';
+import { publishNotification } from '../../notification/services/notificationPublisher.js';
 
 /**
  * 启动所有定时任务
@@ -154,7 +155,7 @@ async function notifyByRole(station, overdueUsers, roleCodes, level, io) {
 
     if (existingNotification) continue;
 
-    const notification = await Notification.create({
+    const notification = await publishNotification({
       notify_type: 'inspection_overdue',
       title: `自检表超时提醒（${level}）`,
       content: `${station.station_name} 有 ${overdueUsers.length} 人未按时完成自检表：${overdueUserNames}`,
@@ -215,7 +216,7 @@ async function sendDailyReminder(io) {
     }
 
     if (reminderContent) {
-      await Notification.create({
+      await publishNotification({
         notify_type: 'task_pending',
         title: '每日待办提醒',
         content: reminderContent,

@@ -1,7 +1,8 @@
 import { Op } from 'sequelize';
-import { TaskConfig, PositionTask, DailyTask, TemporaryTask, PositionWorkLog, User, Role, Notification } from '../../../models/index.js';
+import { TaskConfig, PositionTask, DailyTask, TemporaryTask, PositionWorkLog, User, Role } from '../../../models/index.js';
 import { createError } from '../../../middlewares/error.js';
 import { getPagination, formatPaginationResponse, getOrderBy, generateRecordCode } from '../../../utils/helpers.js';
+import { publishNotification } from '../../notification/services/notificationPublisher.js';
 
 const mapDispatchTaskStatus = (workLog) => {
   if (!workLog?.submit_time) return 'pending';
@@ -847,7 +848,7 @@ export const createTemporaryTask = async (ctx) => {
   });
 
   try {
-    await Notification.create({
+    await publishNotification({
       notify_type: 'system',
       title: '\u4e34\u65f6\u4efb\u52a1\u63d0\u9192',
       content: [

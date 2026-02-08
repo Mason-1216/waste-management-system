@@ -1,8 +1,9 @@
 import { Op, literal } from 'sequelize';
 import dayjs from 'dayjs';
-import { FaultReport, Notification, RepairRecord, Station, User } from '../../../models/index.js';
+import { FaultReport, RepairRecord, Station, User } from '../../../models/index.js';
 import { createError } from '../../../middlewares/error.js';
 import { formatPaginationResponse, generateRecordCode, getOrderBy, getPagination } from '../../../utils/helpers.js';
+import { publishNotification, publishNotifications } from '../../notification/services/notificationPublisher.js';
 
 const fillDispatchByNames = async (records) => {
   const list = Array.isArray(records) ? records : [records];
@@ -199,7 +200,7 @@ export const createRepairRecord = async ({ body, user }) => {
 
   if (!isDraft) {
     try {
-      await Notification.create({
+      await publishNotification({
         notify_type: 'system',
         title: '设备故障提醒',
         content: [
@@ -284,7 +285,7 @@ export const dispatchRepairRecord = async ({ id, body, user }) => {
     ].filter(item => item.id);
 
     if (receivers.length > 0) {
-      await Notification.bulkCreate(
+      await publishNotifications(
         receivers.map(receiver => ({
           notify_type: 'system',
           title: '设备故障派单提醒',

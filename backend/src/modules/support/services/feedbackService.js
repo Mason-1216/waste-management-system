@@ -1,5 +1,6 @@
 import { Role, User, Notification } from '../../../models/index.js';
 import { createError } from '../../../middlewares/error.js';
+import { publishNotifications } from '../../notification/services/notificationPublisher.js';
 
 /**
  * 提交帮助与反馈
@@ -81,7 +82,7 @@ export const submitFeedback = async (ctx) => {
       imageList.length > 0 ? `图片：${imageList.join(', ')}` : '图片：无'
     ].join('\n');
 
-    await Notification.bulkCreate(
+    await publishNotifications(
       admins.map(admin => ({
         notify_type: 'system',
         title: '帮助与反馈',

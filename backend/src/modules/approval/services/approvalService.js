@@ -1,7 +1,8 @@
 import { Op } from 'sequelize';
-import { DailyTask, MaintenanceRecord, RepairRecord, MaterialRequisition, SafetyRectification, SafetyHazardInspection, Notification, User } from '../../../models/index.js';
+import { DailyTask, MaintenanceRecord, RepairRecord, MaterialRequisition, SafetyRectification, SafetyHazardInspection, User } from '../../../models/index.js';
 import { createError } from '../../../middlewares/error.js';
 import { getPagination, formatPaginationResponse, getOrderBy } from '../../../utils/helpers.js';
+import { publishNotification } from '../../notification/services/notificationPublisher.js';
 
 const approveRecord = async (Model, id, action, rejectReason, user, typeName) => {
   const record = await Model.findByPk(id);
@@ -22,7 +23,7 @@ const approveRecord = async (Model, id, action, rejectReason, user, typeName) =>
 
   const receiverId = record.user_id || record.applicant_id || record.maintainer_id || record.responsible_person_id;
   if (receiverId) {
-    await Notification.create({
+    await publishNotification({
       notify_type: 'approval_request',
       title: action === 'approve' ? '审核通过' : '审核驳回',
       content: `您的${typeName}${action === 'approve' ? '已通过' : '已驳回'}`,

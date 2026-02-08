@@ -1,10 +1,11 @@
 import { Op, literal } from 'sequelize';
-import { SafetySelfInspection, SafetyOtherInspection, SafetyHazardInspection, SafetyRectification, SafetyCheckItem, SafetyWorkType, HygieneArea, HygienePoint, User, Role, Station, Notification, Schedule } from '../../../models/index.js';
+import { SafetySelfInspection, SafetyOtherInspection, SafetyHazardInspection, SafetyRectification, SafetyCheckItem, SafetyWorkType, HygieneArea, HygienePoint, User, Role, Station, Schedule } from '../../../models/index.js';
 import { createError } from '../../../middlewares/error.js';
 import { getPagination, formatPaginationResponse, generateRecordCode, calculateOverdueMinutes } from '../../../utils/helpers.js';
 import logger from '../../../config/logger.js';
 import dayjs from 'dayjs';
 import sequelize from '../../../config/database.js';
+import { publishNotification, publishNotifications } from '../../notification/services/notificationPublisher.js';
 
 const parseSchedulesData = (data) => {
   if (!data) return null;
@@ -1380,7 +1381,7 @@ export const createOtherInspection = async (ctx) => {
         inspectedUserName ? `被检人员：${inspectedUserName}` : null
       ].filter(Boolean).join('\n');
 
-      await Notification.bulkCreate(
+      await publishNotifications(
         Array.from(recipients.values()).map(receiver => ({
           notify_type: 'system',
           title,
@@ -1525,7 +1526,7 @@ export const createHazardInspection = async (ctx) => {
     ].join('\n');
 
     if (receivers.size > 0) {
-      await Notification.bulkCreate(
+      await publishNotifications(
         Array.from(receivers.values()).map(manager => ({
           notify_type: 'system',
           title: '安全隐患待整改',
@@ -1689,7 +1690,7 @@ export const createSafetyRectification = async (ctx) => {
           '站长已提交整改信息，请查看表单情况。'
         ].join('\n');
 
-        await Notification.create({
+        await publishNotification({
           notify_type: 'system',
           title: '安全隐患整改通知',
           content,
