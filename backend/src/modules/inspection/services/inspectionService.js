@@ -6,6 +6,23 @@ import logger from '../../../config/logger.js';
 import dayjs from 'dayjs';
 import sequelize from '../../../config/database.js';
 import { publishNotification, publishNotifications } from '../../notification/services/notificationPublisher.js';
+import { validateBody, validateParams, validateQuery } from '../../core/validators/validate.js';
+import {
+  createHazardInspectionBodySchema,
+  createOtherInspectionBodySchema,
+  createSafetyRectificationBodySchema,
+  createSelfInspectionBodySchema,
+  getHazardInspectionsQuerySchema,
+  getMySelfInspectionsQuerySchema,
+  getOtherInspectionsQuerySchema,
+  getOverdueUsersQuerySchema,
+  getSafetyRectificationsQuerySchema,
+  getSelfInspectionsQuerySchema,
+  idParamSchema,
+  reviewSafetyRectificationBodySchema,
+  updateHazardInspectionBodySchema,
+  updateSafetyRectificationBodySchema
+} from '../validators/inspectionSchemas.js';
 
 const parseSchedulesData = (data) => {
   if (!data) return null;
@@ -549,6 +566,7 @@ const hydrateOtherInspectionStations = async (rows) => {
  * GET /api/self-inspections
  */
 export const getSelfInspections = async (ctx) => {
+  await validateQuery(ctx, getSelfInspectionsQuerySchema);
   const { page, pageSize, offset, limit } = getPagination(ctx.query);
   const { stationId, inspectionType, startDate, endDate, fillerId, positionName, fillerName, hasAbnormal, hasUnqualified, workTypeId } = ctx.query;
   const dataFilter = ctx.state.dataFilter;
@@ -933,7 +951,7 @@ export const getSelfInspections = async (ctx) => {
  * POST /api/self-inspections
  */
 export const createSelfInspection = async (ctx) => {
-  const { inspectionType, stationId, inspectionDate, inspectionItems, photoUrls, workTypeIds } = ctx.request.body;
+  const { inspectionType, stationId, inspectionDate, inspectionItems, photoUrls, workTypeIds } = await validateBody(ctx, createSelfInspectionBodySchema);
   const user = ctx.state.user;
   const resolvedStationId = stationId || user?.lastStationId || user?.stations?.[0]?.id || null;
 
@@ -981,6 +999,7 @@ export const createSelfInspection = async (ctx) => {
  * GET /api/self-inspections/my
  */
 export const getMySelfInspections = async (ctx) => {
+  await validateQuery(ctx, getMySelfInspectionsQuerySchema);
   const { inspectionType, startDate, endDate, workTypeId, inspectionResult, merge, sortOrder } = ctx.query;
   const hasPagination = Object.prototype.hasOwnProperty.call(ctx.query, 'page')
     || Object.prototype.hasOwnProperty.call(ctx.query, 'pageSize');
@@ -1033,6 +1052,7 @@ export const getMySelfInspections = async (ctx) => {
  * GET /api/self-inspections/overdue
  */
 export const getOverdueUsers = async (ctx) => {
+  await validateQuery(ctx, getOverdueUsersQuerySchema);
   const { stationId, inspectionType } = ctx.query;
   const today = dayjs().format('YYYY-MM-DD');
 
@@ -1068,6 +1088,7 @@ export const getOverdueUsers = async (ctx) => {
  * GET /api/other-inspections
  */
 export const getOtherInspections = async (ctx) => {
+  await validateQuery(ctx, getOtherInspectionsQuerySchema);
   const { page, pageSize, offset, limit } = getPagination(ctx.query);
   const { stationId, inspectionType, startDate, endDate, workTypeIds, includeSelf, inspectedUserName, inspectionKind, inspectionResult, sortOrder } = ctx.query;
   const dataFilter = ctx.state.dataFilter;
@@ -1275,7 +1296,7 @@ export const getOtherInspections = async (ctx) => {
  * POST /api/other-inspections
  */
 export const createOtherInspection = async (ctx) => {
-  const { inspectionType, stationId, inspectionDate, inspectedUserId, inspectedUserName, violationDescription, isQualified, unqualifiedItems, photoUrls, projectId, workTypeIds, inspectionItems, remark, points } = ctx.request.body;
+  const { inspectionType, stationId, inspectionDate, inspectedUserId, inspectedUserName, violationDescription, isQualified, unqualifiedItems, photoUrls, projectId, workTypeIds, inspectionItems, remark, points } = await validateBody(ctx, createOtherInspectionBodySchema);
   const user = ctx.state.user;
 
   // 如果是安全他检，inspectionType 默认为 'safety'
@@ -1413,6 +1434,7 @@ export const createOtherInspection = async (ctx) => {
  * GET /api/hazard-inspections
  */
 export const getHazardInspections = async (ctx) => {
+  await validateQuery(ctx, getHazardInspectionsQuerySchema);
   const { page, pageSize, offset, limit } = getPagination(ctx.query);
   const { stationName, hazardCategory, status, startDate, endDate } = ctx.query;
   const dataFilter = ctx.state.dataFilter;
@@ -1459,7 +1481,7 @@ export const getHazardInspections = async (ctx) => {
  * POST /api/hazard-inspections
  */
 export const createHazardInspection = async (ctx) => {
-  const { stationId, stationName, hazardCategory, hazardDescription, photoUrls, location } = ctx.request.body;
+  const { stationId, stationName, hazardCategory, hazardDescription, photoUrls, location } = await validateBody(ctx, createHazardInspectionBodySchema);
   const user = ctx.state.user;
 
   let resolvedStationId = stationId || user?.lastStationId || user?.stations?.[0]?.id || null;
@@ -1562,8 +1584,8 @@ export const createHazardInspection = async (ctx) => {
  * PUT /api/hazard-inspections/:id
  */
 export const updateHazardInspection = async (ctx) => {
-  const { id } = ctx.params;
-  const { inspectionDate, stationName, stationType, hazardCategory, hazardDescription, photoUrls, location } = ctx.request.body;
+  const { id } = await validateParams(ctx, idParamSchema);
+  const { inspectionDate, stationName, stationType, hazardCategory, hazardDescription, photoUrls, location } = await validateBody(ctx, updateHazardInspectionBodySchema);
 
   const inspection = await SafetyHazardInspection.findByPk(id);
   if (!inspection) throw createError(404, '安全隐患检查记录不存在');
@@ -1586,7 +1608,7 @@ export const updateHazardInspection = async (ctx) => {
  * DELETE /api/hazard-inspections/:id
  */
 export const deleteHazardInspection = async (ctx) => {
-  const { id } = ctx.params;
+  const { id } = await validateParams(ctx, idParamSchema);
 
   const inspection = await SafetyHazardInspection.findByPk(id, {
     include: [{ model: SafetyRectification, as: 'rectification' }]
@@ -1600,6 +1622,7 @@ export const deleteHazardInspection = async (ctx) => {
   ctx.body = { code: 200, message: '删除成功', data: null };
 };
 export const getSafetyRectifications = async (ctx) => {
+  await validateQuery(ctx, getSafetyRectificationsQuerySchema);
   const { page, pageSize, offset, limit } = getPagination(ctx.query);
   const { status } = ctx.query;
 
@@ -1636,7 +1659,7 @@ export const getSafetyRectifications = async (ctx) => {
  * POST /api/safety-rectifications
  */
 export const createSafetyRectification = async (ctx) => {
-  const { inspectionId, rootCause, rootCauseCategory, rectificationMeasures, punishedPersonId, punishedPersonName, punishmentResult, isCompleted, completionPhotos } = ctx.request.body;
+  const { inspectionId, rootCause, rootCauseCategory, rectificationMeasures, punishedPersonId, punishedPersonName, punishmentResult, isCompleted, completionPhotos } = await validateBody(ctx, createSafetyRectificationBodySchema);
   const user = ctx.state.user;
 
   const inspection = await SafetyHazardInspection.findByPk(inspectionId);
@@ -1720,7 +1743,7 @@ export const createSafetyRectification = async (ctx) => {
  * PUT /api/safety-rectifications/:id
  */
 export const updateSafetyRectification = async (ctx) => {
-  const { id } = ctx.params;
+  const { id } = await validateParams(ctx, idParamSchema);
   const {
     rootCause,
     rootCauseCategory,
@@ -1730,7 +1753,7 @@ export const updateSafetyRectification = async (ctx) => {
     punishmentResult,
     isCompleted,
     completionPhotos
-  } = ctx.request.body;
+  } = await validateBody(ctx, updateSafetyRectificationBodySchema);
 
   const rectification = await SafetyRectification.findByPk(id);
   if (!rectification) throw createError(404, '整改审批单不存在');
@@ -1779,9 +1802,9 @@ export const updateSafetyRectification = async (ctx) => {
  * PUT /api/safety-rectifications/:id/review
  */
 export const reviewSafetyRectification = async (ctx) => {
-  const { id } = ctx.params;
+  const { id } = await validateParams(ctx, idParamSchema);
   const user = ctx.state.user;
-  const { reviewConfirmed, completionScore } = ctx.request.body || {};
+  const { reviewConfirmed, completionScore } = await validateBody(ctx, reviewSafetyRectificationBodySchema);
 
   const rectification = await SafetyRectification.findByPk(id);
   if (!rectification) throw createError(404, '整改单不存在');
