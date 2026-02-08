@@ -1003,3 +1003,4 @@ docker logs wms-backend --tail 50
 - 后端(Inspection): self/other/hazard/rectification 接口接入 Joi 入参校验（保持接口不变）。
 - 后端(Maintenance): repair-task-library 接口接入 Joi 入参校验（保持接口不变）。
 - 后端(Maintenance): maintenance-plan-library / maintenance-assignments 接口接入 Joi 入参校验（保持接口不变）。
+- 后端(Maintenance): maintenance-position-plans / maintenance-work-records 接口接入 Joi 入参校验（保持接口不变）。

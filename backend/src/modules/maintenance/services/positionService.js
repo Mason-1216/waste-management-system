@@ -2,7 +2,17 @@
 import { Op } from 'sequelize';
 import { createError } from '../../../middlewares/error.js';
 import { getPagination, formatPaginationResponse } from '../../../utils/helpers.js';
-import dayjs from 'dayjs';
+	import dayjs from 'dayjs';
+	import { validateBody, validateParams, validateQuery } from '../../core/validators/validate.js';
+	import {
+	  createMaintenancePositionPlanBodySchema,
+	  getMaintenancePositionPlansQuerySchema,
+	  getMaintenanceWorkRecordsQuerySchema,
+	  getTodayMaintenanceTasksQuerySchema,
+	  idParamSchema,
+	  submitMaintenanceWorkRecordBodySchema,
+	  verifyMaintenanceWorkRecordBodySchema
+	} from '../validators/positionSchemas.js';
 
 const resolveScopedStationId = (user, headerStationId) => {
   if (!user) return null;
@@ -206,6 +216,7 @@ const shouldExecuteToday = (plan) => {
  * GET /api/maintenance-position-plans
  */
 export const getMaintenancePositionPlans = async (ctx) => {
+  await validateQuery(ctx, getMaintenancePositionPlansQuerySchema);
   const { stationId, positionName, equipmentCode, equipmentName, installLocation, cycleType } = ctx.query;
   const user = ctx.state.user;
   const scopedStationId = resolveScopedStationId(user, ctx.headers['x-station-id']);
@@ -270,7 +281,7 @@ export const getMaintenancePositionPlans = async (ctx) => {
  * POST /api/maintenance-position-plans
  */
 export const createMaintenancePositionPlan = async (ctx) => {
-  const { stationId, positionName, planIds } = ctx.request.body;
+  const { stationId, positionName, planIds } = await validateBody(ctx, createMaintenancePositionPlanBodySchema);
 
   if (!stationId || !positionName || !planIds || !planIds.length) {
     throw createError(400, '鍦虹珯銆佸矖浣嶅拰淇濆吇璁″垝涓嶈兘涓虹┖');
@@ -305,7 +316,7 @@ export const createMaintenancePositionPlan = async (ctx) => {
  * DELETE /api/maintenance-position-plans/:id
  */
 export const deleteMaintenancePositionPlan = async (ctx) => {
-  const { id } = ctx.params;
+  const { id } = await validateParams(ctx, idParamSchema);
 
   const record = await MaintenancePositionPlan.findByPk(id);
   if (!record) {
@@ -325,6 +336,7 @@ export const deleteMaintenancePositionPlan = async (ctx) => {
  * GET /api/maintenance-work-records/today-tasks
  */
 export const getTodayMaintenanceTasks = async (ctx) => {
+  await validateQuery(ctx, getTodayMaintenanceTasksQuerySchema);
   const user = ctx.state.user;
   const dataFilter = ctx.state.dataFilter ?? {};
   const queryUserId = ctx.query?.userId;
@@ -512,7 +524,7 @@ export const submitMaintenanceWorkRecord = async (ctx) => {
     consumablesList,
     partsList,
     remark
-  } = ctx.request.body;
+  } = await validateBody(ctx, submitMaintenanceWorkRecordBodySchema);
 
   if (!planId || !stationId || !cycleType || !workDate) {
     throw createError(400, '淇濆吇璁″垝銆佸満绔欍€佸懆鏈熺被鍨嬪拰宸ヤ綔鏃ユ湡涓嶈兘涓虹┖');
@@ -594,6 +606,7 @@ export const submitMaintenanceWorkRecord = async (ctx) => {
  * GET /api/maintenance-work-records
  */
 export const getMaintenanceWorkRecords = async (ctx) => {
+  await validateQuery(ctx, getMaintenanceWorkRecordsQuerySchema);
   const { page, pageSize, offset, limit } = getPagination(ctx.query);
   const { stationId, positionName, executorName, cycleType, startDate, endDate, status, equipmentCode, equipmentName } = ctx.query;
   const dataFilter = ctx.state.dataFilter ?? {};
@@ -871,7 +884,7 @@ export const getMaintenanceWorkRecords = async (ctx) => {
  * GET /api/maintenance-work-records/:id
  */
 export const getMaintenanceWorkRecordDetail = async (ctx) => {
-  const { id } = ctx.params;
+  const { id } = await validateParams(ctx, idParamSchema);
   const dataFilter = ctx.state.dataFilter;
 
   const record = await MaintenanceWorkRecord.findByPk(id, {
@@ -902,9 +915,9 @@ export const getMaintenanceWorkRecordDetail = async (ctx) => {
  * PUT /api/maintenance-work-records/:id/verify
  */
 export const verifyMaintenanceWorkRecord = async (ctx) => {
-  const { id } = ctx.params;
+  const { id } = await validateParams(ctx, idParamSchema);
   const { id: verifierId, realName: verifierName } = ctx.state.user;
-  const { verifyResult, verifyRemark, deductionPoints, deductionRemark } = ctx.request.body;
+  const { verifyResult, verifyRemark, deductionPoints, deductionRemark } = await validateBody(ctx, verifyMaintenanceWorkRecordBodySchema);
 
   if (!verifyResult || !['pass', 'fail'].includes(verifyResult)) {
     throw createError(400, '楠屾敹缁撴灉鏃犳晥');
