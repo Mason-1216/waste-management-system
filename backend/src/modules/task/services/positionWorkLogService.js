@@ -3,6 +3,19 @@ import { PositionWorkLog, Schedule, PositionJob, User, Station, sequelize } from
 import { createError } from '../../../middlewares/error.js';
 import { getPagination, formatPaginationResponse, getOrderBy } from '../../../utils/helpers.js';
 import dayjs from 'dayjs';
+import { validateBody, validateParams, validateQuery } from '../../core/validators/validate.js';
+import {
+  applyWorkLogBodySchema,
+  dispatchWorkLogBodySchema,
+  getTodayTasksQuerySchema,
+  getUserWorkLogsQuerySchema,
+  getWorkLogsQuerySchema,
+  getWorkRecordsQuerySchema,
+  idParamSchema,
+  reviewWorkLogBodySchema,
+  saveWorkLogBodySchema,
+  submitAppealBodySchema
+} from '../validators/positionWorkLogSchemas.js';
 
 const resolveWorkDate = (value) => {
   const dateValue = value ? dayjs(value) : dayjs();
@@ -89,6 +102,7 @@ const resolveStationInfo = async (stationId, stationName) => {
  * GET /api/position-work-logs/today-tasks
  */
 export const getTodayTasks = async (ctx) => {
+  await validateQuery(ctx, getTodayTasksQuerySchema);
   const { page, pageSize, offset, limit } = getPagination(ctx.query);
   const user = ctx.state.user;
   const workDate = resolveWorkDate(ctx.query?.workDate);
@@ -239,7 +253,7 @@ export const saveWorkLog = async (ctx) => {
     quantity,
     unitPoints,
     taskSource
-  } = ctx.request.body;
+  } = await validateBody(ctx, saveWorkLogBodySchema);
 
   if (!positionJobId || !workDate || !workName) {
     throw createError(400, '任务参数不完整');
@@ -392,7 +406,7 @@ export const applyWorkLog = async (ctx) => {
     positionName,
     quantity,
     remark
-  } = ctx.request.body;
+  } = await validateBody(ctx, applyWorkLogBodySchema);
 
   if (!positionJobId || !workDate) {
     throw createError(400, '任务参数不完整');
@@ -474,7 +488,7 @@ export const dispatchWorkLog = async (ctx) => {
     stationName,
     positionName,
     quantity
-  } = ctx.request.body;
+  } = await validateBody(ctx, dispatchWorkLogBodySchema);
 
   if (!positionJobId || !executorId || !workDate) {
     throw createError(400, '任务参数不完整');
@@ -553,6 +567,7 @@ export const dispatchWorkLog = async (ctx) => {
  * GET /api/position-work-logs
  */
 export const getWorkLogs = async (ctx) => {
+  await validateQuery(ctx, getWorkLogsQuerySchema);
   const { page, pageSize, offset, limit } = getPagination(ctx.query);
   const order = getOrderBy(ctx.query);
   const { startDate, endDate, stationId, positionName, taskSource, reviewStatus } = ctx.query;
@@ -593,6 +608,7 @@ export const getWorkLogs = async (ctx) => {
  * GET /api/position-work-logs/user
  */
 export const getUserWorkLogs = async (ctx) => {
+  await validateQuery(ctx, getUserWorkLogsQuerySchema);
   const { page, pageSize, offset, limit } = getPagination(ctx.query);
   const { userId, startDate, endDate, stationId, positionName, taskSource } = ctx.query;
   const dataFilter = ctx.state.dataFilter;
@@ -642,6 +658,7 @@ export const getUserWorkLogs = async (ctx) => {
  * GET /api/position-work-logs/records
  */
 export const getWorkRecords = async (ctx) => {
+  await validateQuery(ctx, getWorkRecordsQuerySchema);
   const { page, pageSize, offset, limit } = getPagination(ctx.query);
   const order = getOrderBy(ctx.query);
   const {
@@ -851,8 +868,8 @@ export const getWorkRecords = async (ctx) => {
  */
 export const reviewWorkLog = async (ctx) => {
   const user = ctx.state.user;
-  const { id } = ctx.params;
-  const { status, deductionReason, deductionPoints } = ctx.request.body || {};
+  const { id } = await validateParams(ctx, idParamSchema);
+  const { status, deductionReason, deductionPoints } = await validateBody(ctx, reviewWorkLogBodySchema);
 
   if (!id || !status) {
     throw createError(400, '审核参数不完整');
@@ -915,8 +932,8 @@ export const reviewWorkLog = async (ctx) => {
  */
 export const submitAppeal = async (ctx) => {
   const user = ctx.state.user;
-  const { id } = ctx.params;
-  const { appealReason } = ctx.request.body || {};
+  const { id } = await validateParams(ctx, idParamSchema);
+  const { appealReason } = await validateBody(ctx, submitAppealBodySchema);
 
   if (!id || !appealReason) {
     throw createError(400, '申诉参数不完整');

@@ -997,3 +997,4 @@ docker logs wms-backend --tail 50
 - 后端(CoreInfra): 将 config(database/logger/dev_test/permissionSeeds)、middlewares(error/permission)、utils(helpers) 实现下沉到 backend/src/modules/core，并在原路径保留 re-export 兼容层以减少全局改动。
 - 后端(Task): 为 task 模块接入 Joi 入参校验（taskService + schemas，保持接口不变）。
 - 后端(Task): position-jobs 接口接入 Joi 入参校验（保持接口不变）。
+- 后端(Task): position-work-logs 接口接入 Joi 入参校验（保持接口不变）。
