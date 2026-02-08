@@ -1,8 +1,10 @@
-import { Op } from 'sequelize';
+﻿import { Op } from 'sequelize';
 import { TaskConfig, PositionTask, DailyTask, TemporaryTask, PositionWorkLog, User, Role } from '../../../models/index.js';
 import { createError } from '../../../middlewares/error.js';
 import { getPagination, formatPaginationResponse, getOrderBy, generateRecordCode } from '../../../utils/helpers.js';
 import { publishNotification } from '../../notification/services/notificationPublisher.js';
+import { validateBody, validateParams, validateQuery } from '../../core/validators/validate.js';
+import { createTaskConfigBodySchema, createTemporaryTaskBodySchema, getDailyTaskSummaryQuerySchema, getDailyTasksQuerySchema, getMyDailyTasksQuerySchema, getPositionTasksQuerySchema, getTaskConfigsQuerySchema, getTemporaryTasksQuerySchema, idParamSchema, reviewTemporaryTaskBodySchema, savePositionTasksBodySchema, submitDailyTasksBodySchema, submitTemporaryTaskBodySchema, updateTaskConfigBodySchema, updateTemporaryTaskBodySchema } from '../validators/taskServiceSchemas.js';
 
 const mapDispatchTaskStatus = (workLog) => {
   if (!workLog?.submit_time) return 'pending';
@@ -42,7 +44,6 @@ const validateUnitPointsValue = (value) => {
     throw createError(400, '单位积分必须是 0-9999 的整数');
   }
 };
-
 // ============================================
 // 任务配置管理
 // ============================================
@@ -52,6 +53,7 @@ const validateUnitPointsValue = (value) => {
  * GET /api/task-configs
  */
 export const getTaskConfigs = async (ctx) => {
+  await validateQuery(ctx, getTaskConfigsQuerySchema);
   const { status } = ctx.query;
 
   const where = {};
@@ -77,7 +79,7 @@ export const getTaskConfigs = async (ctx) => {
  * POST /api/task-configs
  */
 export const createTaskConfig = async (ctx) => {
-  const { taskName, standardHours } = ctx.request.body;
+  const { taskName, standardHours } = await validateBody(ctx, createTaskConfigBodySchema);
 
   if (!taskName || !standardHours) {
     throw createError(400, '任务名称和标准工时不能为空');
@@ -103,8 +105,8 @@ export const createTaskConfig = async (ctx) => {
  * PUT /api/task-configs/:id
  */
 export const updateTaskConfig = async (ctx) => {
-  const { id } = ctx.params;
-  const { taskName, standardHours, status } = ctx.request.body;
+  const { id } = await validateParams(ctx, idParamSchema);
+  const { taskName, standardHours, status } = await validateBody(ctx, updateTaskConfigBodySchema);
 
   const config = await TaskConfig.findByPk(id);
   if (!config) {
@@ -129,7 +131,7 @@ export const updateTaskConfig = async (ctx) => {
  * DELETE /api/task-configs/:id
  */
 export const deleteTaskConfig = async (ctx) => {
-  const { id } = ctx.params;
+  const { id } = await validateParams(ctx, idParamSchema);
 
   const config = await TaskConfig.findByPk(id);
   if (!config) {
@@ -158,6 +160,7 @@ export const deleteTaskConfig = async (ctx) => {
  * GET /api/position-tasks
  */
 export const getPositionTasks = async (ctx) => {
+  await validateQuery(ctx, getPositionTasksQuerySchema);
   const { positionName } = ctx.query;
 
   const where = {};
@@ -186,7 +189,7 @@ export const getPositionTasks = async (ctx) => {
  * POST /api/position-tasks
  */
 export const savePositionTasks = async (ctx) => {
-  const { positionName, tasks } = ctx.request.body;
+  const { positionName, tasks } = await validateBody(ctx, savePositionTasksBodySchema);
 
   if (!positionName || !tasks) {
     throw createError(400, '参数不完整');
@@ -225,6 +228,7 @@ export const savePositionTasks = async (ctx) => {
  * GET /api/daily-tasks
  */
 export const getDailyTasks = async (ctx) => {
+  await validateQuery(ctx, getDailyTasksQuerySchema);
   const { page, pageSize, offset, limit } = getPagination(ctx.query);
   const order = getOrderBy(ctx.query);
   const { userId, stationId, workDate, startDate, endDate, status } = ctx.query;
@@ -286,6 +290,7 @@ export const getDailyTasks = async (ctx) => {
  * GET /api/daily-tasks/my
  */
 export const getMyDailyTasks = async (ctx) => {
+  await validateQuery(ctx, getMyDailyTasksQuerySchema);
   const { workDate, startDate, endDate } = ctx.query;
   const userId = ctx.state.user.id;
 
@@ -317,7 +322,7 @@ export const getMyDailyTasks = async (ctx) => {
  * POST /api/daily-tasks/submit
  */
 export const submitDailyTasks = async (ctx) => {
-  const { stationId, workDate, tasks } = ctx.request.body;
+  const { stationId, workDate, tasks } = await validateBody(ctx, submitDailyTasksBodySchema);
   const user = ctx.state.user;
 
   if (!workDate || !tasks?.length) {
@@ -367,6 +372,7 @@ export const submitDailyTasks = async (ctx) => {
  * GET /api/daily-tasks/summary
  */
 export const getDailyTaskSummary = async (ctx) => {
+  await validateQuery(ctx, getDailyTaskSummaryQuerySchema);
   const { stationId, userId, startDate, endDate, groupBy } = ctx.query;
   const dataFilter = ctx.state.dataFilter;
 
@@ -440,6 +446,7 @@ export const getDailyTaskSummary = async (ctx) => {
  * GET /api/temporary-tasks
  */
 export const getTemporaryTasks = async (ctx) => {
+  await validateQuery(ctx, getTemporaryTasksQuerySchema);
   const { page, pageSize, offset, limit } = getPagination(ctx.query);
   const order = getOrderBy(ctx.query);
   const {
@@ -804,7 +811,7 @@ export const createTemporaryTask = async (ctx) => {
     unitPointsEditable,
     quantity,
     points
-  } = ctx.request.body;
+  } = await validateBody(ctx, createTemporaryTaskBodySchema);
   const user = ctx.state.user;
 
   if (!taskName || !executorId) {
@@ -878,8 +885,8 @@ export const createTemporaryTask = async (ctx) => {
  * PUT /api/temporary-tasks/:id
  */
 export const updateTemporaryTask = async (ctx) => {
-  const { id } = ctx.params;
-  const { status, actualHours, completionNote } = ctx.request.body;
+  const { id } = await validateParams(ctx, idParamSchema);
+  const { status, actualHours, completionNote } = await validateBody(ctx, updateTemporaryTaskBodySchema);
 
   const task = await TemporaryTask.findByPk(id);
   if (!task) {
@@ -905,8 +912,8 @@ export const updateTemporaryTask = async (ctx) => {
  * PUT /api/temporary-tasks/:id/submit
  */
 export const submitTemporaryTask = async (ctx) => {
-  const { id } = ctx.params;
-  const { actualHours, completionNote, isCompleted, unitPoints, quantity } = ctx.request.body || {};
+  const { id } = await validateParams(ctx, idParamSchema);
+  const { actualHours, completionNote, isCompleted, unitPoints, quantity } = await validateBody(ctx, submitTemporaryTaskBodySchema);
   const user = ctx.state.user;
 
   const task = await TemporaryTask.findByPk(id);
@@ -961,8 +968,8 @@ export const submitTemporaryTask = async (ctx) => {
  * PUT /api/temporary-tasks/:id/review
  */
 export const reviewTemporaryTask = async (ctx) => {
-  const { id } = ctx.params;
-  const { status, deductionReason, deductionPoints } = ctx.request.body || {};
+  const { id } = await validateParams(ctx, idParamSchema);
+  const { status, deductionReason, deductionPoints } = await validateBody(ctx, reviewTemporaryTaskBodySchema);
   const user = ctx.state.user;
 
   const task = await TemporaryTask.findByPk(id);
@@ -1005,7 +1012,7 @@ export const reviewTemporaryTask = async (ctx) => {
  * DELETE /api/temporary-tasks/:id
  */
 export const deleteTemporaryTask = async (ctx) => {
-  const { id } = ctx.params;
+  const { id } = await validateParams(ctx, idParamSchema);
 
   const task = await TemporaryTask.findByPk(id);
   if (!task) {
@@ -1039,3 +1046,4 @@ export default {
   reviewTemporaryTask,
   deleteTemporaryTask
 };
+
