@@ -1,12 +1,11 @@
 ﻿<template>
   <div class="hygiene-other-page">
     <div class="page-header">
-      <h3>
-        <span v-if="isRecordsView" class="page-title-link" @click="goFormView">卫生他检</span>
-        <span v-else>卫生他检</span>
-      </h3>
-      <div v-if="!isRecordsView" class="header-actions">
-        <el-button @click="goRecordsView">查询</el-button>
+      <h3>卫生他检</h3>
+      <div class="header-actions">
+        <el-button type="primary" @click="isRecordsView ? goFormView() : goRecordsView()">
+          {{ isRecordsView ? '他检表单' : '查询' }}
+        </el-button>
       </div>
     </div>
 
