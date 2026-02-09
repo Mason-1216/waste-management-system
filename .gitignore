@@ -22,6 +22,10 @@ uploads/
 backups/
 db_dump_*.sql
 mysql_data_*.tar.gz
+# Some environments generate backup artifacts with a prefixed filename at repo root
+backups*db_dump_*.sql
+backups*mysql_data_*.tar.gz
+backups*mysql_data_*.tar.gz.*
 .tmp_wx_images/
 _tmp/
 /templates/
