@@ -19,6 +19,7 @@ uploads/
 .env
 .env.*
 !.env.example
+waste-management-system/
 backups/
 db_dump_*.sql
 mysql_data_*.tar.gz
