@@ -25,6 +25,13 @@
             <el-table-column prop="stationName" label="场站" width="140" />
             <el-table-column prop="positionName" label="岗位" width="120" />
             <el-table-column prop="workName" label="任务名称" min-width="180" />
+            <el-table-column prop="resultDefinition" label="结果定义" min-width="220">
+              <template #default="{ row }">
+                <span class="cell-ellipsis" :title="row.resultDefinition ?? ''">
+                  {{ row.resultDefinition ?? '-' }}
+                </span>
+              </template>
+            </el-table-column>
             <el-table-column prop="taskCategory" label="任务类别" width="120" />
             <el-table-column prop="scoreMethod" label="给分方式" width="120" />
             <el-table-column prop="unitPoints" label="单位积分" width="130" />
@@ -300,6 +307,13 @@
               </template>
             </el-table-column>
             <el-table-column prop="job_name" label="任务名称" min-width="160" />
+            <el-table-column prop="result_definition" label="结果定义" min-width="220">
+              <template #default="{ row }">
+                <span class="cell-ellipsis" :title="row.result_definition ?? ''">
+                  {{ row.result_definition ?? '-' }}
+                </span>
+              </template>
+            </el-table-column>
             <el-table-column prop="task_category" label="任务类别" width="120">
               <template #default="{ row }">
                 {{ row.task_category ?? '-' }}
@@ -432,6 +446,15 @@
         </el-form-item>
         <el-form-item label="任务名称" required>
           <el-input v-model="jobForm.jobName" placeholder="请输入任务名称" />
+        </el-form-item>
+        <el-form-item label="结果定义">
+          <el-input
+            v-model="jobForm.resultDefinition"
+            type="textarea"
+            :rows="3"
+            placeholder="选填，描述该任务的产出/验收口径"
+            maxlength="2000"
+          />
         </el-form-item>
         <el-form-item label="任务类别">
           <el-input v-model="jobForm.taskCategory" placeholder="自由文本，用于筛选" />
@@ -941,6 +964,7 @@ const exportPositionJobs = async () => {
       row.position_name ?? '',
       row.sort_order ?? 1,
       row.job_name ?? '',
+      row.result_definition ?? '',
       row.task_category ?? '',
       row.score_method ?? '',
       row.standard_hours ?? '',
@@ -958,6 +982,7 @@ const exportPositionJobs = async () => {
       '岗位',
       '排序',
       '任务名称',
+      '结果定义',
       '任务类别',
       '给分方式',
       '标准工时(h/d)',
@@ -995,6 +1020,7 @@ const jobForm = reactive({
   stationId: null,
   positionName: '',
   jobName: '',
+  resultDefinition: '',
   taskCategory: '',
   scoreMethod: '',
   standardHours: null,
@@ -1015,6 +1041,7 @@ const resetJobForm = () => {
     : null;
   jobForm.positionName = '';
   jobForm.jobName = '';
+  jobForm.resultDefinition = '';
   jobForm.taskCategory = '';
   jobForm.scoreMethod = '';
   jobForm.standardHours = null;
@@ -1034,6 +1061,7 @@ const openJobDialog = (row = null) => {
     jobForm.stationId = row.station_id;
     jobForm.positionName = row.position_name;
     jobForm.jobName = row.job_name;
+    jobForm.resultDefinition = row.result_definition ?? '';
     jobForm.taskCategory = row.task_category ?? '';
     jobForm.scoreMethod = row.score_method ?? '';
     jobForm.standardHours = row.standard_hours ?? null;
@@ -1072,6 +1100,7 @@ const saveJob = async () => {
       stationId: jobForm.stationId,
       positionName: jobForm.positionName,
       jobName: jobForm.jobName,
+      resultDefinition: jobForm.resultDefinition,
       taskCategory: jobForm.taskCategory,
       scoreMethod: jobForm.scoreMethod,
       standardHours: jobForm.standardHours,

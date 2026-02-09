@@ -47,17 +47,12 @@
             <span>{{ row.task.installLocation ?? '-' }}</span>
           </template>
         </el-table-column>
-        <el-table-column label="保养周期" width="100">
-          <template #default="{ row }">
-            {{ getCycleLabel(row.task.cycleType) }}
-          </template>
-        </el-table-column>
-        <el-table-column label="保养标准" min-width="160" show-overflow-tooltip>
+        <el-table-column label="工作名称" min-width="160" show-overflow-tooltip>
           <template #default="{ row }">
             <span>{{ row.item.name ?? '-' }}</span>
           </template>
         </el-table-column>
-        <el-table-column label="保养规范" min-width="200" show-overflow-tooltip>
+        <el-table-column label="规范" min-width="200" show-overflow-tooltip>
           <template #default="{ row }">
             <span>{{ row.item.specification ?? '-' }}</span>
           </template>
@@ -65,6 +60,11 @@
         <el-table-column label="积分" width="90" align="center">
           <template #default="{ row }">
             <span>{{ row.item.points ?? 0 }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="保养周期" width="100">
+          <template #default="{ row }">
+            {{ getCycleLabel(row.task.cycleType) }}
           </template>
         </el-table-column>
         <el-table-column label="是否完成" width="140" align="center">
@@ -527,7 +527,8 @@ const workTableRows = computed(() => {
 });
 
 const workSpanMethod = ({ row, columnIndex }) => {
-  const mergeColumns = [0, 1, 2, 3, 4, 5, 10, 11, 12, 13, 14, 15, 16];
+  // 任务级字段合并（同一任务的多条检查项按首行合并展示）
+  const mergeColumns = [0, 1, 2, 3, 4, 8, 10, 11, 12, 13, 14, 15, 16];
   if (!mergeColumns.includes(columnIndex)) return;
   if (row.rowspan > 0) {
     return { rowspan: row.rowspan, colspan: 1 };

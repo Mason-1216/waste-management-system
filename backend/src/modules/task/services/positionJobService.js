@@ -187,6 +187,7 @@ export const createPositionJob = async (ctx) => {
   const {
     positionName,
     jobName,
+    resultDefinition,
     taskCategory,
     scoreMethod,
     standardHours,
@@ -255,6 +256,9 @@ export const createPositionJob = async (ctx) => {
   const positionJob = await PositionJob.create({
     position_name: positionName.trim(),
     job_name: jobName.trim(),
+    result_definition: typeof resultDefinition === 'string' && resultDefinition.trim()
+      ? resultDefinition.trim()
+      : null,
     task_category: taskCategory ? taskCategory.trim() : null,
     score_method: scoreMethod ?? null,
     standard_hours: standardHours ?? null,
@@ -285,6 +289,7 @@ export const updatePositionJob = async (ctx) => {
   const {
     positionName,
     jobName,
+    resultDefinition,
     taskCategory,
     scoreMethod,
     standardHours,
@@ -348,6 +353,12 @@ export const updatePositionJob = async (ctx) => {
     station_id: stationIdValue,
     is_active: isActive !== undefined ? isActive : positionJob.is_active
   };
+
+  if (resultDefinition !== undefined) {
+    updateData.result_definition = typeof resultDefinition === 'string' && resultDefinition.trim()
+      ? resultDefinition.trim()
+      : null;
+  }
 
   if (taskCategory !== undefined) {
     updateData.task_category = taskCategory ? taskCategory.trim() : null;
@@ -695,6 +706,44 @@ export const importPositionJobs = async (ctx) => {
       if (text === '否') return 0;
       return null;
     };
+    const parseText = (value) => {
+      const normalized = normalizeCellValue(value);
+      if (normalized === undefined || normalized === null) return '';
+      return String(normalized).trim();
+    };
+    const parseOptionalText = (value) => {
+      const text = parseText(value);
+      return text ? text : undefined;
+    };
+
+    const headerMap = new Map();
+    const headerRow = worksheet.getRow(1);
+    if (headerRow?.hasValues) {
+      headerRow.eachCell((cell, colNumber) => {
+        const headerText = parseText(cell.value);
+        if (headerText) {
+          headerMap.set(headerText, colNumber);
+        }
+      });
+    }
+
+    const usesNewOrder = headerMap.has('结果定义');
+    const colIndex = {
+      stationName: headerMap.get('场站') ?? 1,
+      positionName: headerMap.get('岗位') ?? 2,
+      sortOrder: headerMap.get('排序') ?? 3,
+      jobName: headerMap.get('任务名称') ?? 4,
+      resultDefinition: headerMap.get('结果定义') ?? (usesNewOrder ? 5 : null),
+      taskCategory: headerMap.get('任务类别') ?? (usesNewOrder ? 6 : 5),
+      scoreMethod: headerMap.get('给分方式') ?? (usesNewOrder ? 7 : 6),
+      standardHours: headerMap.get('标准工时(h/d)') ?? (usesNewOrder ? 8 : 7),
+      points: headerMap.get('单位积分') ?? (usesNewOrder ? 9 : 8),
+      quantity: headerMap.get('数量') ?? (usesNewOrder ? 10 : 9),
+      pointsRule: headerMap.get('积分规则') ?? (usesNewOrder ? 11 : 10),
+      quantityEditable: headerMap.get('数量是否可修改') ?? (usesNewOrder ? 12 : 11),
+      pointsEditable: headerMap.get('积分是否可修改') ?? (usesNewOrder ? 13 : 12),
+      dispatchReviewRequired: headerMap.get('派发任务是否强制审核') ?? (usesNewOrder ? 14 : 13)
+    };
 
     const stations = await Station.findAll({
       attributes: ['id', 'station_name']
@@ -704,16 +753,19 @@ export const importPositionJobs = async (ctx) => {
       const row = worksheet.getRow(i);
       if (!row.hasValues) continue;
 
-      const stationName = row.getCell(1).value?.toString().trim();
-      const positionName = row.getCell(2).value?.toString().trim();
-      const sortOrder = parseNumber(row.getCell(3).value, Number.parseInt);
-      const jobName = row.getCell(4).value?.toString().trim();
-      const taskCategory = row.getCell(5).value?.toString().trim();
-      const scoreMethod = row.getCell(6).value?.toString().trim();
-      const standardHours = parseNumber(row.getCell(7).value, Number.parseFloat);
+      const stationName = parseText(row.getCell(colIndex.stationName).value);
+      const positionName = parseText(row.getCell(colIndex.positionName).value);
+      const sortOrder = parseNumber(row.getCell(colIndex.sortOrder).value, Number.parseInt);
+      const jobName = parseText(row.getCell(colIndex.jobName).value);
+      const resultDefinition = colIndex.resultDefinition
+        ? parseOptionalText(row.getCell(colIndex.resultDefinition).value)
+        : undefined;
+      const taskCategory = parseOptionalText(row.getCell(colIndex.taskCategory).value);
+      const scoreMethod = parseOptionalText(row.getCell(colIndex.scoreMethod).value);
+      const standardHours = parseNumber(row.getCell(colIndex.standardHours).value, Number.parseFloat);
 
       // 单位积分允许为空：为空时按 0 导入；非空但非数字时仍报错。
-      const rawPointsValue = normalizeCellValue(row.getCell(8).value);
+      const rawPointsValue = normalizeCellValue(row.getCell(colIndex.points).value);
       let points = 0;
       if (rawPointsValue !== undefined && rawPointsValue !== null && rawPointsValue !== '') {
         const parsedPoints = Number.parseFloat(rawPointsValue);
@@ -731,11 +783,11 @@ export const importPositionJobs = async (ctx) => {
         points = parsedPoints;
       }
 
-      const quantity = parseNumber(row.getCell(9).value, Number.parseInt) ?? 1;
-      const pointsRule = row.getCell(10).value?.toString().trim();
-      const quantityEditable = parseBoolean(row.getCell(11).value);
-      const pointsEditable = parseBoolean(row.getCell(12).value);
-      const dispatchReviewRequired = parseBoolean(row.getCell(13).value);
+      const quantity = parseNumber(row.getCell(colIndex.quantity).value, Number.parseInt) ?? 1;
+      const pointsRule = parseOptionalText(row.getCell(colIndex.pointsRule).value);
+      const quantityEditable = parseBoolean(row.getCell(colIndex.quantityEditable).value);
+      const pointsEditable = parseBoolean(row.getCell(colIndex.pointsEditable).value);
+      const dispatchReviewRequired = parseBoolean(row.getCell(colIndex.dispatchReviewRequired).value);
 
       if (!positionName || !jobName) {
         results.push({
@@ -803,6 +855,7 @@ export const importPositionJobs = async (ctx) => {
         await PositionJob.create({
           position_name: positionName,
           job_name: jobName,
+          result_definition: resultDefinition ?? null,
           task_category: taskCategory ?? null,
           score_method: scoreMethod ?? null,
           standard_hours: standardHours ?? null,
@@ -826,6 +879,7 @@ export const importPositionJobs = async (ctx) => {
         });
       } else {
         await existing.update({
+          result_definition: resultDefinition ?? existing.result_definition,
           task_category: taskCategory ?? existing.task_category,
           score_method: scoreMethod ?? existing.score_method,
           standard_hours: standardHours ?? existing.standard_hours,
@@ -882,6 +936,7 @@ export const getPositionJobsTemplate = async (ctx) => {
       { header: '岗位', key: 'positionName', width: 15 },
       { header: '排序', key: 'sortOrder', width: 10 },
       { header: '任务名称', key: 'jobName', width: 25 },
+      { header: '结果定义', key: 'resultDefinition', width: 25 },
       { header: '任务类别', key: 'taskCategory', width: 15 },
       { header: '给分方式', key: 'scoreMethod', width: 15 },
       { header: '标准工时(h/d)', key: 'standardHours', width: 15 },
@@ -898,6 +953,7 @@ export const getPositionJobsTemplate = async (ctx) => {
       positionName: '示例岗位',
       sortOrder: 1,
       jobName: '示例任务',
+      resultDefinition: '例：拍照上传/记录台账/完成验收等',
       taskCategory: '自由文本',
       scoreMethod: '奖扣结合式',
       standardHours: 8,
@@ -915,6 +971,7 @@ export const getPositionJobsTemplate = async (ctx) => {
       ['岗位', '岗位名称必填'],
       ['排序', '可不填，默认 1，整数 1-9999'],
       ['任务名称', '任务名称必填'],
+      ['结果定义', '选填，描述该任务的产出/验收口径（纯文本）'],
       ['任务类别', '自由文本，用于筛选区'],
       ['给分方式', '奖扣结合式/ 扣分项/ 奖分项'],
       ['标准工时(h/d)', '标准工时，可不填'],

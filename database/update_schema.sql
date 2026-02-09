@@ -316,6 +316,21 @@ PREPARE stmt FROM @sql;
 EXECUTE stmt;
 DEALLOCATE PREPARE stmt;
 
+SET @sql := (
+    SELECT IF(
+        COUNT(*) = 0,
+        'ALTER TABLE position_jobs ADD COLUMN result_definition TEXT NULL COMMENT ''result definition'' AFTER job_name',
+        'SELECT 1'
+    )
+    FROM information_schema.COLUMNS
+    WHERE table_schema = DATABASE()
+      AND table_name = 'position_jobs'
+      AND column_name = 'result_definition'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
 
 SET @sql := (
     SELECT IF(

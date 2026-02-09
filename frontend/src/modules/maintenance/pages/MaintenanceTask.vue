@@ -85,18 +85,13 @@
             <el-table-column prop="equipmentCode" label="设备编号" width="120" />
             <el-table-column prop="equipmentName" label="设备名称" min-width="150" />
             <el-table-column prop="installLocation" label="安装位置" width="150" />
-            <el-table-column label="保养周期" width="100">
-              <template #default="{ row }">
-                {{ getCycleLabel(row.cycleType) }}
-              </template>
-            </el-table-column>
-            <el-table-column label="保养标准" min-width="220">
+            <el-table-column label="工作名称" min-width="220">
               <template #default="{ row }">
                 <span v-if="row.standard?.name">{{ row.standard.name }}</span>
                 <span v-else class="text-muted">-</span>
               </template>
             </el-table-column>
-            <el-table-column label="保养规范" min-width="200">
+            <el-table-column label="规范" min-width="200">
               <template #default="{ row }">
                 <span v-if="row.standard?.specification">{{ row.standard.specification }}</span>
                 <span v-else class="text-muted">-</span>
@@ -108,7 +103,12 @@
                 <span v-else class="text-muted">-</span>
               </template>
             </el-table-column>
-            <el-table-column label="保养时间" width="130">
+            <el-table-column label="保养周期" width="100">
+              <template #default="{ row }">
+                {{ getCycleLabel(row.cycleType) }}
+              </template>
+            </el-table-column>
+            <el-table-column label="保养日期" width="130">
               <template #default="{ row }">
                 {{ getMaintenanceTimeText(row) }}
               </template>
@@ -382,14 +382,14 @@
             <el-table-column prop="positionName" label="岗位" width="110" />
             <el-table-column prop="equipmentCode" label="设备编号" width="120" />
             <el-table-column prop="equipmentName" label="设备名称" width="140" show-overflow-tooltip />
-            <el-table-column label="保养周期" width="110">
-              <template #default="{ row }">
-                {{ getCycleLabel(row.cycleType) }}
-              </template>
-            </el-table-column>
             <el-table-column label="积分" width="110">
               <template #default="{ row }">
                 {{ getRecordPoints(row) }}
+              </template>
+            </el-table-column>
+            <el-table-column label="保养周期" width="110">
+              <template #default="{ row }">
+                {{ getCycleLabel(row.cycleType) }}
               </template>
             </el-table-column>
             <el-table-column prop="workDate" label="工作日期" width="120" />
@@ -688,7 +688,8 @@ const planSpanMethod = ({ row, columnIndex }) => {
     }
     return { rowspan: 0, colspan: 0 };
   }
-  const cycleColumns = [5];
+  // 合并同一周期下的“保养周期/保养日期”，避免重复显示
+  const cycleColumns = [8, 9];
   if (cycleColumns.includes(columnIndex)) {
     if (row._cycleRowspan > 0) {
       return { rowspan: row._cycleRowspan, colspan: 1 };
@@ -1423,8 +1424,8 @@ const downloadPlanTemplate = () => {
         '月检查日': 15,
         '年检查月': '',
         '年检查日': '',
-        '保养标准': '润滑检查',
-        '保养规范': '检查润滑油位',
+        '工作名称': '润滑检查',
+        '规范': '检查润滑油位',
         '积分': 5
       },
       {
@@ -1437,8 +1438,8 @@ const downloadPlanTemplate = () => {
         '月检查日': '',
         '年检查月': '',
         '年检查日': '',
-        '保养标准': '滤网清洁',
-        '保养规范': '清理过滤网',
+        '工作名称': '滤网清洁',
+        '规范': '清理过滤网',
         '积分': 3
       },
       {
@@ -1451,8 +1452,8 @@ const downloadPlanTemplate = () => {
         '月检查日': '',
         '年检查月': 12,
         '年检查日': 20,
-        '保养标准': '运行检查',
-        '保养规范': '检查运行状态',
+        '工作名称': '运行检查',
+        '规范': '检查运行状态',
         '积分': 8
       }
     ];
@@ -1470,8 +1471,8 @@ const downloadPlanTemplate = () => {
       ['月检查日', '周期为“月保养”时必填，1-31。'],
       ['年检查月', '周期为“年保养”时必填，1-12。'],
       ['年检查日', '周期为“年保养”时必填，1-31。'],
-      ['保养标准', '选填，保养检查标准说明。'],
-      ['保养规范', '选填，操作规范/注意事项。'],
+      ['工作名称', '选填，保养工作/检查项名称。'],
+      ['规范', '选填，操作规范/注意事项。'],
       ['积分', '必填，整数，默认0。']
     ]);
     XLSX.writeFile(wb, '保养计划模板.xlsx');
@@ -1564,8 +1565,9 @@ const handlePlanImport = async (event) => {
     const monthlyIndex = findHeaderIndex(['月检查日'], hasScheduleColumns ? 6 : -1);
     const yearlyMonthIndex = findHeaderIndex(['年检查月'], hasScheduleColumns ? 7 : -1);
     const yearlyDayIndex = findHeaderIndex(['年检查日'], hasScheduleColumns ? 8 : -1);
-    const standardIndex = findHeaderIndex(['保养标准'], hasScheduleColumns ? 9 : 5);
-    const specIndex = findHeaderIndex(['保养规范'], hasScheduleColumns ? 10 : 6);
+    // 兼容旧模板：保养标准/保养规范
+    const standardIndex = findHeaderIndex(['工作名称', '保养标准'], hasScheduleColumns ? 9 : 5);
+    const specIndex = findHeaderIndex(['规范', '保养规范'], hasScheduleColumns ? 10 : 6);
     const pointsIndex = findHeaderIndex(['积分'], hasScheduleColumns ? 11 : 7);
 
     for (let i = 1; i < jsonData.length; i++) {
@@ -1618,7 +1620,7 @@ const handlePlanImport = async (event) => {
       const standardPoints = pointsIndex > -1 ? normalizePointsValue(row[pointsIndex]) : 0;
       if (standardName || standardSpec) {
         plan.maintenanceStandards.push({
-          name: standardName || '保养标准',
+          name: standardName || '工作名称',
           specification: standardSpec,
           points: standardPoints
         });

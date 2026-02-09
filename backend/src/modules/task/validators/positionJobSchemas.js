@@ -34,6 +34,7 @@ export const getPositionJobsQuerySchema = Joi.object({
 export const createPositionJobBodySchema = Joi.object({
   positionName: Joi.string().allow('').max(200).optional(),
   jobName: Joi.string().allow('').max(200).optional(),
+  resultDefinition: Joi.string().allow('').max(2000).optional(),
   taskCategory: Joi.string().allow('').max(200).optional(),
   scoreMethod: Joi.string().allow('').max(50).optional(),
   standardHours: Joi.alternatives().try(Joi.number(), Joi.string().allow('')).optional(),
@@ -50,6 +51,7 @@ export const createPositionJobBodySchema = Joi.object({
 export const updatePositionJobBodySchema = Joi.object({
   positionName: Joi.string().allow('').max(200).optional(),
   jobName: Joi.string().allow('').max(200).optional(),
+  resultDefinition: Joi.string().allow('').max(2000).optional(),
   taskCategory: Joi.string().allow('').max(200).optional(),
   scoreMethod: Joi.string().allow('').max(50).optional(),
   standardHours: Joi.alternatives().try(Joi.number(), Joi.string().allow('')).optional(),

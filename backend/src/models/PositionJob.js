@@ -17,6 +17,11 @@ const PositionJob = sequelize.define('PositionJob', {
     allowNull: false,
     comment: '任务名称'
   },
+  result_definition: {
+    type: DataTypes.TEXT,
+    allowNull: true,
+    comment: '结果定义'
+  },
   sort_order: {
     type: DataTypes.INTEGER,
     allowNull: false,

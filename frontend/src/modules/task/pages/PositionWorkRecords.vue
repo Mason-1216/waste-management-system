@@ -164,6 +164,13 @@
       <el-table-column prop="station_name" label="场站" width="140" />
       <el-table-column prop="position_name" label="岗位" width="120" />
       <el-table-column prop="work_name" label="任务名称" min-width="160" />
+      <el-table-column prop="result_definition" label="结果定义" min-width="220">
+        <template #default="{ row }">
+          <span class="cell-ellipsis" :title="row.result_definition ?? ''">
+            {{ row.result_definition ?? '-' }}
+          </span>
+        </template>
+      </el-table-column>
       <el-table-column prop="task_category" label="任务类别" width="120">
         <template #default="{ row }">
           {{ row.task_category ?? '-' }}

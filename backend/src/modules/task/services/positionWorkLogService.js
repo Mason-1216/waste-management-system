@@ -169,6 +169,7 @@ export const getTodayTasks = async (ctx) => {
       positionName: schedule.position_name,
       jobId: job.id,
       workName: job.job_name,
+      resultDefinition: job.result_definition ?? '',
       taskCategory: job.task_category ?? '',
       scoreMethod: job.score_method ?? '',
       unitPoints: job.points,
@@ -195,6 +196,19 @@ export const getTodayTasks = async (ctx) => {
     }
   });
 
+  const dispatchJobIds = [...new Set(
+    dispatchLogs
+      .map(log => log.position_job_id)
+      .filter(id => id !== undefined && id !== null && id !== '')
+  )];
+  const dispatchJobs = dispatchJobIds.length > 0
+    ? await PositionJob.findAll({
+      where: { id: { [Op.in]: dispatchJobIds } },
+      attributes: ['id', 'result_definition']
+    })
+    : [];
+  const dispatchJobMap = new Map(dispatchJobs.map(job => [job.id, job.result_definition]));
+
   dispatchLogs.forEach(log => {
     tasks.push({
       taskSource: 'dispatch',
@@ -203,6 +217,7 @@ export const getTodayTasks = async (ctx) => {
       positionName: log.position_name ?? '',
       jobId: log.position_job_id,
       workName: log.work_name,
+      resultDefinition: dispatchJobMap.get(log.position_job_id) ?? '',
       taskCategory: log.task_category ?? '',
       scoreMethod: log.score_method ?? '',
       unitPoints: log.unit_points,
@@ -838,7 +853,8 @@ export const getWorkRecords = async (ctx) => {
     where,
     include: [
       { model: Station, as: 'station', attributes: ['id', 'station_name'] },
-      { model: User, as: 'user', attributes: ['id', 'real_name'] }
+      { model: User, as: 'user', attributes: ['id', 'real_name'] },
+      { model: PositionJob, as: 'positionJob', attributes: ['id', 'result_definition'] }
     ],
     offset,
     limit,
@@ -851,6 +867,7 @@ export const getWorkRecords = async (ctx) => {
     const quantityValue = row.quantity ?? 1;
     return {
       ...row.toJSON(),
+      result_definition: row.positionJob?.result_definition ?? '',
       calculated_points: Number(unitPoints) * Number(quantityValue)
     };
   });
