@@ -1,12 +1,11 @@
 ﻿<template>
   <div class="safety-rectification-page">
     <div class="page-header">
-      <h2>
-        <span v-if="isRecordsView" class="page-title-link" @click="goFormView">安全隐患</span>
-        <span v-else>安全隐患</span>
-      </h2>
-      <div v-if="!isRecordsView" class="header-actions">
-        <el-button @click="goRecordsView">查询</el-button>
+      <h2>安全隐患</h2>
+      <div class="header-actions">
+        <el-button type="primary" @click="isRecordsView ? goFormView() : goRecordsView()">
+          {{ isRecordsView ? '隐患表单' : '查询' }}
+        </el-button>
       </div>
     </div>
 
