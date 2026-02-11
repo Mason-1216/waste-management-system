@@ -9,7 +9,7 @@ export const menuSafety = [
       },
       {
         "code": "menu:/safety-other-inspection",
-        "name": "员工检查记录"
+        "name": "安全他检"
       },
       {
         "code": "menu:/safety-check-management",
@@ -37,7 +37,7 @@ export const menuHygiene = [
       },
       {
         "code": "menu:/hygiene-other-inspection",
-        "name": "员工检查记录"
+        "name": "卫生他检"
       },
       {
         "code": "menu:/hygiene-work-arrangement",
@@ -59,36 +59,20 @@ export const modulePermissions = [
       {
         "code": "module:safety-self-inspection:edit",
         "name": "安全自检-编辑"
-      },
-      {
-        "code": "module:safety-self-inspection:my:view",
-        "name": "我的安全自检-查看"
-      },
-      {
-        "code": "module:safety-self-inspection:my:edit",
-        "name": "我的安全自检-编辑"
-      },
-      {
-        "code": "module:safety-self-inspection:staff:view",
-        "name": "人员安全自检-查看"
-      },
-      {
-        "code": "module:safety-self-inspection:staff:edit",
-        "name": "人员安全自检-编辑"
       }
     ]
   },
   {
     "code": "module:safety-other-inspection",
-    "name": "员工检查记录",
+    "name": "安全他检",
     "children": [
       {
         "code": "module:safety-other-inspection:view",
-        "name": "员工检查记录-查看"
+        "name": "安全他检-查看"
       },
       {
         "code": "module:safety-other-inspection:edit",
-        "name": "员工检查记录-编辑"
+        "name": "安全他检-编辑"
       }
     ]
   },
@@ -98,11 +82,11 @@ export const modulePermissions = [
     "children": [
       {
         "code": "module:safety-check-management:view",
-        "name": "检查项目-查看"
+        "name": "检查项目管理-查看"
       },
       {
         "code": "module:safety-check-management:edit",
-        "name": "检查项目-编辑"
+        "name": "检查项目管理-编辑"
       }
     ]
   },
@@ -131,60 +115,34 @@ export const modulePermissions = [
       {
         "code": "module:hygiene-self-inspection:edit",
         "name": "卫生自检-编辑"
-      },
-      {
-        "code": "module:hygiene-self-inspection:my:view",
-        "name": "我的卫生自检-查看"
-      },
-      {
-        "code": "module:hygiene-self-inspection:my:edit",
-        "name": "我的卫生自检-编辑"
-      },
-      {
-        "code": "module:hygiene-self-inspection:staff:view",
-        "name": "人员卫生自检-查看"
-      },
-      {
-        "code": "module:hygiene-self-inspection:staff:edit",
-        "name": "人员卫生自检-编辑"
       }
     ]
   },
   {
     "code": "module:hygiene-other-inspection",
-    "name": "员工检查记录",
+    "name": "卫生他检",
     "children": [
       {
         "code": "module:hygiene-other-inspection:view",
-        "name": "员工检查记录-查看"
+        "name": "卫生他检-查看"
       },
       {
         "code": "module:hygiene-other-inspection:edit",
-        "name": "员工检查记录-编辑"
+        "name": "卫生他检-编辑"
+      }
+    ]
+  },
+  {
+    "code": "module:hygiene-work-arrangement",
+    "name": "卫生工作管理",
+    "children": [
+      {
+        "code": "module:hygiene-work-arrangement:view",
+        "name": "卫生工作管理-查看"
       },
       {
-        "code": "module:hygiene-other-inspection:inspection:view",
-        "name": "员工检查记录记录-查看"
-      },
-      {
-        "code": "module:hygiene-other-inspection:inspection:edit",
-        "name": "员工检查记录记录-编辑"
-      },
-      {
-        "code": "module:hygiene-other-inspection:management-areas:view",
-        "name": "卫生区域划分-查看"
-      },
-      {
-        "code": "module:hygiene-other-inspection:management-areas:edit",
-        "name": "卫生区域划分-编辑"
-      },
-      {
-        "code": "module:hygiene-other-inspection:management-assignments:view",
-        "name": "卫生任务分配-查看"
-      },
-      {
-        "code": "module:hygiene-other-inspection:management-assignments:edit",
-        "name": "卫生任务分配-编辑"
+        "code": "module:hygiene-work-arrangement:edit",
+        "name": "卫生工作管理-编辑"
       }
     ]
   }

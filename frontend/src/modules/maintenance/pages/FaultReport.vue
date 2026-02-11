@@ -285,6 +285,9 @@
           <div class="panel-header">
 
             <h4>设备管理</h4>
+            <el-button type="primary" :loading="equipmentExporting" @click="handleExportEquipment">
+              <el-icon><Upload /></el-icon>批量导出
+            </el-button>
 
 
           </div>
@@ -398,6 +401,7 @@ import { useUpload } from '@/composables/useUpload';
 import { addTemplateInstructionSheet, applyTemplateHeaderStyle } from '@/utils/excelTemplate';
 import request from '@/api/request';
 import FormDialog from '@/components/system/FormDialog.vue';
+import { buildExportFileName, exportRowsToXlsx } from '@/utils/tableExport';
 
 import {
 
@@ -424,6 +428,7 @@ const { uploadUrl, uploadHeaders, resolveUploadUrl } = useUpload();
 const formRef = ref(null);
 
 const submitting = ref(false);
+const equipmentExporting = ref(false);
 
 const recentReports = ref([]);
 const recentPagination = ref({ page: 1, pageSize: 5, total: 0 });
@@ -910,6 +915,42 @@ const loadEquipmentList = async () => {
 
   }
 
+};
+
+const resolveEquipmentExportColumns = () => ([
+  { label: '场站', value: (row) => row?.station?.station_name ?? '-' },
+  { label: '设备编号', prop: 'equipment_code' },
+  { label: '设备名称', prop: 'equipment_name' },
+  { label: '安装地点', value: (row) => row?.installation_location ?? '-' }
+]);
+
+const handleExportEquipment = async () => {
+  if (equipmentExporting.value) return;
+  equipmentExporting.value = true;
+  try {
+    const title = '设备管理';
+    const fileName = buildExportFileName({ title });
+    const rows = Array.isArray(equipmentList.value) ? equipmentList.value : [];
+
+    if (rows.length === 0) {
+      ElMessage.warning('没有可导出的数据');
+      return;
+    }
+
+    await exportRowsToXlsx({
+      title,
+      fileName,
+      sheetName: '设备管理',
+      columns: resolveEquipmentExportColumns(),
+      rows
+    });
+    ElMessage.success('导出成功');
+  } catch (error) {
+    const msg = typeof error?.message === 'string' && error.message.trim() ? error.message.trim() : '导出失败';
+    ElMessage.error(msg);
+  } finally {
+    equipmentExporting.value = false;
+  }
 };
 
 

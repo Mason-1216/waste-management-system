@@ -3,6 +3,88 @@ import { User, Role, Station, RolePermission, Permission } from '../../../models
 import { generateToken } from '../middlewares/auth.js';
 import { createError } from '../../../middlewares/error.js';
 import { ensureRolePermissions, getUserPermissionOverrides, mergePermissionCodes } from './permissionService.js';
+import { flattenMenuPermissions } from '../../../config/permissionSeeds.js';
+
+const ALWAYS_VISIBLE_MENU_CODES = ['menu:/home', 'menu:/change-password'];
+
+const buildMenuPathList = () => {
+  const codes = flattenMenuPermissions()
+    .map(item => item?.code)
+    .filter(code => typeof code === 'string' && code.startsWith('menu:/'));
+
+  const paths = codes
+    .map(code => code.slice(5))
+    .filter(Boolean);
+
+  paths.sort((a, b) => b.length - a.length);
+  return paths;
+};
+
+const KNOWN_MENU_PATHS = buildMenuPathList();
+
+const resolveMenuCodeForPath = (path) => {
+  if (!path || typeof path !== 'string') return null;
+  const normalized = path.startsWith('/') ? path : `/${path}`;
+  for (const menuPath of KNOWN_MENU_PATHS) {
+    if (normalized === menuPath || normalized.startsWith(`${menuPath}/`)) {
+      return `menu:${menuPath}`;
+    }
+  }
+  return null;
+};
+
+const MODULE_TO_ROUTE_PATH_ALIASES = new Map([
+  // Admin modules (module codes are not 1:1 with route paths)
+  ['module:user', ['/user-management']],
+  ['module:organization', ['/organization-management']],
+
+  // Task module: historical naming does not match menu paths 1:1
+  // Base "岗位工作" view/edit should allow entering the record list menu node.
+  ['module:position-work', ['/position-work', '/position-work/records']],
+  ['module:position-work:my-work', ['/position-work/field']],
+  // "tasks" covers both fill + history pages in the menu.
+  ['module:temporary-tasks:tasks', ['/temporary-tasks/fill', '/temporary-tasks/history']]
+]);
+
+const routePathsFromModuleCode = (moduleCode) => {
+  if (!moduleCode || typeof moduleCode !== 'string') return [];
+  if (!moduleCode.startsWith('module:')) return [];
+  const suffixes = [':view', ':edit'];
+  const suffix = suffixes.find(s => moduleCode.endsWith(s));
+  const base = suffix ? moduleCode.slice(0, -suffix.length) : moduleCode;
+
+  const alias = MODULE_TO_ROUTE_PATH_ALIASES.get(base);
+  if (Array.isArray(alias) && alias.length > 0) return alias;
+
+  // Organization permissions are fine-grained (station/department/company/role) but share the same menu entry.
+  if (base.startsWith('module:organization:')) {
+    return ['/organization-management'];
+  }
+
+  const normalized = base.slice(7).replace(/:/g, '/');
+  if (!normalized) return [];
+  return [`/${normalized}`];
+};
+
+const deriveMenuCodesFromPermissionCodes = (permissionCodes = []) => {
+  const menuSet = new Set(ALWAYS_VISIBLE_MENU_CODES);
+  const moduleCodes = (permissionCodes || []).filter(code =>
+    typeof code === 'string'
+    && code.startsWith('module:')
+    // 菜单仅由模块“动作权限”驱动（view/edit）。基础 module:* code 仅用于分组/展示，不参与派生菜单。
+    && (code.endsWith(':view') || code.endsWith(':edit'))
+  );
+
+  moduleCodes.forEach((moduleCode) => {
+    const paths = routePathsFromModuleCode(moduleCode);
+    paths.forEach((path) => {
+      const resolved = resolveMenuCodeForPath(path);
+      if (resolved) menuSet.add(resolved);
+    });
+  });
+
+  return Array.from(menuSet);
+};
 
 const loadRolePermissions = async (roleId) => {
   const rolePermissions = await RolePermission.findAll({ where: { role_id: roleId } });
@@ -20,7 +102,7 @@ const loadUserPermissionCodes = async (userId, roleId) => {
   const { codes: roleCodes } = await loadRolePermissions(roleId);
   const { allow, deny } = await getUserPermissionOverrides(userId);
   const permissionCodes = mergePermissionCodes(roleCodes, allow, deny);
-  const menuCodes = permissionCodes.filter(code => code.startsWith('menu:/'));
+  const menuCodes = deriveMenuCodesFromPermissionCodes(permissionCodes);
   return { permissionCodes, menuCodes, allowCodes: allow, denyCodes: deny };
 };
 

@@ -2,6 +2,11 @@
   <div class="repair-work-page">
     <div class="page-header">
       <h2>维修工作</h2>
+      <div class="header-actions">
+        <el-button type="primary" :loading="exporting" @click="handleExport">
+          <el-icon><Upload /></el-icon>批量导出
+        </el-button>
+      </div>
     </div>
 
     <el-tabs v-model="activeTab" @tab-change="loadList">
@@ -72,10 +77,13 @@
 <script setup>
 import { ref, onMounted, computed, watch } from 'vue';
 import { ElMessage } from 'element-plus';
+import { Upload } from '@element-plus/icons-vue';
+import { useRoute } from 'vue-router';
 
 import FilterBar from '@/components/common/FilterBar.vue';
 import request from '@/api/request';
 import FormDialog from '@/components/system/FormDialog.vue';
+import { buildExportFileName, exportRowsToXlsx } from '@/utils/tableExport';
 
 const activeTab = ref('pending');
 const repairList = ref([]);
@@ -83,6 +91,15 @@ const pagination = ref({ page: 1, pageSize: 5, total: 0 });
 const completeDialogVisible = ref(false);
 const currentRepair = ref(null);
 const completeForm = ref({ description: '', replacedParts: '', cost: 0 });
+const exporting = ref(false);
+const route = useRoute();
+
+const resolvePageTitle = () => {
+  if (typeof route?.meta?.title === 'string' && route.meta.title.trim()) {
+    return route.meta.title.trim();
+  }
+  return '维修工作';
+};
 
 const loadList = async () => {
   try {
@@ -99,6 +116,55 @@ const repairTableRows = computed(() => {
   const endIndex = startIndex + pagination.value.pageSize;
   return list.slice(startIndex, endIndex);
 });
+
+const resolveUrgencyLabel = (level) => {
+  if (level === 'high' || level === 'critical') return '紧急';
+  return '一般';
+};
+
+const resolveStatusLabel = (status) => {
+  if (status === 'pending') return '待处理';
+  if (status === 'in_progress') return '进行中';
+  if (status === 'completed') return '已完成';
+  return status ?? '';
+};
+
+const resolveExportColumns = () => ([
+  { label: '设备名称', value: (row) => row?.faultReport?.equipmentName ?? '-' },
+  { label: '故障类型', value: (row) => row?.faultReport?.faultType ?? '-' },
+  { label: '紧急程度', value: (row) => resolveUrgencyLabel(row?.faultReport?.urgencyLevel) },
+  { label: '维修要求', value: (row) => row?.requirements ?? '' },
+  { label: '状态', value: (row) => resolveStatusLabel(row?.status) }
+]);
+
+const handleExport = async () => {
+  if (exporting.value) return;
+  exporting.value = true;
+  try {
+    const title = resolvePageTitle();
+    const fileName = buildExportFileName({ title });
+    const rows = Array.isArray(repairList.value) ? repairList.value : [];
+
+    if (rows.length === 0) {
+      ElMessage.warning('没有可导出的数据');
+      return;
+    }
+
+    await exportRowsToXlsx({
+      title,
+      fileName,
+      sheetName: '维修工作',
+      columns: resolveExportColumns(),
+      rows
+    });
+    ElMessage.success('导出成功');
+  } catch (error) {
+    const msg = typeof error?.message === 'string' && error.message.trim() ? error.message.trim() : '导出失败';
+    ElMessage.error(msg);
+  } finally {
+    exporting.value = false;
+  }
+};
 
 const handlePageChange = (page) => {
   pagination.value.page = page;
@@ -148,6 +214,9 @@ watch(
 <style lang="scss" scoped>
 .repair-work-page {
   .page-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
     margin-bottom: 20px;
     h2 { margin: 0; font-size: 20px; }
   }

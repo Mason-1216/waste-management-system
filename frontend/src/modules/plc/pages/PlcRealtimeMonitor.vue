@@ -30,6 +30,9 @@
         v-model="autoRefresh"
         active-text="自动刷新"
       />
+        <el-button type="primary" :loading="exporting" @click="handleExport">
+          <el-icon><Upload /></el-icon>批量导出
+        </el-button>
       </FilterBar>
     </el-card>
 
@@ -131,10 +134,14 @@
 <script setup>
 import { ref, reactive, onMounted, onUnmounted, watch, computed } from 'vue';
 import { ElMessage } from 'element-plus';
+import { Upload } from '@element-plus/icons-vue';
+import { useRoute } from 'vue-router';
 import { getRealtimeData, getCategories, checkServiceStatus } from '@/api/plcMonitor';
 import request from '@/utils/request';
+import { buildExportFileName, exportRowsToXlsx } from '@/utils/tableExport';
 
 const loading = ref(false);
+const exporting = ref(false);
 const autoRefresh = ref(false);
 const serviceStatus = ref('offline');
 const ipStatusMap = reactive({});
@@ -148,6 +155,15 @@ const filterForm = reactive({
   stationId: 'all',
   categoryId: 'all'
 });
+
+const route = useRoute();
+
+const resolvePageTitle = () => {
+  if (typeof route?.meta?.title === 'string' && route.meta.title.trim()) {
+    return route.meta.title.trim();
+  }
+  return '实时监控';
+};
 
 const pagination = reactive({
   page: 1,
@@ -267,6 +283,47 @@ const handleSizeChange = (val) => {
 
 const handleCurrentChange = (val) => {
   pagination.page = val;
+};
+
+const resolveExportColumns = () => ([
+  { label: '监控点名称', prop: 'name' },
+  { label: '场站', value: (row) => row?.station?.station_name ?? '-' },
+  { label: '分类', value: (row) => row?.category?.category_name ?? '-' },
+  { label: '地址', prop: 'address' },
+  { label: '数据类型', value: (row) => row?.dataType ?? '-' },
+  { label: '当前值', value: (row) => formatValue(row?.value, row?.dataType) },
+  { label: '单位', value: (row) => row?.unit ?? '-' },
+  { label: '连接', value: (row) => (ipStatusMap[row?.plcIp] ? '在线' : '离线') },
+  { label: '状态', value: (row) => (row?.success ? '正常' : '异常') }
+]);
+
+const handleExport = async () => {
+  if (exporting.value) return;
+  exporting.value = true;
+  try {
+    const title = resolvePageTitle();
+    const fileName = buildExportFileName({ title });
+    const rows = Array.isArray(tableData.value) ? tableData.value : [];
+
+    if (rows.length === 0) {
+      ElMessage.warning('没有可导出的数据');
+      return;
+    }
+
+    await exportRowsToXlsx({
+      title,
+      fileName,
+      sheetName: '实时监控',
+      columns: resolveExportColumns(),
+      rows
+    });
+    ElMessage.success('导出成功');
+  } catch (error) {
+    const msg = typeof error?.message === 'string' && error.message.trim() ? error.message.trim() : '导出失败';
+    ElMessage.error(msg);
+  } finally {
+    exporting.value = false;
+  }
 };
 
 

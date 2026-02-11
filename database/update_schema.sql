@@ -316,6 +316,59 @@ PREPARE stmt FROM @sql;
 EXECUTE stmt;
 DEALLOCATE PREPARE stmt;
 
+-- Manual points import (points summary: "人工录入")
+CREATE TABLE IF NOT EXISTS manual_points_entries (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    entry_date DATE NOT NULL COMMENT 'entry date',
+    user_id INT NOT NULL COMMENT 'user id',
+    user_name VARCHAR(50) NULL COMMENT 'user name',
+    category_code VARCHAR(30) NOT NULL COMMENT 'category code',
+    task_category VARCHAR(50) NULL COMMENT 'task category',
+    task_name VARCHAR(200) NOT NULL COMMENT 'task name',
+    unit_points DECIMAL(10,2) NOT NULL COMMENT 'unit points',
+    quantity INT NOT NULL DEFAULT 1 COMMENT 'quantity',
+    remark TEXT NULL COMMENT 'remark',
+    created_by_id INT NULL COMMENT 'created by id',
+    created_by_name VARCHAR(50) NULL COMMENT 'created by name',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX idx_manual_points_date (entry_date),
+    INDEX idx_manual_points_user_date (user_id, entry_date),
+    INDEX idx_manual_points_category (category_code),
+    INDEX idx_manual_points_task_category (task_category)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+SET @sql := (
+    SELECT IF(
+        COUNT(*) = 0,
+        'ALTER TABLE manual_points_entries ADD COLUMN task_category VARCHAR(50) NULL COMMENT ''task category'' AFTER category_code',
+        'SELECT 1'
+    )
+    FROM information_schema.COLUMNS
+    WHERE table_schema = DATABASE()
+      AND table_name = 'manual_points_entries'
+      AND column_name = 'task_category'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+-- Manual work hours import (applied hourly points)
+CREATE TABLE IF NOT EXISTS manual_work_hours (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    work_date DATE NOT NULL COMMENT 'work date',
+    user_id INT NOT NULL COMMENT 'user id',
+    user_name VARCHAR(50) NULL COMMENT 'user name',
+    work_hours DECIMAL(10,2) NOT NULL COMMENT 'work hours',
+    remark TEXT NULL COMMENT 'remark',
+    created_by_id INT NULL COMMENT 'created by id',
+    created_by_name VARCHAR(50) NULL COMMENT 'created by name',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX idx_manual_work_hours_date (work_date),
+    INDEX idx_manual_work_hours_user_date (user_id, work_date)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
 SET @sql := (
     SELECT IF(
         COUNT(*) = 0,
@@ -576,3 +629,16 @@ PREPARE stmt FROM @sql;
 EXECUTE stmt;
 DEALLOCATE PREPARE stmt;
 
+-- 修正应用小时积分表
+CREATE TABLE IF NOT EXISTS adjusted_hourly_points (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    user_id INT NOT NULL COMMENT '用户ID',
+    end_month VARCHAR(10) NOT NULL COMMENT '统计截止月（YYYY-MM）',
+    adjusted_points DECIMAL(10, 2) NOT NULL COMMENT '修正应用小时积分',
+    created_by_id INT COMMENT '创建人ID',
+    created_by_name VARCHAR(50) COMMENT '创建人姓名',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY uk_user_month (user_id, end_month),
+    INDEX idx_end_month (end_month)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='修正应用小时积分';

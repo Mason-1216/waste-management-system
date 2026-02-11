@@ -6,6 +6,9 @@
         <el-button type="primary" @click="isRecordsView ? goFormView() : goRecordsView()">
           {{ isRecordsView ? '隐患表单' : '查询' }}
         </el-button>
+        <el-button v-if="isRecordsView" type="primary" :loading="exporting" @click="exportRecords">
+          <el-icon><Upload /></el-icon>批量导出
+        </el-button>
       </div>
     </div>
 
@@ -152,7 +155,7 @@
 
       <div class="history-section">
         <h3>记录列表</h3>
-        <el-table :data="list" v-loading="loading" stripe border style="width: 100%">
+        <el-table ref="tableRef" :data="list" v-loading="loading" stripe border style="width: 100%">
           <el-table-column prop="record_code" label="表单编号" width="140" />
           <el-table-column prop="station_name" label="场站" width="150" />
           <el-table-column prop="hazard_category" label="隐患类别" width="120" />
@@ -494,6 +497,7 @@ import { useUpload } from '@/composables/useUpload';
 import request from '@/api/request';
 import { getHazardCategories, createHazardCategory, deleteHazardCategory, getHazardRootCauses, createHazardRootCause, updateHazardRootCause, deleteHazardRootCause } from '@/api/hazardConfig';
 import dayjs from 'dayjs';
+import { buildExportFileName, exportElTableByPagedFetcher } from '@/utils/tableExport';
 
 import { createListSuggestionFetcher } from '@/utils/filterAutocomplete';
 import FormDialog from '@/components/system/FormDialog.vue';
@@ -539,6 +543,8 @@ const showReviewSection = computed(() => {
 const list = ref([]);
 const listSuggestion = ref([]);
 const loading = ref(false);
+const tableRef = ref(null);
+const exporting = ref(false);
 
 const fetchStationNameSuggestions = createListSuggestionFetcher(
   () => listSuggestion.value,
@@ -683,42 +689,69 @@ const getStatusText = (status) => ({
   reviewed: '已复核'
 }[status] || '未知');
 
+const normalizeHazardInspectionRow = (item) => ({
+  ...item,
+  photoUrls: item.photo_urls
+    ? JSON.parse(item.photo_urls).map(url => resolveUploadUrl(url)).filter(Boolean)
+    : [],
+  rectification: item.rectification ? {
+    ...item.rectification,
+    completionPhotos: item.rectification.completion_photos
+      ? JSON.parse(item.rectification.completion_photos).map(url => resolveUploadUrl(url)).filter(Boolean)
+      : []
+  } : null
+});
+
+const buildListParams = ({ page, pageSize }) => {
+  const params = { page, pageSize };
+  if (filters.value.stationName) params.stationName = filters.value.stationName;
+  if (filters.value.hazardCategory && filters.value.hazardCategory !== 'all') params.hazardCategory = filters.value.hazardCategory;
+  if (filters.value.status && filters.value.status !== 'all') params.status = filters.value.status;
+  if (filters.value.startDate) params.startDate = filters.value.startDate;
+  if (filters.value.endDate) params.endDate = filters.value.endDate;
+  return params;
+};
+
 const loadList = async () => {
   loading.value = true;
   try {
-    const params = {
-      page: pagination.value.page,
-      pageSize: pagination.value.pageSize
-    };
-    if (filters.value.stationName) params.stationName = filters.value.stationName;
-    if (filters.value.hazardCategory && filters.value.hazardCategory !== 'all') params.hazardCategory = filters.value.hazardCategory;
-    if (filters.value.status && filters.value.status !== 'all') params.status = filters.value.status;
-    if (filters.value.startDate) {
-      params.startDate = filters.value.startDate;
-    }
-    if (filters.value.endDate) {
-      params.endDate = filters.value.endDate;
-    }
+    const params = buildListParams({ page: pagination.value.page, pageSize: pagination.value.pageSize });
 
     const res = await request.get('/hazard-inspections', { params });
-    list.value = (res.list || []).map(item => ({
-      ...item,
-      photoUrls: item.photo_urls
-        ? JSON.parse(item.photo_urls).map(url => resolveUploadUrl(url)).filter(Boolean)
-        : [],
-      rectification: item.rectification ? {
-        ...item.rectification,
-        completionPhotos: item.rectification.completion_photos
-          ? JSON.parse(item.rectification.completion_photos).map(url => resolveUploadUrl(url)).filter(Boolean)
-          : []
-      } : null
-    }));
+    list.value = (res.list || []).map(normalizeHazardInspectionRow);
     pagination.value.total = res.total || 0;
     loadListSuggestions(params);
   } catch (e) {
     ElMessage.error('加载列表失败');
   } finally {
     loading.value = false;
+  }
+};
+
+const exportRecords = async () => {
+  exporting.value = true;
+  try {
+    const pageTitle = typeof route?.meta?.title === 'string' ? route.meta.title : '安全隐患';
+    const fileName = buildExportFileName({ title: pageTitle });
+
+    await exportElTableByPagedFetcher({
+      title: pageTitle,
+      fileName,
+      sheetName: '记录列表',
+      tableRef,
+      pageSize: 5000,
+      fetchPage: async ({ page, pageSize }) => {
+        const params = buildListParams({ page, pageSize });
+        const res = await request.get('/hazard-inspections', { params });
+        const list = Array.isArray(res?.list) ? res.list.map(normalizeHazardInspectionRow) : [];
+        return { list, total: res?.total };
+      }
+    });
+  } catch (error) {
+    const message = typeof error?.message === 'string' && error.message.trim() ? error.message : '导出失败';
+    ElMessage.error(message);
+  } finally {
+    exporting.value = false;
   }
 };
 
@@ -730,18 +763,7 @@ const loadListSuggestions = async (baseParams) => {
       pageSize: 5000
     };
     const res = await request.get('/hazard-inspections', { params });
-    listSuggestion.value = (res.list || []).map(item => ({
-      ...item,
-      photoUrls: item.photo_urls
-        ? JSON.parse(item.photo_urls).map(url => resolveUploadUrl(url)).filter(Boolean)
-        : [],
-      rectification: item.rectification ? {
-        ...item.rectification,
-        completionPhotos: item.rectification.completion_photos
-          ? JSON.parse(item.rectification.completion_photos).map(url => resolveUploadUrl(url)).filter(Boolean)
-          : []
-      } : null
-    }));
+    listSuggestion.value = (res.list || []).map(normalizeHazardInspectionRow);
   } catch (e) {
     listSuggestion.value = [];
   }

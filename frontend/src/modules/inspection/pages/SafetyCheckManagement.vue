@@ -26,6 +26,10 @@
           <el-icon><Plus /></el-icon>
           新增工作性质
         </el-button>
+        <el-button type="primary" :loading="exporting" @click="exportAll">
+          <el-icon><Upload /></el-icon>
+          批量导出
+        </el-button>
       </div>
     </div>
 
@@ -235,12 +239,15 @@
 import { ref, reactive, computed, onMounted } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { Plus, Download, ArrowRight } from '@element-plus/icons-vue';
+import { useRoute } from 'vue-router';
 import { useUserStore } from '@/store/modules/user';
 import { useUpload } from '@/composables/useUpload';
 import request from '@/api/request';
 import FormDialog from '@/components/system/FormDialog.vue';
+import { buildExportFileName, exportRowsToXlsx } from '@/utils/tableExport';
 
 const userStore = useUserStore();
+const route = useRoute();
 
 const { apiBaseUrl, uploadHeaders } = useUpload();
 
@@ -252,6 +259,7 @@ const uploadRef = ref();
 const workTypes = ref([]);
 const loading = ref(false);
 const saving = ref(false);
+const exporting = ref(false);
 const expandedWorkTypes = ref({});
 
 // 工作性质对话框
@@ -279,6 +287,64 @@ let tempItemIndex = 0;
 const createTempId = () => `temp_${Date.now()}_${tempItemIndex++}`;
 
 const formatPoints = (value) => (value === undefined || value === null ? 0 : value);
+
+const exportAll = async () => {
+  exporting.value = true;
+  try {
+    const types = Array.isArray(workTypes.value) ? workTypes.value : [];
+    const rows = [];
+
+    types.forEach((type) => {
+      const items = Array.isArray(type?.checkItems) ? type.checkItems : [];
+      if (items.length === 0) {
+        rows.push({ type, item: null, itemIndex: 0 });
+        return;
+      }
+      items.forEach((item, index) => {
+        rows.push({ type, item, itemIndex: index + 1 });
+      });
+    });
+
+    const columns = [
+      { label: '工作性质', value: row => row.type?.work_type_name ?? '' },
+      { label: '工作性质积分', value: row => formatPoints(row.type?.points) },
+      { label: '工作性质状态', value: row => (row.type?.status === 'active' ? '启用' : '禁用') },
+      { label: '序号', value: row => (row.item ? row.itemIndex : '') },
+      {
+        label: '类型',
+        value: (row) => {
+          const item = row.item;
+          if (!item) return '';
+          if (item.parent_id) return '子项';
+          return Number(item.enable_children) === 1 ? '父项(联动)' : '父项';
+        }
+      },
+      { label: '检查项目', value: row => row.item?.item_name ?? '' },
+      { label: '检查标准', value: row => row.item?.item_standard ?? '' },
+      {
+        label: '父项',
+        value: (row) => {
+          const item = row.item;
+          if (!item?.parent_id) return '';
+          const items = Array.isArray(row.type?.checkItems) ? row.type.checkItems : [];
+          const parent = items.find(entry => entry.id === item.parent_id);
+          return parent?.item_name ?? '';
+        }
+      },
+      { label: '触发值', value: row => (row.item?.parent_id ? (row.item.trigger_value ?? '') : '') },
+      { label: '状态', value: row => (row.item ? (row.item.status === 'active' ? '启用' : '禁用') : '') }
+    ];
+
+    const pageTitle = typeof route?.meta?.title === 'string' ? route.meta.title : '安全检查项目';
+    const fileName = buildExportFileName({ title: pageTitle });
+    await exportRowsToXlsx({ title: pageTitle, fileName, sheetName: '检查项目', columns, rows });
+  } catch (error) {
+    const message = typeof error?.message === 'string' && error.message.trim() ? error.message : '导出失败';
+    ElMessage.error(message);
+  } finally {
+    exporting.value = false;
+  }
+};
 
 const isWorkTypeExpanded = (workType) => {
   if (!workType || workType.id === undefined || workType.id === null) return false;

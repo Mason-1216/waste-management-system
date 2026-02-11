@@ -205,6 +205,7 @@ const notificationDrawer = ref(false);
 const notifications = ref([]);
 const unreadCount = ref(0);
 const routeKey = ref(0);
+const menuNavigating = ref(false);
 const defaultOpeneds = ref([]);
 const badgeCounts = ref({});
 const badgeLoading = ref(false);
@@ -241,8 +242,6 @@ const closeMobileMenu = () => {
   mobileMenuVisible.value = false;
 };
 
-const SIDEBAR_RELOAD_KEY = 'wms:sidebar-reload-target';
-const SIDEBAR_RELOAD_DONE = 'wms:sidebar-reload-done';
 const pushRouteLog = (entry) => {
   try {
     const key = 'wms:route-log';
@@ -258,7 +257,45 @@ const pushRouteLog = (entry) => {
 
 // 当前场站
 // 当前激活的菜单
-const activeMenu = computed(() => route.path);
+const normalizeMenuPath = (path) => {
+  if (typeof path !== 'string') return '';
+  const text = path.trim();
+  if (!text) return '';
+  if (text === '/') return '/';
+  return text.endsWith('/') ? text.slice(0, -1) : text;
+};
+
+const collectAllMenuPaths = (items) => {
+  const list = Array.isArray(items) ? items : [];
+  const paths = [];
+  list.forEach(item => {
+    if (!item) return;
+    const path = normalizeMenuPath(item.path);
+    if (path) paths.push(path);
+    if (Array.isArray(item.children) && item.children.length > 0) {
+      paths.push(...collectAllMenuPaths(item.children));
+    }
+  });
+  return paths;
+};
+
+const resolveActiveMenuPath = (path) => {
+  const current = normalizeMenuPath(path);
+  if (!current) return route.path;
+
+  const candidates = collectAllMenuPaths(menus.value);
+  let best = '';
+  candidates.forEach((candidate) => {
+    if (!candidate) return;
+    if (current === candidate || current.startsWith(`${candidate}/`)) {
+      if (candidate.length > best.length) best = candidate;
+    }
+  });
+
+  return best || route.path;
+};
+
+const activeMenu = computed(() => resolveActiveMenuPath(route.path));
 
 // 根据角色获取菜单
 const menuCodeFromPath = (path) => (path ? `menu:${path}` : null);
@@ -441,23 +478,39 @@ const bottomMenuItems = computed(() => bottomMenus);
 
 // 处理菜单选择
 const handleMenuSelect = async (path) => {
-  if (path && path.startsWith('/')) {
-    // 移动端选择菜单后自动关闭侧边栏
-    if (isMobile.value) {
-      closeMobileMenu();
+  const targetPath = normalizeMenuPath(path);
+  if (!targetPath || !targetPath.startsWith('/')) return;
+
+  // 移动端选择菜单后自动关闭侧边栏
+  if (isMobile.value) {
+    closeMobileMenu();
+  }
+
+  // 防止重复点击同一菜单导致页面空白（重复导航/过渡卸载窗口期）
+  const currentMenuPath = normalizeMenuPath(activeMenu.value);
+  const currentRoutePath = normalizeMenuPath(route.path);
+  if (targetPath === currentMenuPath || targetPath === currentRoutePath || currentRoutePath.startsWith(`${targetPath}/`)) {
+    pushRouteLog({ type: 'sidebar-select-skip', path: targetPath, reason: 'already-active' });
+    return;
+  }
+
+  if (menuNavigating.value) {
+    pushRouteLog({ type: 'sidebar-select-skip', path: targetPath, reason: 'navigating' });
+    return;
+  }
+
+  menuNavigating.value = true;
+  pushRouteLog({ type: 'sidebar-select', path: targetPath });
+
+  try {
+    await router.push(targetPath);
+  } catch (err) {
+    // 忽略重复导航错误
+    if (err?.name !== 'NavigationDuplicated') {
+      pushRouteLog({ type: 'sidebar-nav-error', message: String(err) });
     }
-    // 强制刷新路由 key，确保组件重新渲染
-    routeKey.value++;
-    sessionStorage.setItem(SIDEBAR_RELOAD_KEY, path);
-    sessionStorage.removeItem(SIDEBAR_RELOAD_DONE);
-    await nextTick();
-    pushRouteLog({ type: 'sidebar-select', path });
-    router.push(path).catch(err => {
-      // 忽略重复导航错误
-      if (err.name !== 'NavigationDuplicated') {
-        pushRouteLog({ type: 'sidebar-nav-error', message: String(err) });
-      }
-    });
+  } finally {
+    menuNavigating.value = false;
   }
 };
 
@@ -778,7 +831,7 @@ const handleCommand = (command) => {
 
 // Keep parent menus expanded on route change
 watch([menus, () => route.path], () => {
-  ensureActiveParentOpen(route.path);
+  ensureActiveParentOpen(activeMenu.value);
 }, { immediate: true });
 
 // 监听路由变化，强制刷新组件

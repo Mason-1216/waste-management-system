@@ -11,7 +11,16 @@ export const devTestMenus = [
       { path: '/schedule/manage', name: '排班管理' }
     ]
   },
-  { path: '/points-summary', name: '积分统计', icon: 'DataAnalysis' },
+  {
+    path: '/points-summary',
+    name: '积分统计',
+    icon: 'DataAnalysis',
+    children: [
+      { path: '/points-summary/summary', name: '积分汇总' },
+      { path: '/points-summary/applied-hourly', name: '应用小时积分' },
+      { path: '/points-summary/quarterly-award', name: '季度积分奖' }
+    ]
+  },
   {
     path: '/safety',
     name: '安全检查',

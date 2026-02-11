@@ -205,7 +205,7 @@
       v-model="exportDialogVisible"
       title="批量导出"
       width="720px"
-      :confirm-text="'导出'"
+      :confirm-text="'批量导出'"
       :cancel-text="'取消'"
       :confirm-loading="exportLoading"
       :close-on-click-modal="false"
@@ -259,8 +259,10 @@
 import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import * as XLSX from 'xlsx'
-
+import { useRoute } from 'vue-router'
+ 
 import { addTemplateInstructionSheet, applyTemplateHeaderStyle } from '@/utils/excelTemplate'
+import { buildExportFileName } from '@/utils/tableExport'
 import FilterBar from '@/components/common/FilterBar.vue'
 import FormDialog from '@/components/system/FormDialog.vue'
 import {
@@ -280,6 +282,7 @@ import { getPositionNames } from '@/api/positionJob'
 import { getAllStations } from '@/api/station'
 
 const activeTab = ref('areas')
+const route = useRoute()
 const areas = ref([])
 const assignments = ref([])
 const stations = ref([])
@@ -682,7 +685,16 @@ const handleBatchExport = async () => {
 
     const wb = XLSX.utils.book_new()
     XLSX.utils.book_append_sheet(wb, ws, '卫生区域导出')
-    XLSX.writeFile(wb, '卫生区域划分批量导出.xlsx')
+    const pageTitle = typeof route?.meta?.title === 'string' ? route.meta.title : '卫生工作管理'
+    const exportFileName = buildExportFileName({ title: pageTitle })
+    try {
+      const hook = window?.__WMS_EXPORT_HOOK__
+      if (typeof hook === 'function') {
+        hook({ fileName: exportFileName, title: pageTitle })
+      }
+    } catch {
+    }
+    XLSX.writeFile(wb, exportFileName)
     ElMessage.success('导出成功')
     exportDialogVisible.value = false
   } catch (error) {

@@ -250,6 +250,7 @@ export const getMaintenancePositionPlans = async (ctx) => {
     model: MaintenancePlanLibrary,
     as: 'plan',
     attributes: ['id', 'equipment_code', 'equipment_name', 'install_location', 'cycle_type',
+                 'daily_enabled', 'weekly_enabled', 'monthly_enabled', 'yearly_enabled',
                  'weekly_day', 'monthly_day', 'yearly_month', 'yearly_day', 'maintenance_standards']
   };
   if (Object.keys(planWhere).length > 0) {

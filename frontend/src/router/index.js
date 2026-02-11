@@ -113,18 +113,6 @@ router.afterEach((to, from, failure) => {
 
   pushRouteLog({ type: 'afterEach', to: to.fullPath, from: from.fullPath });
 
-  const sidebarReloadTarget = sessionStorage.getItem('wms:sidebar-reload-target');
-  const sidebarReloadDone = sessionStorage.getItem('wms:sidebar-reload-done');
-  if (sidebarReloadTarget && sidebarReloadTarget === to.path && !sidebarReloadDone) {
-    sessionStorage.setItem('wms:sidebar-reload-done', '1');
-    window.location.reload();
-    return;
-  }
-  if (sidebarReloadDone) {
-    sessionStorage.removeItem('wms:sidebar-reload-target');
-    sessionStorage.removeItem('wms:sidebar-reload-done');
-  }
-
   if (import.meta.env.PROD && to.fullPath !== from.fullPath) {
     const refreshKey = `${ROUTE_REFRESH_KEY}:${to.fullPath}`;
     if (!sessionStorage.getItem(refreshKey)) {

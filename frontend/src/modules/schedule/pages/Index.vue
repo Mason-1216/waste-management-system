@@ -3,6 +3,9 @@
     <div class="page-header">
       <h2 v-if="showScheduleTable">排班管理</h2>
       <div class="header-actions">
+        <el-button type="primary" :loading="exporting" @click="handleExport" v-if="showScheduleTable">
+          <el-icon><Upload /></el-icon>批量导出
+        </el-button>
         <el-button type="primary" @click="showAddDialog" v-if="showScheduleTable">
           <el-icon><Plus /></el-icon>新增排班
         </el-button>
@@ -662,7 +665,7 @@
 import { ref, computed, onMounted, watch } from 'vue';
 import { useRoute } from 'vue-router';
 import { ElMessage, ElMessageBox } from 'element-plus';
-import { ArrowLeft, ArrowRight, Briefcase, Warning, Brush, Operation, Tools } from '@element-plus/icons-vue';
+import { ArrowLeft, ArrowRight, Briefcase, Warning, Brush, Operation, Tools, Upload } from '@element-plus/icons-vue';
 import dayjs from 'dayjs';
 
 import { addTemplateInstructionSheet, applyTemplateHeaderStyle } from '@/utils/excelTemplate';
@@ -671,6 +674,7 @@ import request from '@/api/request';
 import { getPositionNames } from '@/api/positionJob';
 import { useUserStore } from '@/store/modules/user';
 import FormDialog from '@/components/system/FormDialog.vue';
+import { buildExportFileName, exportRowsToXlsx } from '@/utils/tableExport';
 
 const userStore = useUserStore();
 const route = useRoute();
@@ -678,6 +682,7 @@ const route = useRoute();
 const currentMonth = ref(dayjs().format('YYYY-MM'));
 const scheduleTableRef = ref(null);
 const scheduleData = ref([]);
+const exporting = ref(false);
 const fetchUserNameSuggestions = createListSuggestionFetcher(
   () => filteredScheduleData.value,
   (row) => row.userName
@@ -1351,6 +1356,63 @@ const loadAllPositions = async () => {
 const clearScheduleSelection = () => {
   selectedSchedules.value = [];
   scheduleTableRef.value?.clearSelection?.();
+};
+
+const resolvePageTitle = () => {
+  if (typeof route?.meta?.title === 'string' && route.meta.title.trim()) {
+    return route.meta.title.trim();
+  }
+  return '排班管理';
+};
+
+const resolveExportColumns = () => {
+  const columns = [
+    { label: '场站名称', prop: 'stationName' },
+    { label: '岗位', prop: 'positionName' },
+    { label: '姓名', prop: 'userName' }
+  ];
+
+  const totalDays = Number(daysInMonth.value);
+  if (!Number.isInteger(totalDays) || totalDays < 1) return columns;
+
+  const days = Array.from({ length: totalDays }, (_, index) => index + 1);
+  days.forEach((day) => {
+    columns.push({
+      label: formatDayLabel(day),
+      value: (row) => getCellDisplay(row, day)?.text ?? ''
+    });
+  });
+
+  return columns;
+};
+
+const handleExport = async () => {
+  if (exporting.value) return;
+  exporting.value = true;
+  try {
+    const title = resolvePageTitle();
+    const fileName = buildExportFileName({ title });
+    const rows = Array.isArray(filteredScheduleData.value) ? filteredScheduleData.value : [];
+
+    if (rows.length === 0) {
+      ElMessage.warning('没有可导出的数据');
+      return;
+    }
+
+    await exportRowsToXlsx({
+      title,
+      fileName,
+      sheetName: '排班',
+      columns: resolveExportColumns(),
+      rows
+    });
+    ElMessage.success('导出成功');
+  } catch (error) {
+    const msg = typeof error?.message === 'string' && error.message.trim() ? error.message.trim() : '导出失败';
+    ElMessage.error(msg);
+  } finally {
+    exporting.value = false;
+  }
 };
 
 const updateSchedulePage = () => {

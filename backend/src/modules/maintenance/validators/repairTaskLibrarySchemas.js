@@ -1,4 +1,5 @@
 import { Joi } from '../../core/validators/validate.js';
+import { TASK_CATEGORY_OPTIONS } from '../../../utils/taskCategory.js';
 
 const intOrEmpty = Joi.alternatives().try(
   Joi.number().integer(),
@@ -16,7 +17,7 @@ export const getRepairTaskLibraryQuerySchema = Joi.object({
   sortOrder: Joi.string().valid('asc', 'desc', 'ASC', 'DESC').optional(),
 
   taskName: Joi.string().allow('').max(200).optional(),
-  taskCategory: Joi.string().allow('').max(200).optional(),
+  taskCategory: Joi.string().allow('').valid('', ...TASK_CATEGORY_OPTIONS).optional(),
   scoreMethod: Joi.string().allow('').max(50).optional(),
   quantityEditable: intOrEmpty.optional(),
   pointsEditable: intOrEmpty.optional(),
@@ -26,7 +27,7 @@ export const getRepairTaskLibraryQuerySchema = Joi.object({
 
 export const createRepairTaskLibraryBodySchema = Joi.object({
   taskName: Joi.string().allow('').max(200).optional(),
-  taskCategory: Joi.string().allow('').max(200).optional(),
+  taskCategory: Joi.string().allow('').valid('', ...TASK_CATEGORY_OPTIONS).optional(),
   scoreMethod: Joi.string().allow('').max(50).optional(),
   quantity: intOrEmpty.optional(),
   points: Joi.alternatives().try(Joi.number(), Joi.string().allow('')).optional(),
@@ -37,7 +38,7 @@ export const createRepairTaskLibraryBodySchema = Joi.object({
 
 export const updateRepairTaskLibraryBodySchema = Joi.object({
   taskName: Joi.string().allow('').max(200).optional(),
-  taskCategory: Joi.string().allow('').max(200).optional(),
+  taskCategory: Joi.string().allow('').valid('', ...TASK_CATEGORY_OPTIONS).optional(),
   scoreMethod: Joi.string().allow('').max(50).optional(),
   quantity: intOrEmpty.optional(),
   points: Joi.alternatives().try(Joi.number(), Joi.string().allow('')).optional(),
@@ -58,4 +59,3 @@ export default {
   updateRepairTaskLibraryBodySchema,
   batchDeleteRepairTaskLibraryBodySchema
 };
-

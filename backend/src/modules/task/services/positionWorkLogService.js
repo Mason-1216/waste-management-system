@@ -2,6 +2,7 @@
 import { PositionWorkLog, Schedule, PositionJob, User, Station, sequelize } from '../../../models/index.js';
 import { createError } from '../../../middlewares/error.js';
 import { getPagination, formatPaginationResponse, getOrderBy } from '../../../utils/helpers.js';
+import { normalizeTaskCategory } from '../../../utils/taskCategory.js';
 import dayjs from 'dayjs';
 import { validateBody, validateParams, validateQuery } from '../../core/validators/validate.js';
 import {
@@ -341,7 +342,7 @@ export const saveWorkLog = async (ctx) => {
       unit_points: resolvedUnitPoints,
       quantity: normalizedQuantity,
       quantity_editable: quantityEditable ? 1 : 0,
-      task_category: positionJob.task_category ?? null,
+      task_category: normalizeTaskCategory(positionJob.task_category),
       score_method: positionJob.score_method ?? null,
       standard_hours: standardHoursValue
     });
@@ -385,7 +386,7 @@ export const saveWorkLog = async (ctx) => {
     task_source: 'fixed',
     work_date: normalizedDate,
     work_name: workName,
-    task_category: positionJob.task_category ?? null,
+    task_category: normalizeTaskCategory(positionJob.task_category),
     score_method: positionJob.score_method ?? null,
     unit_points: positionJob.points,
     quantity: normalizedQuantity,
@@ -466,7 +467,7 @@ export const applyWorkLog = async (ctx) => {
     task_source: 'self_apply',
     work_date: normalizedDate,
     work_name: positionJob.job_name,
-    task_category: positionJob.task_category ?? null,
+    task_category: normalizeTaskCategory(positionJob.task_category),
     score_method: positionJob.score_method ?? null,
     unit_points: positionJob.points,
     quantity: normalizedQuantity,
@@ -552,7 +553,7 @@ export const dispatchWorkLog = async (ctx) => {
     task_source: 'dispatch',
     work_date: normalizedDate,
     work_name: positionJob.job_name,
-    task_category: positionJob.task_category ?? null,
+    task_category: normalizeTaskCategory(positionJob.task_category),
     score_method: positionJob.score_method ?? null,
     unit_points: positionJob.points,
     quantity: normalizedQuantity,

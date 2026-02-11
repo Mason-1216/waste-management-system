@@ -5,7 +5,7 @@ const resolveEnv = (key) => {
   return typeof value === 'string' ? value.trim() : '';
 };
 
-test('points summary fixed details expand', async ({ page }) => {
+test('points summary fixed points drilldown', async ({ page }) => {
   const username = resolveEnv('E2E_USERNAME');
   const password = resolveEnv('E2E_PASSWORD');
   const apiBaseUrl = resolveEnv('E2E_API_BASE_URL');
@@ -29,7 +29,7 @@ test('points summary fixed details expand', async ({ page }) => {
     localStorage.setItem('user-store', JSON.stringify(payload));
   }, { token, userInfo: user, currentStationId: user.lastStationId });
 
-  await page.goto('/points-summary');
+  await page.goto('/points-summary/summary/stats');
   await page.waitForLoadState('domcontentloaded');
   const currentUrl = page.url();
   if (!currentUrl.includes('/points-summary')) {
@@ -55,8 +55,9 @@ test('points summary fixed details expand', async ({ page }) => {
   }
 
   if (!clicked) {
-    test.skip(true, 'No fixed points data available for expansion.');
+    test.skip(true, 'No fixed points data available for drilldown.');
   }
 
-  await expect(page.getByTestId('fixed-details-table')).toBeVisible();
+  await expect(page.getByTestId('points-summary-row-drilldown')).toBeVisible();
+  await expect(page.getByTestId('points-summary-row-drilldown-table')).toBeVisible();
 });

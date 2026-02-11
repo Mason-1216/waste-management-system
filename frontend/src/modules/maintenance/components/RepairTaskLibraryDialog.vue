@@ -9,15 +9,16 @@
     <div class="filter-bar">
       <div class="filter-item">
         <span class="filter-label">任务类别</span>
-        <el-input
+        <el-select
           v-model="filters.taskCategory"
           placeholder="全部"
           clearable
           style="width: 160px"
-          @input="handleSearch"
+          @change="handleSearch"
           @clear="handleSearch"
-          @keyup.enter="handleSearch"
-        />
+        >
+          <el-option v-for="option in taskCategoryOptions" :key="option.value" :label="option.label" :value="option.value" />
+        </el-select>
       </div>
       <div class="filter-item">
         <span class="filter-label">任务名称</span>
@@ -71,14 +72,14 @@
           </span>
         </template>
       </el-table-column>
-      <el-table-column prop="quantity_editable" label="数量是否可修改" width="140">
+      <el-table-column prop="quantity_editable" label="填报时数量是否可修改" width="160">
         <template #default="{ row }">
           <el-tag :type="Number(row.quantity_editable) === 1 ? 'success' : 'info'">
             {{ Number(row.quantity_editable) === 1 ? '是' : '否' }}
           </el-tag>
         </template>
       </el-table-column>
-      <el-table-column prop="points_editable" label="积分是否可修改" width="140">
+      <el-table-column prop="points_editable" label="填报时积分是否可修改" width="160">
         <template #default="{ row }">
           <el-tag :type="Number(row.points_editable) === 1 ? 'success' : 'info'">
             {{ Number(row.points_editable) === 1 ? '是' : '否' }}
@@ -115,6 +116,9 @@
 import { computed, nextTick, reactive, ref, watch } from 'vue';
 import { ElMessage } from 'element-plus';
 import * as repairTaskLibraryApi from '@/api/repairTaskLibrary';
+
+const TASK_CATEGORY_OPTIONS = ['Ⅰ类', 'Ⅱ类', 'Ⅲ类', 'Ⅳ类'];
+const taskCategoryOptions = TASK_CATEGORY_OPTIONS.map(v => ({ label: v, value: v }));
 
 const props = defineProps({
   visible: { type: Boolean, default: false },

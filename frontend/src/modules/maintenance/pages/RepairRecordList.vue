@@ -2,10 +2,16 @@
   <div class="repair-list-page">
     <div class="page-header">
       <h2>设备维修记录单</h2>
-      <el-button type="primary" @click="createNew">
-        <el-icon><Plus /></el-icon>
-        新建维修记录
-      </el-button>
+      <div class="header-actions">
+        <el-button type="primary" :loading="exporting" @click="handleExport">
+          <el-icon><Upload /></el-icon>
+          批量导出
+        </el-button>
+        <el-button type="primary" @click="createNew">
+          <el-icon><Plus /></el-icon>
+          新建维修记录
+        </el-button>
+      </div>
     </div>
 
     <!-- 筛选条件 -->
@@ -98,21 +104,26 @@
 
 <script setup>
 import { ref, computed, onMounted } from 'vue';
-import { useRouter } from 'vue-router';
+import { useRouter, useRoute } from 'vue-router';
 import dayjs from 'dayjs';
+import { Upload } from '@element-plus/icons-vue';
+import { ElMessage } from 'element-plus';
 
 import FilterBar from '@/components/common/FilterBar.vue';
 import { useUserStore } from '@/store/modules/user';
 import { getRepairRecords } from '@/api/repair';
 import { createListSuggestionFetcher } from '@/utils/filterAutocomplete';
+import { buildExportFileName, exportRowsToXlsx, fetchAllPaged } from '@/utils/tableExport';
 
 const router = useRouter();
+const route = useRoute();
 const userStore = useUserStore();
 
 const loading = ref(false);
 const list = ref([]);
 const listSuggestion = ref([]);
 const quickFilter = ref('all');
+const exporting = ref(false);
 
 const fetchEquipmentNameSuggestions = createListSuggestionFetcher(
   () => listSuggestion.value,
@@ -131,6 +142,13 @@ const pagination = ref({
 });
 
 const isStationManager = computed(() => userStore.hasRole('station_manager'));
+
+const resolvePageTitle = () => {
+  if (typeof route?.meta?.title === 'string' && route.meta.title.trim()) {
+    return route.meta.title.trim();
+  }
+  return '设备维修记录单';
+};
 
 const getStatusType = (status) => {
   const types = {
@@ -172,27 +190,52 @@ const canVerify = (row) => {
   return row.status === 'repaired_submitted' && isStationManager.value;
 };
 
+const resolveTextValue = (value) => (typeof value === 'string' ? value.trim() : '');
+
+const buildListParams = ({ page, pageSize }) => {
+  const params = {
+    page,
+    pageSize
+  };
+
+  if (filters.value.status !== 'all') {
+    params.status = filters.value.status;
+  }
+
+  const equipmentName = resolveTextValue(filters.value.equipmentName);
+  if (equipmentName) {
+    params.equipmentName = equipmentName;
+  }
+
+  // 根据快捷筛选添加条件
+  if (quickFilter.value === 'my_report') {
+    params.reporterId = userStore.userId;
+  } else if (quickFilter.value === 'my_repair') {
+    params.repairPersonId = userStore.userId;
+  } else if (quickFilter.value === 'pending_dispatch') {
+    params.status = 'submitted_report';
+  } else if (quickFilter.value === 'pending_verify') {
+    params.status = 'repaired_submitted';
+  }
+
+  return params;
+};
+
+const resolveExportColumns = () => ([
+  { label: '维修单号', prop: 'record_code' },
+  { label: '设备名称', prop: 'equipment_name' },
+  { label: '场站', value: (row) => row?.station?.station_name ?? '-' },
+  { label: '故障日期', prop: 'fault_date' },
+  { label: '上报人', prop: 'reporter_name' },
+  { label: '维修人员', prop: 'repair_person_name' },
+  { label: '状态', value: (row) => getStatusLabel(row?.status) },
+  { label: '创建时间', value: (row) => formatDateTime(row?.created_at) }
+]);
+
 const loadList = async () => {
   loading.value = true;
   try {
-    const params = {
-      page: pagination.value.page,
-      pageSize: pagination.value.pageSize,
-      status: filters.value.status === 'all' ? undefined : filters.value.status,
-      equipmentName: filters.value.equipmentName?.trim() || undefined
-    };
-
-    // 根据快捷筛选添加条件
-    if (quickFilter.value === 'my_report') {
-      params.reporterId = userStore.userId;
-    } else if (quickFilter.value === 'my_repair') {
-      params.repairPersonId = userStore.userId;
-    } else if (quickFilter.value === 'pending_dispatch') {
-      params.status = 'submitted_report';
-    } else if (quickFilter.value === 'pending_verify') {
-      params.status = 'repaired_submitted';
-    }
-
+    const params = buildListParams({ page: pagination.value.page, pageSize: pagination.value.pageSize });
     const res = await getRepairRecords(params);
     list.value = res.list || [];
     pagination.value.total = res.total || 0;
@@ -215,6 +258,52 @@ const loadListSuggestions = async (baseParams) => {
     listSuggestion.value = res.list || [];
   } catch (e) {
     listSuggestion.value = [];
+  }
+};
+
+const handleExport = async () => {
+  if (exporting.value) return;
+  exporting.value = true;
+  try {
+    const title = resolvePageTitle();
+    const fileName = buildExportFileName({ title });
+
+    const { rows } = await fetchAllPaged({
+      fetchPage: ({ page, pageSize }) => getRepairRecords(buildListParams({ page, pageSize })),
+      pageSize: 5000
+    });
+
+    const allRows = Array.isArray(rows) ? rows : [];
+    if (allRows.length === 0) {
+      const fallback = Array.isArray(list.value) ? list.value : [];
+      if (fallback.length === 0) {
+        ElMessage.warning('没有可导出的数据');
+        return;
+      }
+      await exportRowsToXlsx({
+        title,
+        fileName,
+        sheetName: '维修记录',
+        columns: resolveExportColumns(),
+        rows: fallback
+      });
+      ElMessage.success('导出成功');
+      return;
+    }
+
+    await exportRowsToXlsx({
+      title,
+      fileName,
+      sheetName: '维修记录',
+      columns: resolveExportColumns(),
+      rows: allRows
+    });
+    ElMessage.success('导出成功');
+  } catch (error) {
+    const msg = typeof error?.message === 'string' && error.message.trim() ? error.message.trim() : '导出失败';
+    ElMessage.error(msg);
+  } finally {
+    exporting.value = false;
   }
 };
 

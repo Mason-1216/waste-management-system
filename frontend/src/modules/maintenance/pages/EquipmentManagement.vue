@@ -3,6 +3,10 @@
     <div class="page-header">
       <h3>设备管理</h3>
       <div class="header-actions">
+        <el-button type="primary" :loading="exporting" @click="handleExport">
+          <el-icon><Upload /></el-icon>
+          批量导出
+        </el-button>
         <el-button type="primary" @click="addEquipment">
           <el-icon><Plus /></el-icon>
           新增设备
@@ -245,6 +249,7 @@
 import { ref, reactive, computed, onMounted, watch } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { Upload, Download, Plus } from '@element-plus/icons-vue';
+import { useRoute } from 'vue-router';
 
 import { createListSuggestionFetcher } from '@/utils/filterAutocomplete';
 import {
@@ -258,8 +263,10 @@ import { getAllStations } from '@/api/station';
 import { useUserStore } from '@/store/modules/user';
 import { useUpload } from '@/composables/useUpload';
 import FormDialog from '@/components/system/FormDialog.vue';
+import { buildExportFileName, exportRowsToXlsx } from '@/utils/tableExport';
 
 const userStore = useUserStore();
+const route = useRoute();
 
 const { apiBaseUrl, uploadHeaders } = useUpload();
 
@@ -269,9 +276,17 @@ const { apiBaseUrl, uploadHeaders } = useUpload();
 
 // 响应式数据
 const loading = ref(false);
+const exporting = ref(false);
 const equipmentList = ref([]);
 const equipmentTable = ref(null);
 const selectedEquipmentIds = ref([]);
+
+const resolvePageTitle = () => {
+  if (typeof route?.meta?.title === 'string' && route.meta.title.trim()) {
+    return route.meta.title.trim();
+  }
+  return '设备管理';
+};
 
 const fetchEquipmentCodeSuggestions = createListSuggestionFetcher(
   () => equipmentList.value,
@@ -339,6 +354,45 @@ const equipmentPageList = computed(() => {
   const end = start + pagination.pageSize;
   return rows.slice(start, end);
 });
+
+const resolveExportColumns = () => ([
+  { label: '场站', value: (row) => row?.station?.station_name ?? '-' },
+  { label: '安装地点', value: (row) => row?.installation_location ?? '-' },
+  { label: '设备编号', prop: 'equipment_code' },
+  { label: '设备名称', prop: 'equipment_name' },
+  { label: '规格', value: (row) => row?.specification ?? '-' },
+  { label: '型号', value: (row) => row?.model ?? '-' },
+  { label: '材质', value: (row) => row?.material ?? '-' }
+]);
+
+const handleExport = async () => {
+  if (exporting.value) return;
+  exporting.value = true;
+  try {
+    const title = resolvePageTitle();
+    const fileName = buildExportFileName({ title });
+    const rows = Array.isArray(equipmentList.value) ? equipmentList.value : [];
+
+    if (rows.length === 0) {
+      ElMessage.warning('没有可导出的数据');
+      return;
+    }
+
+    await exportRowsToXlsx({
+      title,
+      fileName,
+      sheetName: '设备管理',
+      columns: resolveExportColumns(),
+      rows
+    });
+    ElMessage.success('导出成功');
+  } catch (error) {
+    const msg = typeof error?.message === 'string' && error.message.trim() ? error.message.trim() : '导出失败';
+    ElMessage.error(msg);
+  } finally {
+    exporting.value = false;
+  }
+};
 
 // 表单验证规则
 const equipmentRules = {

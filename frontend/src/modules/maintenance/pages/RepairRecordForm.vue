@@ -3,6 +3,9 @@
     <div class="page-header">
       <h2>设备维修记录单</h2>
       <div class="header-actions">
+        <el-button type="primary" :loading="exporting" @click="handleExport">
+          批量导出
+        </el-button>
         <el-button @click="goBack">返回列表</el-button>
       </div>
     </div>
@@ -413,6 +416,7 @@ import dayjs from 'dayjs';
 import FilterBar from '@/components/common/FilterBar.vue';
 import { useUserStore } from '@/store/modules/user';
 import request from '@/api/request';
+import { buildExportFileName, exportSheetsToXlsx } from '@/utils/tableExport';
 import {
   getRepairRecordById,
   createRepairRecord,
@@ -430,6 +434,7 @@ const router = useRouter();
 const userStore = useUserStore();
 
 const saving = ref(false);
+const exporting = ref(false);
 const stations = ref([]);
 const maintenanceUsers = ref([]);
 const isActiveStatus = (status) => status === undefined || status === null || status === '' || status === 'active' || status === 1 || status === '1' || status === true;
@@ -444,6 +449,13 @@ const formStationOptions = computed(() => {
   }
   return activeStationList.value;
 });
+
+const resolvePageTitle = () => {
+  if (typeof route?.meta?.title === 'string' && route.meta.title.trim()) {
+    return route.meta.title.trim();
+  }
+  return '设备维修记录单';
+};
 
 const form = ref({
   id: null,
@@ -716,6 +728,58 @@ const handlePartsPageChange = (page) => {
 const handlePartsPageSizeChange = (size) => {
   partsPagination.value.pageSize = size;
   partsPagination.value.page = 1;
+};
+
+const resolveConsumablesExportColumns = () => ([
+  { label: '耗材名称', prop: 'name' },
+  { label: '规格型号', prop: 'model' },
+  { label: '单位', prop: 'unit' },
+  { label: '数量', value: (row) => row?.quantity ?? 0 },
+  { label: '单价', value: (row) => row?.unitPrice ?? 0 },
+  { label: '金额', value: (row) => ((row?.quantity ?? 0) * (row?.unitPrice ?? 0)) }
+]);
+
+const resolvePartsExportColumns = () => ([
+  { label: '配件名称', prop: 'name' },
+  { label: '规格型号', prop: 'model' },
+  { label: '单位', prop: 'unit' },
+  { label: '数量', value: (row) => row?.quantity ?? 0 },
+  { label: '单价', value: (row) => row?.unitPrice ?? 0 },
+  { label: '金额', value: (row) => ((row?.quantity ?? 0) * (row?.unitPrice ?? 0)) },
+  { label: '更换原因', value: (row) => row?.reason ?? '' }
+]);
+
+const handleExport = async () => {
+  if (exporting.value) return;
+  exporting.value = true;
+  try {
+    const title = resolvePageTitle();
+    const fileName = buildExportFileName({ title });
+
+    const consumables = Array.isArray(form.value.consumablesList) ? form.value.consumablesList : [];
+    const parts = Array.isArray(form.value.partsList) ? form.value.partsList : [];
+
+    if (consumables.length === 0 && parts.length === 0) {
+      ElMessage.warning('没有可导出的数据');
+      return;
+    }
+
+    const sheets = [];
+    if (consumables.length > 0) {
+      sheets.push({ name: '维修耗材明细', columns: resolveConsumablesExportColumns(), rows: consumables });
+    }
+    if (parts.length > 0) {
+      sheets.push({ name: '更换配件明细', columns: resolvePartsExportColumns(), rows: parts });
+    }
+
+    await exportSheetsToXlsx({ title, fileName, sheets });
+    ElMessage.success('导出成功');
+  } catch (error) {
+    const msg = typeof error?.message === 'string' && error.message.trim() ? error.message.trim() : '导出失败';
+    ElMessage.error(msg);
+  } finally {
+    exporting.value = false;
+  }
 };
 
 const saveDraft = async () => {

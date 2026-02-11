@@ -1,4 +1,5 @@
 import { Joi } from '../../core/validators/validate.js';
+import { TASK_CATEGORY_OPTIONS } from '../../../utils/taskCategory.js';
 
 const intOrEmpty = Joi.alternatives().try(
   Joi.number().integer(),
@@ -98,7 +99,7 @@ export const getWorkRecordsQuerySchema = Joi.object({
   positionName: Joi.string().allow('').max(200).optional(),
   userName: Joi.string().allow('').max(200).optional(),
   workName: Joi.string().allow('').max(200).optional(),
-  taskCategory: Joi.string().allow('').max(200).optional(),
+  taskCategory: Joi.string().allow('').valid('', ...TASK_CATEGORY_OPTIONS).optional(),
   scoreMethod: Joi.string().allow('').max(50).optional(),
   unitPoints: intOrEmpty.optional(),
   quantity: intOrEmpty.optional(),

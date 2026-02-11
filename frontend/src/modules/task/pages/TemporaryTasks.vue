@@ -2,6 +2,11 @@
   <div class="temporary-tasks-page">
     <div class="page-header">
       <h2>{{ pageTitle }}</h2>
+      <div class="header-actions">
+        <el-button type="primary" :loading="exporting" @click="handleExport">
+          <el-icon><Upload /></el-icon>批量导出
+        </el-button>
+      </div>
     </div>
 
     <el-card class="filter-card">
@@ -223,11 +228,13 @@
 import { computed, onMounted, ref, watch } from 'vue';
 import dayjs from 'dayjs';
 import { ElMessage } from 'element-plus';
+import { Upload } from '@element-plus/icons-vue';
 
 import { createListSuggestionFetcher } from '@/utils/filterAutocomplete';
 import request from '@/api/request';
 import FormDialog from '@/components/system/FormDialog.vue';
 import { useUserStore } from '@/store/modules/user';
+import { buildExportFileName, exportRowsToXlsx, fetchAllPaged } from '@/utils/tableExport';
 
 const props = defineProps({
   mode: { type: String, default: 'fill' }
@@ -238,6 +245,7 @@ const isFillMode = computed(() => props.mode !== 'history');
 const isHistoryMode = computed(() => props.mode === 'history');
 const pageTitle = computed(() => (isFillMode.value ? '临时任务填报' : '临时任务完成情况记录'));
 const effectiveRole = computed(() => userStore.baseRoleCode || userStore.roleCode);
+const exporting = ref(false);
 
 const loading = ref(false);
 const taskList = ref([]);
@@ -352,19 +360,88 @@ const buildSubmitPayloadForDispatch = (row) => ({
   taskSource: 'dispatch'
 });
 
+const resolveTextValue = (value) => (typeof value === 'string' ? value.trim() : '');
+
+const buildListParams = ({ page, pageSize }) => {
+  const params = {
+    page,
+    pageSize,
+    status: isFillMode.value ? 'unfinished' : 'history'
+  };
+
+  const taskName = resolveTextValue(filters.value.taskName);
+  if (taskName) params.taskName = taskName;
+
+  const assigneeName = resolveTextValue(filters.value.assigneeName);
+  if (assigneeName) params.assigneeName = assigneeName;
+
+  if (filters.value.startDate) params.startDate = filters.value.startDate;
+  if (filters.value.endDate) params.endDate = filters.value.endDate;
+
+  return params;
+};
+
+const resolveExportColumns = () => ([
+  { label: '用户名', prop: 'assigneeName' },
+  { label: '场站', prop: 'stationName' },
+  { label: '任务名称', prop: 'taskName' },
+  { label: '具体工作内容', prop: 'description' },
+  { label: '标准工时(h/d)', value: (row) => (row?.workHours ?? '-') },
+  { label: '单位积分', value: (row) => (row?.unitPoints ?? '-') },
+  { label: '数量', value: (row) => (row?.quantity ?? 1) },
+  { label: '任务来源', value: (row) => taskSourceLabel(row?.source) },
+  { label: '截止时间', value: (row) => formatTime(row?.deadline) },
+  { label: '完成情况', value: (row) => (Number(row?.isCompleted) === 1 ? '完成' : '未完成') },
+  { label: '备注', value: (row) => (row?.remark ?? '-') },
+  { label: '提交时间', value: (row) => formatTime(row?.submitTime) },
+  { label: '审核状态', value: (row) => statusText(row?.status) },
+  { label: '审核人', value: (row) => (row?.approverName ?? '-') },
+  { label: '审核时间', value: (row) => formatTime(row?.approveTime) },
+  { label: '扣分原因', value: (row) => (row?.deductionReason ?? '-') },
+  { label: '扣分值', value: (row) => (row?.deductionPoints ?? '-') }
+]);
+
+const handleExport = async () => {
+  if (exporting.value) return;
+  exporting.value = true;
+  try {
+    const title = pageTitle.value;
+    const fileName = buildExportFileName({ title });
+    const { rows } = await fetchAllPaged({
+      fetchPage: async ({ page, pageSize }) => {
+        const res = await request.get('/temporary-tasks', { params: buildListParams({ page, pageSize }) });
+        return res;
+      },
+      pageSize: 5000
+    });
+
+    const normalized = Array.isArray(rows) ? rows.map(normalizeTask) : [];
+    if (normalized.length === 0) {
+      ElMessage.warning('没有可导出的数据');
+      return;
+    }
+
+    await exportRowsToXlsx({
+      title,
+      fileName,
+      sheetName: '临时任务',
+      columns: resolveExportColumns(),
+      rows: normalized
+    });
+    ElMessage.success('导出成功');
+  } catch (error) {
+    const msg = typeof error?.message === 'string' && error.message.trim() ? error.message.trim() : '导出失败';
+    ElMessage.error(msg);
+  } finally {
+    exporting.value = false;
+  }
+};
+
 const loadTasks = async () => {
   loading.value = true;
   try {
-    const params = {
-      page: pagination.value.page,
-      pageSize: pagination.value.pageSize,
-      status: isFillMode.value ? 'unfinished' : 'history',
-      taskName: filters.value.taskName || undefined,
-      assigneeName: filters.value.assigneeName || undefined,
-      startDate: filters.value.startDate || undefined,
-      endDate: filters.value.endDate || undefined
-    };
-    const res = await request.get('/temporary-tasks', { params });
+    const params = buildListParams({ page: pagination.value.page, pageSize: pagination.value.pageSize });
+    const res = await request.get('/temporary-tasks', { params: { ...params } });
     taskList.value = (res.list || []).map(normalizeTask);
     pagination.value.total = res.total || 0;
     loadTaskSuggestions(params);

@@ -3,6 +3,9 @@
     <div class="page-header">
       <h2>历史数据</h2>
       <div class="header-actions">
+        <el-button type="primary" :loading="exporting" @click="handleExport">
+          <el-icon><Upload /></el-icon>批量导出
+        </el-button>
         <el-button type="info" @click="handleDownloadTemplate">
           <el-icon><Download /></el-icon>下载模板
         </el-button>
@@ -193,12 +196,15 @@
 <script setup>
 import { ref, reactive, onMounted, computed } from 'vue';
 import { ElMessage } from 'element-plus';
-import { UploadFilled } from '@element-plus/icons-vue';
+import { UploadFilled, Upload } from '@element-plus/icons-vue';
+import { useRoute } from 'vue-router';
 import dayjs from 'dayjs';
 import { getHistoryData, getCategories, getHistorySummary, downloadHistoryTemplate, importHistoryData } from '@/api/plcMonitor';
 import request from '@/utils/request';
+import { buildExportFileName, exportSheetsToXlsx, fetchAllPaged } from '@/utils/tableExport';
 
 const loading = ref(false);
+const exporting = ref(false);
 const historyTable = ref([]);
 const summaryData = ref([]);
 const stations = ref([]);
@@ -231,6 +237,8 @@ const filterForm = reactive({
   startDate: dayjs().subtract(5, 'day').format('YYYY-MM-DD'),
   endDate: today
 });
+
+const route = useRoute();
 
 const valueTypeLabel = (val) => {
   if (val === 'fluctuating') return '变化型';
@@ -298,6 +306,105 @@ const buildParams = () => {
   if (filterForm.startDate) params.startDate = filterForm.startDate;
   if (filterForm.endDate) params.endDate = filterForm.endDate;
   return params;
+};
+
+const resolvePageTitle = () => {
+  if (typeof route?.meta?.title === 'string' && route.meta.title.trim()) {
+    return route.meta.title.trim();
+  }
+  return '历史数据';
+};
+
+const buildHistoryParamsForPage = ({ page, pageSize }) => {
+  const params = buildParams();
+  params.page = page;
+  params.pageSize = pageSize;
+  return params;
+};
+
+const buildSummaryParamsForPage = ({ page, pageSize }) => ({
+  stationId: filterForm.stationId === 'all' ? undefined : filterForm.stationId,
+  categoryId: filterForm.categoryId === 'all' ? undefined : filterForm.categoryId,
+  startDate: filterForm.startDate,
+  endDate: filterForm.endDate,
+  timeType: summaryGroup.value === 'all' ? undefined : summaryGroup.value,
+  page,
+  pageSize
+});
+
+const resolveSummaryExportColumns = () => ([
+  { label: '场站', prop: 'stationName' },
+  { label: '分类', prop: 'categoryName' },
+  { label: '类型', value: (row) => valueTypeLabel(row?.valueType) },
+  { label: '时间', prop: 'time' },
+  { label: '净增值', value: (row) => (row?.valueType === 'cumulative' ? formatNumber(row?.netIncrease) : '-') },
+  { label: '平均值', value: (row) => ((row?.valueType === 'fluctuating' || row?.valueType === 'event') ? formatNumber(row?.avgValue) : '-') },
+  { label: '样本数', prop: 'sampleCount' }
+]);
+
+const resolveHistoryExportColumns = () => ([
+  { label: '监控点名称', value: (row) => row?.config?.name ?? '-' },
+  { label: '场站', value: (row) => row?.station?.station_name ?? '-' },
+  { label: '分类', value: (row) => row?.category?.category_name ?? '-' },
+  { label: '地址', prop: 'address' },
+  { label: '数值', value: (row) => formatNumber(row?.value) },
+  { label: '时间', value: (row) => formatDateTime(row?.timestamp) }
+]);
+
+const handleExport = async () => {
+  if (exporting.value) return;
+  exporting.value = true;
+  try {
+    const title = resolvePageTitle();
+    const fileName = buildExportFileName({ title });
+
+    const [summaryRes, historyRes] = await Promise.all([
+      fetchAllPaged({
+        fetchPage: async ({ page, pageSize }) => {
+          const res = await getHistorySummary(buildSummaryParamsForPage({ page, pageSize }));
+          const payload = res?.data || res || {};
+          const list = Array.isArray(payload.summary) ? payload.summary : [];
+          const total = Number.isFinite(Number(payload.total)) ? Number(payload.total) : list.length;
+          return { list, total };
+        },
+        pageSize: 5000
+      }),
+      fetchAllPaged({
+        fetchPage: async ({ page, pageSize }) => {
+          const res = await getHistoryData(buildHistoryParamsForPage({ page, pageSize }));
+          const payload = res?.data || res || {};
+          const list = Array.isArray(payload.list) ? payload.list : [];
+          const total = Number.isFinite(Number(payload.total)) ? Number(payload.total) : list.length;
+          return { list, total };
+        },
+        pageSize: 5000
+      })
+    ]);
+
+    const summaryRows = Array.isArray(summaryRes?.rows) ? summaryRes.rows : [];
+    const historyRows = Array.isArray(historyRes?.rows) ? historyRes.rows : [];
+
+    if (summaryRows.length === 0 && historyRows.length === 0) {
+      ElMessage.warning('没有可导出的数据');
+      return;
+    }
+
+    const sheets = [];
+    if (summaryRows.length > 0) {
+      sheets.push({ name: '场站分类汇总', columns: resolveSummaryExportColumns(), rows: summaryRows });
+    }
+    if (historyRows.length > 0) {
+      sheets.push({ name: '历史数据', columns: resolveHistoryExportColumns(), rows: historyRows });
+    }
+
+    await exportSheetsToXlsx({ title, fileName, sheets });
+    ElMessage.success('导出成功');
+  } catch (error) {
+    const msg = typeof error?.message === 'string' && error.message.trim() ? error.message.trim() : '导出失败';
+    ElMessage.error(msg);
+  } finally {
+    exporting.value = false;
+  }
 };
 
 const fetchSummary = async () => {

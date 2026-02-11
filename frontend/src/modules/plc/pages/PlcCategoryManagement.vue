@@ -3,6 +3,9 @@
     <div class="page-header">
       <h2>分类管理</h2>
       <div class="header-actions">
+        <el-button type="primary" :loading="exporting" @click="handleExport">
+          <el-icon><Upload /></el-icon>批量导出
+        </el-button>
         <el-button type="primary" @click="handleAdd">新增分类</el-button>
       </div>
     </div>
@@ -206,13 +209,17 @@
 <script setup>
 import { ref, reactive, onMounted, computed, watch } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
+import { useRoute } from 'vue-router';
+import { Upload } from '@element-plus/icons-vue';
 
 import FilterBar from '@/components/common/FilterBar.vue';
 import FilterSelect from '@/components/common/FilterSelect.vue';
 import TableWrapper from '@/components/common/TableWrapper.vue';
 import { getCategories, createCategory, updateCategory, deleteCategory } from '@/api/plcMonitor';
+import { buildExportFileName, exportRowsToXlsx } from '@/utils/tableExport';
 
 const loading = ref(false);
+const exporting = ref(false);
 const submitting = ref(false);
 const dialogVisible = ref(false);
 const isEdit = ref(false);
@@ -238,6 +245,15 @@ const filters = reactive({
   valueType: 'all',
   scheduleType: 'all'
 });
+
+const route = useRoute();
+
+const resolvePageTitle = () => {
+  if (typeof route?.meta?.title === 'string' && route.meta.title.trim()) {
+    return route.meta.title.trim();
+  }
+  return '分类管理';
+};
 
 const handleFilterChange = () => {
   pagination.value.page = 1;
@@ -306,6 +322,55 @@ const filteredTableData = computed(() => {
     return true;
   });
 });
+
+const resolveExportColumns = () => ([
+  { label: '分类标识', prop: 'category_key' },
+  { label: '分类名称', prop: 'category_name' },
+  { label: '数据类型', prop: 'data_type' },
+  { label: '取值类型', value: (row) => valueTypeLabel(row?.value_type) },
+  { label: '采集方式', value: (row) => scheduleLabel(row?.schedule_type) },
+  {
+    label: '采集间隔',
+    value: (row) => {
+      if (row?.schedule_type !== 'interval') return '-';
+      const hours = row?.interval_hours ?? 0;
+      const minutes = row?.interval_minutes ?? 0;
+      return `${hours}小时${minutes}分钟`;
+    }
+  },
+  { label: '固定时间', value: (row) => (row?.schedule_type === 'fixed' ? (row?.fixed_time ?? '-') : '-') },
+  { label: '状态', value: (row) => (row?.is_enabled ? '启用' : '禁用') },
+  { label: '排序', prop: 'sort_order' }
+]);
+
+const handleExport = async () => {
+  if (exporting.value) return;
+  exporting.value = true;
+  try {
+    const title = resolvePageTitle();
+    const fileName = buildExportFileName({ title });
+    const rows = Array.isArray(filteredTableData.value) ? filteredTableData.value : [];
+
+    if (rows.length === 0) {
+      ElMessage.warning('没有可导出的数据');
+      return;
+    }
+
+    await exportRowsToXlsx({
+      title,
+      fileName,
+      sheetName: '分类管理',
+      columns: resolveExportColumns(),
+      rows
+    });
+    ElMessage.success('导出成功');
+  } catch (error) {
+    const msg = typeof error?.message === 'string' && error.message.trim() ? error.message.trim() : '导出失败';
+    ElMessage.error(msg);
+  } finally {
+    exporting.value = false;
+  }
+};
 
 const tableRows = computed(() => {
   const list = filteredTableData.value;

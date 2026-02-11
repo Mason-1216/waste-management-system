@@ -6,7 +6,12 @@
 
     <!-- 管理员查看反馈记录 -->
     <div class="section" v-if="userStore.hasRole('admin')">
-      <h3>用户反馈记录</h3>
+      <div style="display: flex; justify-content: space-between; align-items: center;">
+        <h3>用户反馈记录</h3>
+        <el-button type="primary" :loading="exportingFeedback" @click="handleExportFeedback">
+          <el-icon><Upload /></el-icon>批量导出
+        </el-button>
+      </div>
       <el-card class="filter-card">
         <FilterBar>
           <div class="filter-item">
@@ -178,7 +183,8 @@
 <script setup>
 import { ref, onMounted, computed, watch } from 'vue';
 import { ElMessage } from 'element-plus';
-import { Plus } from '@element-plus/icons-vue';
+import { Plus, Upload } from '@element-plus/icons-vue';
+import { useRoute } from 'vue-router';
 
 import FilterBar from '@/components/common/FilterBar.vue';
 import request from '@/api/request';
@@ -186,11 +192,13 @@ import { createListSuggestionFetcher } from '@/utils/filterAutocomplete';
 import { markAsRead } from '@/api/notification';
 import { useUserStore } from '@/store/modules/user';
 import { useUpload } from '@/composables/useUpload';
+import { buildExportFileName, exportRowsToXlsx } from '@/utils/tableExport';
 
 const activeFaq = ref(['1']);
 const feedbackFormRef = ref(null);
 const submitting = ref(false);
 const userStore = useUserStore();
+const route = useRoute();
 
 const { uploadUrl, uploadHeaders, resolveUploadUrl } = useUpload();
 const imageList = ref([]);
@@ -198,6 +206,7 @@ const imageList = ref([]);
 // 管理员查看反馈列表
 const feedbackList = ref([]);
 const loadingFeedback = ref(false);
+const exportingFeedback = ref(false);
 const pagination = ref({ page: 1, pageSize: 5, total: 0 });
 
 const feedbackFilters = ref({
@@ -212,6 +221,28 @@ const normalizeText = (value) => {
 };
 
 const normalizeTextLower = (value) => normalizeText(value).toLowerCase();
+
+const resolvePageTitle = () => {
+  if (typeof route?.meta?.title === 'string' && route.meta.title.trim()) {
+    return route.meta.title.trim();
+  }
+  return '帮助与反馈';
+};
+
+const resolveFeedbackCreatedAt = (row) => normalizeText(
+  row?.createdAt
+    ?? row?.created_at
+    ?? row?.createdTime
+    ?? row?.created_time
+);
+
+const resolveFeedbackTypeLabel = (typeValue) => {
+  const typeText = normalizeTextLower(typeValue);
+  if (typeText === 'suggestion') return '功能建议';
+  if (typeText === 'bug') return '问题反馈';
+  if (typeText) return '其他';
+  return '';
+};
 
 const resolveFeedbackUser = (row) => normalizeText(
   row?.userName
@@ -239,6 +270,14 @@ const resolveFeedbackContent = (row) => normalizeText(
     ?? row?.detail
     ?? row?.description
 );
+
+const resolveFeedbackExportColumns = () => ([
+  { label: '用户', value: (row) => resolveFeedbackUser(row) },
+  { label: '类型', value: (row) => resolveFeedbackTypeLabel(resolveFeedbackType(row)) },
+  { label: '反馈内容', value: (row) => resolveFeedbackContent(row) },
+  { label: '联系方式', value: (row) => normalizeText(row?.contact ?? row?.phone ?? row?.mobile ?? row?.email) },
+  { label: '提交时间', value: (row) => resolveFeedbackCreatedAt(row) }
+]);
 
 const filteredFeedbackList = computed(() => {
   const list = Array.isArray(feedbackList.value) ? feedbackList.value : [];
@@ -309,6 +348,35 @@ const updateFeedbackPagination = () => {
 const applyFeedbackFilters = () => {
   pagination.value.page = 1;
   updateFeedbackPagination();
+};
+
+const handleExportFeedback = async () => {
+  if (exportingFeedback.value) return;
+  exportingFeedback.value = true;
+  try {
+    const title = resolvePageTitle();
+    const fileName = buildExportFileName({ title });
+    const rows = Array.isArray(filteredFeedbackList.value) ? filteredFeedbackList.value : [];
+
+    if (rows.length === 0) {
+      ElMessage.warning('没有可导出的数据');
+      return;
+    }
+
+    await exportRowsToXlsx({
+      title,
+      fileName,
+      sheetName: '用户反馈',
+      columns: resolveFeedbackExportColumns(),
+      rows
+    });
+    ElMessage.success('导出成功');
+  } catch (error) {
+    const msg = typeof error?.message === 'string' && error.message.trim() ? error.message.trim() : '导出失败';
+    ElMessage.error(msg);
+  } finally {
+    exportingFeedback.value = false;
+  }
 };
 
 const handlePageChange = (page) => {

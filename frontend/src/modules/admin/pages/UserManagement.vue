@@ -20,6 +20,9 @@
         <el-button type="primary" @click="showAddDialog">
           <el-icon><Plus /></el-icon>新增用户
         </el-button>
+        <el-button type="primary" :loading="exporting" @click="exportUsers">
+          <el-icon><Upload /></el-icon>批量导出
+        </el-button>
       </div>
     </div>
 
@@ -207,17 +210,6 @@
         <el-form-item label="状态">
           <el-switch v-model="userForm.status" :active-value="1" :inactive-value="0" />
         </el-form-item>
-        <el-form-item label="菜单权限">
-          <el-tree
-            ref="menuTreeRef"
-            :data="menuPermissionTree"
-            node-key="id"
-            show-checkbox
-            default-expand-all
-            :props="{ label: 'name', children: 'children' }"
-            v-model:checked-keys="selectedMenuPermissionIds"
-          />
-        </el-form-item>
         <el-form-item label="模块权限">
           <ModulePermissionConfig
             :permissions="allPermissions"
@@ -283,8 +275,10 @@ import { ref, computed, onMounted, onActivated, nextTick } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import dayjs from 'dayjs';
 import * as XLSX from 'xlsx';
-
+import { useRoute } from 'vue-router';
+ 
 import { addTemplateInstructionSheet, applyTemplateHeaderStyle } from '@/utils/excelTemplate';
+import { buildExportFileName, exportRowsToXlsx, fetchAllPaged } from '@/utils/tableExport';
 import request from '@/api/request';
 import roleApi from '@/api/role';
 import permissionApi from '@/api/permission';
@@ -292,6 +286,7 @@ import ModulePermissionConfig from '@/modules/admin/components/ModulePermissionC
 import FormDialog from '@/components/system/FormDialog.vue';
 import { useUserStore } from '@/store/modules/user';
 
+const route = useRoute();
 const userStore = useUserStore();
 const DEV_TEST_USERNAME = 'sum';
 
@@ -312,21 +307,18 @@ const saving = ref(false);
 const loading = ref(false);
 const detailLoading = ref(false);
 const importing = ref(false);
+const exporting = ref(false);
 const importPreviewData = ref([]);
 const importErrors = ref([]);
 
-const roleList = ref([]);
-const allPermissions = ref([]);
-const allowPermissionIds = ref([]);
-const denyPermissionIds = ref([]);
-const menuPermissionTree = ref([]);
-const selectedMenuPermissionIds = ref([]);
-const selectedModulePermissionIds = ref([]);
-const baseMenuPermissionIds = ref([]);
-const baseModulePermissionIds = ref([]);
-const permissionCodeById = ref(new Map());
-const permissionIdByCode = ref(new Map());
-const menuTreeRef = ref(null);
+ const roleList = ref([]);
+ const allPermissions = ref([]);
+ const allowPermissionIds = ref([]);
+ const denyPermissionIds = ref([]);
+ const selectedModulePermissionIds = ref([]);
+ const baseModulePermissionIds = ref([]);
+ const permissionCodeById = ref(new Map());
+ const permissionIdByCode = ref(new Map());
 
 const toAutocompleteValues = (list) => {
   if (!Array.isArray(list)) {
@@ -420,36 +412,17 @@ const normalizeUser = (user) => {
   };
 };
 
-const buildTree = (items) => {
-  const map = new Map();
-  const roots = [];
-  items.forEach(item => {
-    map.set(item.id, { ...item, children: [] });
-  });
-  map.forEach(node => {
-    if (node.parentId && map.has(node.parentId)) {
-      map.get(node.parentId).children.push(node);
-    } else {
-      roots.push(node);
-    }
-  });
-  return roots;
-};
-
-const splitIdsByType = (ids = []) => {
-  const menus = [];
-  const modules = [];
-  ids.forEach(id => {
-    const code = permissionCodeById.value.get(id);
-    if (!code) return;
-    if (code.startsWith('menu:/')) {
-      menus.push(id);
-    } else if (code.startsWith('module:')) {
-      modules.push(id);
-    }
-  });
-  return { menus, modules };
-};
+ const splitIdsByType = (ids = []) => {
+   const modules = [];
+   ids.forEach(id => {
+     const code = permissionCodeById.value.get(id);
+     if (!code) return;
+     if (code.startsWith('module:')) {
+       modules.push(id);
+     }
+   });
+   return { modules };
+ };
 
 const expandModulesWithChildren = (ids = []) => {
   const idSet = new Set(ids || []);
@@ -540,6 +513,61 @@ const loadList = async () => {
   }
 };
 
+const normalizeOptionalTrim = (value) => {
+  const text = typeof value === 'string' ? value.trim() : '';
+  return text ? text : undefined;
+};
+
+const buildListParams = ({ page, pageSize }) => ({
+  page,
+  pageSize,
+  keyword: normalizeOptionalTrim(filters.value.keyword),
+  companyName: normalizeOptionalTrim(filters.value.companyName),
+  roleCode: filters.value.roleCode === 'all' ? undefined : (mapPositionToRoleCode(filters.value.roleCode) ?? undefined),
+  departmentName: filters.value.departmentName === 'all' ? undefined : filters.value.departmentName,
+  stationId: filters.value.stationId === 'all' ? undefined : filters.value.stationId,
+  status: filters.value.status === 'all' ? undefined : filters.value.status
+});
+
+const exportUsers = async () => {
+  if (!canEditUser.value) return;
+  exporting.value = true;
+  try {
+    const { rows } = await fetchAllPaged({
+      pageSize: 5000,
+      fetchPage: async ({ page, pageSize }) => {
+        const res = await request.get('/users', { params: buildListParams({ page, pageSize }) });
+        const list = Array.isArray(res?.list) ? res.list.map(normalizeUser) : [];
+        const filteredList = list.filter(item => item.username !== DEV_TEST_USERNAME);
+        return { list: filteredList, total: res?.total };
+      }
+    });
+
+    const columns = [
+      { label: '用户名', value: row => row.username ?? '' },
+      { label: '密码', value: () => '******' },
+      { label: '姓名', value: row => row.realName ?? row.real_name ?? '' },
+      { label: '部门', value: row => row.departmentName ?? row.department_name ?? '-' },
+      { label: '公司', value: row => row.companyName ?? row.company_name ?? '-' },
+      { label: '角色', value: row => getPositionLabel(row.roleCode) ?? '' },
+      { label: '手机号', value: row => row.phone ?? '' },
+      { label: '邮箱', value: row => row.email ?? '' },
+      { label: '所属场站', value: row => Array.isArray(row.scheduleStations) ? row.scheduleStations.map(s => s.stationName).join(', ') : '-' },
+      { label: '创建时间', value: row => formatDateTime(row.createdAt) },
+      { label: '状态', value: row => (row.status === 1 ? '启用' : '禁用') }
+    ];
+
+    const pageTitle = typeof route?.meta?.title === 'string' ? route.meta.title : '用户管理';
+    const fileName = buildExportFileName({ title: pageTitle });
+    await exportRowsToXlsx({ title: pageTitle, fileName, sheetName: pageTitle, columns, rows });
+  } catch (error) {
+    const message = typeof error?.message === 'string' && error.message.trim() ? error.message : '导出失败';
+    ElMessage.error(message);
+  } finally {
+    exporting.value = false;
+  }
+};
+
 const handleSearch = () => {
   pagination.value.page = 1;
   loadList();
@@ -612,11 +640,11 @@ const loadRoles = async () => {
   }
 };
 
-const loadPermissions = async () => {
-  try {
-    const res = await permissionApi.getPermissions();
-    const list = res.list || [];
-    allPermissions.value = list;
+ const loadPermissions = async () => {
+   try {
+     const res = await permissionApi.getPermissions();
+     const list = res.list || [];
+     allPermissions.value = list;
 
     const codeById = new Map();
     const idByCode = new Map();
@@ -624,24 +652,20 @@ const loadPermissions = async () => {
       codeById.set(item.id, item.code);
       idByCode.set(item.code, item.id);
     });
-    permissionCodeById.value = codeById;
-    permissionIdByCode.value = idByCode;
-
-    const menuList = list.filter(item => item.type === 'menu');
-    menuPermissionTree.value = buildTree(menuList);
-  } catch (e) {
-    allPermissions.value = [];
-    permissionCodeById.value = new Map();
-    permissionIdByCode.value = new Map();
-    menuPermissionTree.value = [];
-  }
-};
+     permissionCodeById.value = codeById;
+     permissionIdByCode.value = idByCode;
+   } catch (e) {
+     allPermissions.value = [];
+     permissionCodeById.value = new Map();
+     permissionIdByCode.value = new Map();
+   }
+ };
 
 const formatDateTime = (value) => (value ? dayjs(value).format('YYYY-MM-DD HH:mm') : '-');
 
-const showAddDialog = () => {
-  isEdit.value = false;
-  userForm.value = {
+ const showAddDialog = () => {
+   isEdit.value = false;
+   userForm.value = {
     username: '',
     realName: '',
     password: '',
@@ -653,33 +677,20 @@ const showAddDialog = () => {
     email: '',
     stationIds: [],
     status: 1
-  };
-  allowPermissionIds.value = [];
-  denyPermissionIds.value = [];
-  selectedMenuPermissionIds.value = [];
-  selectedModulePermissionIds.value = [];
-  baseMenuPermissionIds.value = [];
-  baseModulePermissionIds.value = [];
-  nextTick(() => {
-    if (menuTreeRef.value) {
-      menuTreeRef.value.setCheckedKeys([]);
-    }
-  });
-  dialogVisible.value = true;
-};
+   };
+   allowPermissionIds.value = [];
+   denyPermissionIds.value = [];
+   selectedModulePermissionIds.value = [];
+   baseModulePermissionIds.value = [];
+   dialogVisible.value = true;
+ };
 
-const applyBasePermissions = async (roleCode, overrides = {}) => {
-  if (!roleCode) {
-    baseMenuPermissionIds.value = [];
-    baseModulePermissionIds.value = [];
-    selectedMenuPermissionIds.value = [];
-    selectedModulePermissionIds.value = [];
-    await nextTick();
-    if (menuTreeRef.value) {
-      menuTreeRef.value.setCheckedKeys([]);
-    }
-    return;
-  }
+ const applyBasePermissions = async (roleCode, overrides = {}) => {
+   if (!roleCode) {
+     baseModulePermissionIds.value = [];
+     selectedModulePermissionIds.value = [];
+     return;
+   }
 
   if (!allPermissions.value.length) {
     await loadPermissions();
@@ -688,29 +699,19 @@ const applyBasePermissions = async (roleCode, overrides = {}) => {
   const role = roleList.value.find(r => r.roleCode === roleCode);
   if (!role) return;
 
-  try {
-    const res = await roleApi.getRolePermissions(role.id);
-    const permissionIds = res.permissionIds || [];
-    const { menus: baseMenus, modules: baseModules } = splitIdsByType(permissionIds);
-    baseMenuPermissionIds.value = baseMenus;
-    baseModulePermissionIds.value = expandModulesWithChildren(baseModules);
+   try {
+     const res = await roleApi.getRolePermissions(role.id);
+     const permissionIds = res.permissionIds || [];
+     const { modules: baseModules } = splitIdsByType(permissionIds);
+     baseModulePermissionIds.value = expandModulesWithChildren(baseModules);
 
-    const { allowIds = [], denyIds = [] } = overrides;
-    const { menus: allowMenus, modules: allowModules } = splitIdsByType(allowIds);
-    const { menus: denyMenus, modules: denyModules } = splitIdsByType(denyIds);
+     const { allowIds = [], denyIds = [] } = overrides;
+     const { modules: allowModules } = splitIdsByType(allowIds);
+     const { modules: denyModules } = splitIdsByType(denyIds);
 
-    const menuSet = new Set(baseMenus);
-    allowMenus.forEach(id => menuSet.add(id));
-    denyMenus.forEach(id => menuSet.delete(id));
-    selectedMenuPermissionIds.value = Array.from(menuSet);
-    await nextTick();
-    if (menuTreeRef.value) {
-      menuTreeRef.value.setCheckedKeys(selectedMenuPermissionIds.value);
-    }
-
-    const expandedBaseModules = new Set(baseModulePermissionIds.value);
-    const allowExpanded = new Set(expandModulesWithChildren(allowModules));
-    const denyExpanded = new Set(expandModulesWithChildren(denyModules));
+     const expandedBaseModules = new Set(baseModulePermissionIds.value);
+     const allowExpanded = new Set(expandModulesWithChildren(allowModules));
+     const denyExpanded = new Set(expandModulesWithChildren(denyModules));
 
     const moduleSet = new Set(expandedBaseModules);
     allowExpanded.forEach(id => moduleSet.add(id));
@@ -719,7 +720,7 @@ const applyBasePermissions = async (roleCode, overrides = {}) => {
   } catch (e) {
     
   }
-};
+ };
 
 const editUser = async (row) => {
   isEdit.value = true;
@@ -764,22 +765,18 @@ const handlePositionChange = async (value) => {
   await applyBasePermissions(userForm.value.roleCode);
 };
 
-const computePermissionDiff = () => {
-  const baseMenuSet = new Set(baseMenuPermissionIds.value || []);
-  const baseModuleSet = new Set(baseModulePermissionIds.value || []);
-  const selectedMenuSet = new Set(selectedMenuPermissionIds.value || []);
-  const selectedModuleSet = new Set(selectedModulePermissionIds.value || []);
+ const computePermissionDiff = () => {
+   const baseModuleSet = new Set(baseModulePermissionIds.value || []);
+   const selectedModuleSet = new Set(selectedModulePermissionIds.value || []);
 
-  const allowMenuIds = Array.from(selectedMenuSet).filter(id => !baseMenuSet.has(id));
-  const allowModuleIds = Array.from(selectedModuleSet).filter(id => !baseModuleSet.has(id));
-  const denyMenuIds = Array.from(baseMenuSet).filter(id => !selectedMenuSet.has(id));
-  const denyModuleIds = Array.from(baseModuleSet).filter(id => !selectedModuleSet.has(id));
+   const allowModuleIds = Array.from(selectedModuleSet).filter(id => !baseModuleSet.has(id));
+   const denyModuleIds = Array.from(baseModuleSet).filter(id => !selectedModuleSet.has(id));
 
-  return {
-    allowPermissionIds: [...allowMenuIds, ...allowModuleIds],
-    denyPermissionIds: [...denyMenuIds, ...denyModuleIds]
-  };
-};
+   return {
+     allowPermissionIds: [...allowModuleIds],
+     denyPermissionIds: [...denyModuleIds]
+   };
+ };
 
 const saveUser = async () => {
   if (!formRef.value) return;

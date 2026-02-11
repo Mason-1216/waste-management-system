@@ -76,18 +76,20 @@ export const getStationById = async (ctx) => {
  * POST /api/stations
  */
 export const createStation = async (ctx) => {
-  const { stationName, stationType, checkInTime, location } = ctx.request.body;
+  const { stationName, stationType, checkInTime, location, status } = ctx.request.body;
 
   if (!stationName) {
     throw createError(400, '场站名称不能为空');
   }
+
+  const resolvedStatus = status === 'inactive' ? 'inactive' : 'active';
 
   const station = await Station.create({
     station_name: stationName,
     station_type: stationType,
     check_in_time: checkInTime || '08:10:00',
     location,
-    status: 'active'
+    status: resolvedStatus
   });
 
   ctx.body = {

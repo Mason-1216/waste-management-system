@@ -3,6 +3,10 @@
     <div class="page-header">
       <h2>岗位工作任务汇总表</h2>
       <div class="header-actions">
+        <el-button type="primary" :loading="exporting" @click="handleExport">
+          <el-icon><Upload /></el-icon>
+          批量导出
+        </el-button>
         <el-button type="primary" @click="addPositionJob">
           <el-icon><Plus /></el-icon>
           新增工作项目
@@ -287,6 +291,7 @@
 import { ref, reactive, computed, onMounted } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { Upload, Download, Plus } from '@element-plus/icons-vue';
+import { useRoute } from 'vue-router';
 
 import FilterBar from '@/components/common/FilterBar.vue';
 import { addTemplateInstructionSheet, applyTemplateHeaderStyle } from '@/utils/excelTemplate';
@@ -294,8 +299,10 @@ import { positionJobApi } from '@/api/positionJob';
 import { useUserStore } from '@/store/modules/user';
 import FormDialog from '@/components/system/FormDialog.vue';
 import { createListSuggestionFetcher } from '@/utils/filterAutocomplete';
+import { buildExportFileName, exportRowsToXlsx, fetchAllPaged } from '@/utils/tableExport';
 
 const userStore = useUserStore();
+const route = useRoute();
 
 // API基础URL
 const apiBaseUrl = computed(() => import.meta.env.VITE_API_BASE_URL || '/api');
@@ -307,6 +314,7 @@ const uploadHeaders = computed(() => ({
 
 // 响应式数据
 const loading = ref(false);
+const exporting = ref(false);
 const tableData = ref([]);
 const suggestionList = ref([]);
 const stations = ref([]);
@@ -436,17 +444,86 @@ const positionJobRules = {
   ]
 };
 
+const resolvePageTitle = () => {
+  if (typeof route?.meta?.title === 'string' && route.meta.title.trim()) {
+    return route.meta.title.trim();
+  }
+  return '岗位工作任务汇总表';
+};
+
+const resolveTextValue = (value) => (typeof value === 'string' ? value.trim() : '');
+const hasValue = (value) => value !== undefined && value !== null && value !== '';
+
+const buildListParams = ({ page, pageSize }) => {
+  const params = { page, pageSize };
+
+  const positionName = resolveTextValue(searchForm.positionName);
+  if (positionName) params.positionName = positionName;
+
+  const jobName = resolveTextValue(searchForm.jobName);
+  if (jobName) params.jobName = jobName;
+
+  if (hasValue(searchForm.stationId)) params.stationId = searchForm.stationId;
+
+  return params;
+};
+
+const resolveExportColumns = () => ([
+  { label: '场站', prop: 'stationName' },
+  { label: '岗位名称', prop: 'positionName' },
+  { label: '工作项目', prop: 'jobName' },
+  { label: '标准工时', prop: 'standardHours' },
+  { label: '状态', prop: 'status' }
+]);
+
+const normalizeExportRow = (item) => {
+  const stationName = item?.station?.station_name ?? item?.station?.stationName ?? '通用';
+  const positionName = item?.position_name ?? '';
+  const jobName = item?.job_name ?? '';
+  const standardHours = item?.standard_hours ?? '';
+  const status = item?.is_active ? '启用' : '停用';
+
+  return { stationName, positionName, jobName, standardHours, status };
+};
+
+const handleExport = async () => {
+  if (exporting.value) return;
+  exporting.value = true;
+  try {
+    const title = resolvePageTitle();
+    const fileName = buildExportFileName({ title });
+    const { rows } = await fetchAllPaged({
+      fetchPage: ({ page, pageSize }) => positionJobApi.getPositionJobs(buildListParams({ page, pageSize })),
+      pageSize: 5000
+    });
+
+    const normalized = Array.isArray(rows) ? rows.map(normalizeExportRow) : [];
+    if (normalized.length === 0) {
+      ElMessage.warning('没有可导出的数据');
+      return;
+    }
+
+    await exportRowsToXlsx({
+      title,
+      fileName,
+      sheetName: '岗位工作项目',
+      columns: resolveExportColumns(),
+      rows: normalized
+    });
+    ElMessage.success('导出成功');
+  } catch (error) {
+    const msg = typeof error?.message === 'string' && error.message.trim() ? error.message.trim() : '导出失败';
+    ElMessage.error(msg);
+  } finally {
+    exporting.value = false;
+  }
+};
+
 // 获取数据列表
 const getList = async () => {
   loading.value = true;
   try {
-    const params = {
-      page: pagination.currentPage,
-      pageSize: pagination.pageSize,
-      positionName: searchForm.positionName || undefined,
-      jobName: searchForm.jobName || undefined,
-      stationId: searchForm.stationId || undefined
-    };
+    const params = buildListParams({ page: pagination.currentPage, pageSize: pagination.pageSize });
     
     const res = await positionJobApi.getPositionJobs(params);
     tableData.value = res.list || [];

@@ -2,9 +2,14 @@
   <div class="maintenance-record-page">
     <div class="page-header">
       <h2>设备保养记录</h2>
-      <el-button type="primary" @click="showAddDialog">
-        <el-icon><Plus /></el-icon>新增保养记录
-      </el-button>
+      <div class="header-actions">
+        <el-button type="primary" :loading="exporting" @click="handleExport">
+          <el-icon><Upload /></el-icon>批量导出
+        </el-button>
+        <el-button type="primary" @click="showAddDialog">
+          <el-icon><Plus /></el-icon>新增保养记录
+        </el-button>
+      </div>
     </div>
 
     <!-- 筛选 -->
@@ -203,8 +208,12 @@ import { ElMessage, ElMessageBox } from 'element-plus';
 import dayjs from 'dayjs';
 import request from '@/api/request';
 import FormDialog from '@/components/system/FormDialog.vue';
+import { useRoute } from 'vue-router';
+import { Upload } from '@element-plus/icons-vue';
+import { buildExportFileName, exportRowsToXlsx, fetchAllPaged } from '@/utils/tableExport';
 
 const userStore = useUserStore();
+const route = useRoute();
 
 const { uploadUrl, uploadHeaders, resolveUploadUrl } = useUpload();
 const formRef = ref(null);
@@ -215,6 +224,7 @@ const addDialogVisible = ref(false);
 const detailVisible = ref(false);
 const saving = ref(false);
 const photoList = ref([]);
+const exporting = ref(false);
 
 const today = dayjs().format('YYYY-MM-DD');
 const defaultFilters = {
@@ -290,16 +300,71 @@ const handleUploadError = () => {
   ElMessage.error('图片上传失败，请检查图片大小或网络');
 };
 
+const resolvePageTitle = () => {
+  if (typeof route?.meta?.title === 'string' && route.meta.title.trim()) {
+    return route.meta.title.trim();
+  }
+  return '设备保养记录';
+};
+
+const buildListParams = ({ page, pageSize }) => {
+  const params = {
+    page,
+    pageSize,
+    stationId: userStore.currentStationId
+  };
+  if (filters.value.status !== 'all') params.approvalStatus = filters.value.status;
+  if (filters.value.startDate) params.startDate = filters.value.startDate;
+  if (filters.value.endDate) params.endDate = filters.value.endDate;
+  return params;
+};
+
+const resolveExportColumns = () => ([
+  { label: '设备名称', prop: 'equipmentName' },
+  { label: '保养类型', value: (row) => getTypeLabel(row?.maintenanceType) },
+  { label: '保养日期', value: (row) => formatDate(row?.maintenanceDate) },
+  { label: '工时', value: (row) => (row?.workHours !== undefined && row?.workHours !== null ? `${row.workHours}h` : '-') },
+  { label: '审核状态', value: (row) => getStatusLabel(row?.approvalStatus) },
+  { label: '操作人', value: (row) => row?.operator?.realName ?? '-' },
+  { label: '保养内容', value: (row) => row?.description ?? '' }
+]);
+
+const handleExport = async () => {
+  if (exporting.value) return;
+  exporting.value = true;
+  try {
+    const title = resolvePageTitle();
+    const fileName = buildExportFileName({ title });
+    const { rows } = await fetchAllPaged({
+      fetchPage: ({ page, pageSize }) => request.get('/maintenance-records', { params: buildListParams({ page, pageSize }) }),
+      pageSize: 5000
+    });
+
+    const list = Array.isArray(rows) ? rows : [];
+    if (list.length === 0) {
+      ElMessage.warning('没有可导出的数据');
+      return;
+    }
+
+    await exportRowsToXlsx({
+      title,
+      fileName,
+      sheetName: '保养记录',
+      columns: resolveExportColumns(),
+      rows: list
+    });
+    ElMessage.success('导出成功');
+  } catch (error) {
+    const msg = typeof error?.message === 'string' && error.message.trim() ? error.message.trim() : '导出失败';
+    ElMessage.error(msg);
+  } finally {
+    exporting.value = false;
+  }
+};
+
 const loadList = async () => {
   try {
-      const params = {
-        page: pagination.value.page,
-        pageSize: pagination.value.pageSize,
-        stationId: userStore.currentStationId,
-        approvalStatus: filters.value.status === 'all' ? undefined : filters.value.status,
-        startDate: filters.value.startDate || undefined,
-        endDate: filters.value.endDate || undefined
-      };
+    const params = buildListParams({ page: pagination.value.page, pageSize: pagination.value.pageSize });
     const res = await request.get('/maintenance-records', { params });
     recordList.value = res.list || [];
     pagination.value.total = res.total || 0;

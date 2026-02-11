@@ -3,6 +3,9 @@
     <div class="page-header">
       <h2>岗位工作完成情况记录</h2>
       <div class="header-actions">
+        <el-button type="primary" :loading="exporting" @click="handleExport">
+          <el-icon><Upload /></el-icon>批量导出
+        </el-button>
         <el-button @click="loadRecords">刷新</el-button>
       </div>
     </div>
@@ -76,18 +79,16 @@
         </div>
         <div class="filter-item">
           <span class="filter-label">任务类别</span>
-          <FilterAutocomplete
+          <FilterSelect
             v-model="filters.taskCategory"
-            :fetch-suggestions="fetchTaskCategorySuggestions"
-            trigger-on-focus
             placeholder="全部"
             clearable
             style="width: 140px"
-            @select="loadRecords"
-            @input="loadRecords"
+            @change="loadRecords"
             @clear="loadRecords"
-            @keyup.enter="loadRecords"
-          />
+          >
+            <el-option v-for="option in taskCategoryOptions" :key="option.value" :label="option.label" :value="option.value" />
+          </FilterSelect>
         </div>
         <div class="filter-item">
           <span class="filter-label">给分方式</span>
@@ -326,6 +327,8 @@
 import { ref, reactive, computed, onMounted } from 'vue';
 import { ElMessage } from 'element-plus';
 import dayjs from 'dayjs';
+import { useRoute } from 'vue-router';
+import { Upload } from '@element-plus/icons-vue';
 
 import FilterBar from '@/components/common/FilterBar.vue';
 import { createListSuggestionFetcher } from '@/utils/filterAutocomplete';
@@ -333,8 +336,10 @@ import { getAllStations } from '@/api/station';
 import { useUserStore } from '@/store/modules/user';
 import * as positionWorkLogApi from '@/api/positionWorkLog';
 import FormDialog from '@/components/system/FormDialog.vue';
+import { buildExportFileName, exportRowsToXlsx, fetchAllPaged } from '@/utils/tableExport';
 
 const userStore = useUserStore();
+const route = useRoute();
 
 const managerRoles = ['station_manager', 'department_manager', 'deputy_manager', 'senior_management'];
 const canReviewRole = computed(() => userStore.hasRole(managerRoles));
@@ -346,6 +351,9 @@ const taskSourceOptions = [
 ];
 
 const scoreMethodOptions = ['奖扣结合式', '扣分项', '奖分项'];
+
+const TASK_CATEGORY_OPTIONS = ['Ⅰ类', 'Ⅱ类', 'Ⅲ类', 'Ⅳ类'];
+const taskCategoryOptions = TASK_CATEGORY_OPTIONS.map(v => ({ label: v, value: v }));
 
 const completionOptions = [
   { value: 1, label: '完成' },
@@ -386,6 +394,7 @@ const records = ref([]);
 const recordSuggestionList = ref([]);
 const loading = ref(false);
 const stations = ref([]);
+const exporting = ref(false);
 
 const fetchUserNameSuggestions = createListSuggestionFetcher(
   () => recordSuggestionList.value,
@@ -398,10 +407,6 @@ const fetchPositionNameSuggestions = createListSuggestionFetcher(
 const fetchWorkNameSuggestions = createListSuggestionFetcher(
   () => recordSuggestionList.value,
   (row) => row.work_name
-);
-const fetchTaskCategorySuggestions = createListSuggestionFetcher(
-  () => recordSuggestionList.value,
-  (row) => row.task_category
 );
 const fetchApproverNameSuggestions = createListSuggestionFetcher(
   () => recordSuggestionList.value,
@@ -462,11 +467,78 @@ const buildParams = () => {
   return params;
 };
 
+const buildParamsForPage = ({ page, pageSize }) => {
+  const params = buildParams();
+  params.page = page;
+  params.pageSize = pageSize;
+  return params;
+};
+
 const buildSuggestionParams = () => {
   const params = buildParams();
   params.page = 1;
   params.pageSize = 5000;
   return params;
+};
+
+const resolvePageTitle = () => {
+  if (typeof route?.meta?.title === 'string' && route.meta.title.trim()) {
+    return route.meta.title.trim();
+  }
+  return '岗位工作完成情况记录';
+};
+
+const resolveExportColumns = () => ([
+  { label: '用户名', prop: 'user_name' },
+  { label: '场站', prop: 'station_name' },
+  { label: '岗位', prop: 'position_name' },
+  { label: '任务名称', prop: 'work_name' },
+  { label: '结果定义', prop: 'result_definition' },
+  { label: '任务类别', prop: 'task_category' },
+  { label: '给分方式', prop: 'score_method' },
+  { label: '单位积分', prop: 'unit_points' },
+  { label: '数量', value: (row) => (row?.quantity ?? 1) },
+  { label: '计算积分', value: (row) => formatPoints(row?.unit_points, row?.quantity) },
+  { label: '任务来源', value: (row) => taskSourceLabel(row?.task_source) },
+  { label: '完成情况', value: (row) => (Number(row?.is_completed) === 1 ? '完成' : '未完成') },
+  { label: '提交时间', value: (row) => formatTime(row?.submit_time) },
+  { label: '审核状态', value: (row) => reviewStatusText(row) },
+  { label: '审核人', prop: 'approver_name' },
+  { label: '审核时间', value: (row) => formatTime(row?.approve_time) },
+  { label: '扣分原因', prop: 'deduction_reason' },
+  { label: '扣分值', prop: 'deduction_points' }
+]);
+
+const handleExport = async () => {
+  if (exporting.value) return;
+  exporting.value = true;
+  try {
+    const title = resolvePageTitle();
+    const fileName = buildExportFileName({ title });
+    const { rows } = await fetchAllPaged({
+      fetchPage: ({ page, pageSize }) => positionWorkLogApi.getWorkRecords(buildParamsForPage({ page, pageSize })),
+      pageSize: 5000
+    });
+
+    if (!Array.isArray(rows) || rows.length === 0) {
+      ElMessage.warning('没有可导出的数据');
+      return;
+    }
+
+    await exportRowsToXlsx({
+      title,
+      fileName,
+      sheetName: '岗位工作记录',
+      columns: resolveExportColumns(),
+      rows
+    });
+    ElMessage.success('导出成功');
+  } catch (error) {
+    const msg = typeof error?.message === 'string' && error.message.trim() ? error.message.trim() : '导出失败';
+    ElMessage.error(msg);
+  } finally {
+    exporting.value = false;
+  }
 };
 
 const resetFilters = () => {

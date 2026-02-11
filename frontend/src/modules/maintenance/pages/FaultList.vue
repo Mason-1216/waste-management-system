@@ -2,6 +2,11 @@
   <div class="fault-list-page">
     <div class="page-header">
       <h2>故障上报单</h2>
+      <div class="header-actions">
+        <el-button type="primary" :loading="exporting" @click="handleExport">
+          <el-icon><Upload /></el-icon>批量导出
+        </el-button>
+      </div>
     </div>
 
     <!-- 筛选条件 -->
@@ -220,15 +225,20 @@ import { ref, computed, onMounted } from 'vue';
 import { useUserStore } from '@/store/modules/user';
 import { ElMessage } from 'element-plus';
 import dayjs from 'dayjs';
+import { useRoute } from 'vue-router';
+import { Upload } from '@element-plus/icons-vue';
 
 import { createListSuggestionFetcher } from '@/utils/filterAutocomplete';
 import request from '@/api/request';
 import FormDialog from '@/components/system/FormDialog.vue';
+import { buildExportFileName, exportRowsToXlsx, fetchAllPaged } from '@/utils/tableExport';
 
 const userStore = useUserStore();
+const route = useRoute();
 
 const faultList = ref([]);
 const faultSuggestionList = ref([]);
+const exporting = ref(false);
 
 const fetchEquipmentNameSuggestions = createListSuggestionFetcher(
   () => faultSuggestionList.value,
@@ -266,6 +276,13 @@ const dispatchForm = ref({
 const canDispatch = computed(() => {
   return userStore.hasRole('station_manager');
 });
+
+const resolvePageTitle = () => {
+  if (typeof route?.meta?.title === 'string' && route.meta.title.trim()) {
+    return route.meta.title.trim();
+  }
+  return '故障上报单';
+};
 
 const getFaultTypeLabel = (type) => {
   const labels = {
@@ -334,18 +351,37 @@ const resolveDisplayStatus = (item) => {
 
 const formatDateTime = (date) => date ? dayjs(date).format('YYYY-MM-DD HH:mm') : '-';
 
+const buildListParams = ({ page, pageSize }) => {
+  const params = {
+    page,
+    pageSize,
+    stationId: userStore.currentStationId
+  };
+
+  if (filters.value.status !== 'all') params.status = filters.value.status;
+  if (filters.value.urgencyLevel !== 'all') params.urgencyLevel = filters.value.urgencyLevel;
+  if (filters.value.startDate) params.startDate = filters.value.startDate;
+  if (filters.value.endDate) params.endDate = filters.value.endDate;
+
+  const keyword = typeof filters.value.keyword === 'string' ? filters.value.keyword.trim() : '';
+  if (keyword) params.keyword = keyword;
+
+  return params;
+};
+
+const resolveExportColumns = () => ([
+  { label: '设备名称', prop: 'equipmentName' },
+  { label: '故障类型', value: (row) => getFaultTypeLabel(row?.faultType) },
+  { label: '紧急程度', value: (row) => getUrgencyLabel(row?.urgencyLevel) },
+  { label: '状态', value: (row) => getStatusLabel(row?.displayStatus) },
+  { label: '上报人', value: (row) => row?.reporter?.realName ?? '-' },
+  { label: '位置', value: (row) => row?.location ?? '-' },
+  { label: '上报时间', value: (row) => formatDateTime(row?.createdAt) }
+]);
+
 const loadList = async () => {
   try {
-    const params = {
-      page: pagination.value.page,
-      pageSize: pagination.value.pageSize,
-      stationId: userStore.currentStationId,
-      status: filters.value.status === 'all' ? undefined : filters.value.status,
-      urgencyLevel: filters.value.urgencyLevel === 'all' ? undefined : filters.value.urgencyLevel,
-      startDate: filters.value.startDate || undefined,
-      endDate: filters.value.endDate || undefined,
-      keyword: filters.value.keyword?.trim() || undefined
-    };
+    const params = buildListParams({ page: pagination.value.page, pageSize: pagination.value.pageSize });
     const res = await request.get('/fault-reports', { params });
     faultList.value = (res.list || []).map(item => ({
       ...item,
@@ -372,6 +408,45 @@ const loadFaultSuggestions = async (baseParams) => {
     }));
   } catch (e) {
     faultSuggestionList.value = [];
+  }
+};
+
+const handleExport = async () => {
+  if (exporting.value) return;
+  exporting.value = true;
+  try {
+    const title = resolvePageTitle();
+    const fileName = buildExportFileName({ title });
+    const { rows } = await fetchAllPaged({
+      fetchPage: async ({ page, pageSize }) => {
+        const params = buildListParams({ page, pageSize });
+        const res = await request.get('/fault-reports', { params });
+        const list = Array.isArray(res?.list) ? res.list : [];
+        const mapped = list.map(item => ({ ...item, displayStatus: resolveDisplayStatus(item) }));
+        return { list: mapped, total: res?.total };
+      },
+      pageSize: 5000
+    });
+
+    const list = Array.isArray(rows) ? rows : [];
+    if (list.length === 0) {
+      ElMessage.warning('没有可导出的数据');
+      return;
+    }
+
+    await exportRowsToXlsx({
+      title,
+      fileName,
+      sheetName: '故障上报单',
+      columns: resolveExportColumns(),
+      rows: list
+    });
+    ElMessage.success('导出成功');
+  } catch (error) {
+    const msg = typeof error?.message === 'string' && error.message.trim() ? error.message.trim() : '导出失败';
+    ElMessage.error(msg);
+  } finally {
+    exporting.value = false;
   }
 };
 

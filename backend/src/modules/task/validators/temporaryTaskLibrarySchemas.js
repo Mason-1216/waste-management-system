@@ -1,4 +1,5 @@
 import { Joi } from '../../core/validators/validate.js';
+import { TASK_CATEGORY_OPTIONS } from '../../../utils/taskCategory.js';
 
 const intOrEmpty = Joi.alternatives().try(
   Joi.number().integer(),
@@ -16,7 +17,7 @@ export const getTemporaryTaskLibraryQuerySchema = Joi.object({
   sortOrder: Joi.string().valid('asc', 'desc', 'ASC', 'DESC').optional(),
   keyword: Joi.string().allow('').max(200).optional(),
   stationId: intOrEmpty.optional(),
-  taskCategory: Joi.string().allow('').max(200).optional(),
+  taskCategory: Joi.string().allow('').valid('', ...TASK_CATEGORY_OPTIONS).optional(),
   scoreMethod: Joi.string().allow('').max(50).optional(),
   quantityEditable: intOrEmpty.optional(),
   dispatchReviewRequired: intOrEmpty.optional()
@@ -25,7 +26,7 @@ export const getTemporaryTaskLibraryQuerySchema = Joi.object({
 export const createTemporaryTaskLibraryBodySchema = Joi.object({
   taskName: Joi.string().allow('').max(200).optional(),
   taskContent: Joi.string().allow('').max(2000).optional(),
-  taskCategory: Joi.string().allow('').max(200).optional(),
+  taskCategory: Joi.string().allow('').valid('', ...TASK_CATEGORY_OPTIONS).optional(),
   scoreMethod: Joi.string().allow('').max(50).optional(),
   standardHours: Joi.alternatives().try(Joi.number(), Joi.string().allow('')).optional(),
   unitPoints: Joi.alternatives().try(Joi.number().integer(), Joi.string().allow('')).optional(),
@@ -43,7 +44,7 @@ export const batchImportTemporaryTaskLibraryBodySchema = Joi.object({
   tasks: Joi.array().items(Joi.object({
     taskName: Joi.string().allow('').max(200).optional(),
     taskContent: Joi.string().allow('').max(2000).optional(),
-    taskCategory: Joi.string().allow('').max(200).optional(),
+    taskCategory: Joi.string().allow('').valid('', ...TASK_CATEGORY_OPTIONS).optional(),
     scoreMethod: Joi.string().allow('').max(50).optional(),
     standardHours: Joi.alternatives().try(Joi.number(), Joi.string().allow('')).optional(),
     unitPoints: intOrEmpty.optional(),

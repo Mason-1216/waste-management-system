@@ -2,6 +2,7 @@ import { Op } from 'sequelize';
 import { TemporaryTaskLibrary, Station, User } from '../../../models/index.js';
 import { createError } from '../../../middlewares/error.js';
 import { getPagination, formatPaginationResponse, getOrderBy } from '../../../utils/helpers.js';
+import { normalizeTaskCategory } from '../../../utils/taskCategory.js';
 import { validateBody, validateParams, validateQuery } from '../../core/validators/validate.js';
 import {
   batchImportTemporaryTaskLibraryBodySchema,
@@ -110,7 +111,7 @@ export const createTemporaryTaskLibrary = async (ctx) => {
   const record = await TemporaryTaskLibrary.create({
     task_name: taskName,
     task_content: taskContent,
-    task_category: taskCategory ?? null,
+    task_category: normalizeTaskCategory(taskCategory),
     score_method: scoreMethod ?? null,
     standard_hours: standardHours,
     unit_points: unitPoints,
@@ -160,7 +161,7 @@ export const updateTemporaryTaskLibrary = async (ctx) => {
   const updateData = {
     task_name: taskName ?? record.task_name,
     task_content: taskContent ?? record.task_content,
-    task_category: taskCategory ?? record.task_category,
+    task_category: taskCategory !== undefined ? normalizeTaskCategory(taskCategory) : record.task_category,
     score_method: scoreMethod ?? record.score_method,
     standard_hours: standardHours ?? record.standard_hours,
     unit_points: unitPoints ?? record.unit_points,
@@ -270,7 +271,7 @@ export const batchImportTemporaryTaskLibrary = async (ctx) => {
       await TemporaryTaskLibrary.create({
         task_name: task.taskName.trim(),
         task_content: task.taskContent.trim(),
-        task_category: task.taskCategory ? String(task.taskCategory).trim() : null,
+        task_category: normalizeTaskCategory(task.taskCategory),
         score_method: task.scoreMethod ? String(task.scoreMethod).trim() : null,
         standard_hours: standardHours,
         unit_points: unitPoints,

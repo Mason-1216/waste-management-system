@@ -2,24 +2,29 @@
   <div class="temp-task-library-page">
     <div class="page-header">
       <h2>临时工作任务汇总表</h2>
-      <div class="header-actions" v-if="canManage">
-        <el-button
-          type="danger"
-          :disabled="selectedRows.length === 0"
-          @click="batchDelete"
-        >
-          <el-icon><Delete /></el-icon>
-          批量删除
+      <div class="header-actions">
+        <el-button type="primary" :loading="exporting" @click="handleExport">
+          <el-icon><Upload /></el-icon>批量导出
         </el-button>
-        <el-button type="primary" @click="showDialog()">
-          <el-icon><Plus /></el-icon>新增任务
-        </el-button>
-        <el-button type="success" @click="triggerImport">
-          <el-icon><Download /></el-icon>批量导入
-        </el-button>
-        <el-button type="info" @click="downloadTemplate">
-          <el-icon><Download /></el-icon>下载模板
-        </el-button>
+        <template v-if="canManage">
+          <el-button
+            type="danger"
+            :disabled="selectedRows.length === 0"
+            @click="batchDelete"
+          >
+            <el-icon><Delete /></el-icon>
+            批量删除
+          </el-button>
+          <el-button type="primary" @click="showDialog()">
+            <el-icon><Plus /></el-icon>新增任务
+          </el-button>
+          <el-button type="success" @click="triggerImport">
+            <el-icon><Download /></el-icon>批量导入
+          </el-button>
+          <el-button type="info" @click="downloadTemplate">
+            <el-icon><Download /></el-icon>下载模板
+          </el-button>
+        </template>
       </div>
     </div>
 
@@ -70,18 +75,16 @@
         </div>
         <div class="filter-item">
           <span class="filter-label">任务类别</span>
-          <FilterAutocomplete
+          <FilterSelect
             v-model="filters.taskCategory"
-            :fetch-suggestions="fetchTaskCategorySuggestions"
-            trigger-on-focus
             placeholder="全部"
             clearable
             style="width: 160px"
-            @select="handleSearch"
-            @input="handleSearch"
+            @change="handleSearch"
             @clear="handleSearch"
-            @keyup.enter="handleSearch"
-          />
+          >
+            <el-option v-for="option in taskCategoryOptions" :key="option.value" :label="option.label" :value="option.value" />
+          </FilterSelect>
         </div>
         <div class="filter-item">
           <span class="filter-label">给分方式</span>
@@ -104,7 +107,7 @@
           </FilterSelect>
         </div>
         <div class="filter-item">
-          <span class="filter-label">数量是否可修改</span>
+          <span class="filter-label">填报时数量是否可修改</span>
           <FilterSelect
             v-model="filters.quantityEditable"
             placeholder="全部"
@@ -185,14 +188,14 @@
             {{ row.pointsRule || '-' }}
           </template>
         </el-table-column>
-        <el-table-column prop="unitPointsEditable" label="单位积分是否可修改" width="160">
+        <el-table-column prop="unitPointsEditable" label="填报时单位积分是否可修改" width="180">
           <template #default="{ row }">
             <el-tag :type="row.unitPointsEditable === 1 ? 'success' : 'info'">
               {{ row.unitPointsEditable === 1 ? '是' : '否' }}
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="quantityEditable" label="数量是否可修改" width="140">
+        <el-table-column prop="quantityEditable" label="填报时数量是否可修改" width="160">
           <template #default="{ row }">
             <el-tag :type="row.quantityEditable === 1 ? 'success' : 'info'">
               {{ row.quantityEditable === 1 ? '是' : '否' }}
@@ -281,7 +284,9 @@
           <el-input v-model="form.taskName" placeholder="请输入任务名称" maxlength="100" />
         </el-form-item>
         <el-form-item label="任务类别" prop="taskCategory">
-          <el-input v-model="form.taskCategory" placeholder="请输入任务类别" maxlength="50" />
+          <el-select v-model="form.taskCategory" placeholder="请选择任务类别" style="width: 100%;">
+            <el-option v-for="option in taskCategoryOptionsNoAll" :key="option.value" :label="option.label" :value="option.value" />
+          </el-select>
         </el-form-item>
         <el-form-item label="给分方式" prop="scoreMethod">
           <el-select v-model="form.scoreMethod" placeholder="请选择给分方式" style="width: 100%;">
@@ -322,7 +327,7 @@
           />
           <span class="form-hint">每个任务单位积分</span>
         </el-form-item>
-        <el-form-item label="单位积分是否可修改" prop="unitPointsEditable">
+        <el-form-item label="填报时单位积分是否可修改" prop="unitPointsEditable">
           <el-radio-group v-model="form.unitPointsEditable">
             <el-radio :label="1">是</el-radio>
             <el-radio :label="0">否</el-radio>
@@ -346,7 +351,7 @@
             show-word-limit
           />
         </el-form-item>
-        <el-form-item label="数量是否可修改" prop="quantityEditable">
+        <el-form-item label="填报时数量是否可修改" prop="quantityEditable">
           <el-radio-group v-model="form.quantityEditable">
             <el-radio :label="1">是</el-radio>
             <el-radio :label="0">否</el-radio>
@@ -486,7 +491,8 @@
 import { ref, computed, onMounted, watch } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import dayjs from 'dayjs';
-import { Plus, Search, Download, Edit, Delete, Clock, Star, InfoFilled } from '@element-plus/icons-vue';
+import { Plus, Search, Download, Edit, Delete, Clock, Star, InfoFilled, Upload } from '@element-plus/icons-vue';
+import { useRoute } from 'vue-router';
 
 import FilterBar from '@/components/common/FilterBar.vue';
 import { addTemplateInstructionSheet, applyTemplateHeaderStyle } from '@/utils/excelTemplate';
@@ -494,11 +500,14 @@ import request from '@/api/request';
 import { useUserStore } from '@/store/modules/user';
 import FormDialog from '@/components/system/FormDialog.vue';
 import { createListSuggestionFetcher } from '@/utils/filterAutocomplete';
+import { buildExportFileName, exportRowsToXlsx, fetchAllPaged } from '@/utils/tableExport';
 
 const userStore = useUserStore();
+const route = useRoute();
 
 // 状态
 const loading = ref(false);
+const exporting = ref(false);
 const saving = ref(false);
 const dialogVisible = ref(false);
 const isEdit = ref(false);
@@ -596,7 +605,7 @@ const pagination = ref({
 const form = ref({
   stationId: null,
   taskName: '',
-  taskCategory: '',
+  taskCategory: 'Ⅰ类',
   scoreMethod: '',
   taskContent: '',
   standardHours: 1,
@@ -613,6 +622,15 @@ const scoreMethodOptions = [
   { label: '奖分项', value: '奖分项' },
   { label: '扣分项', value: '扣分项' }
 ];
+
+const TASK_CATEGORY_OPTIONS = ['Ⅰ类', 'Ⅱ类', 'Ⅲ类', 'Ⅳ类'];
+const normalizeTaskCategory = (value) => {
+  const text = typeof value === 'string' ? value.trim() : '';
+  return TASK_CATEGORY_OPTIONS.includes(text) ? text : 'Ⅰ类';
+};
+
+const taskCategoryOptions = TASK_CATEGORY_OPTIONS.map(v => ({ label: v, value: v }));
+const taskCategoryOptionsNoAll = taskCategoryOptions;
 const yesNoOptions = [
   { label: '全部', value: 'all' },
   { label: '是', value: '1' },
@@ -672,7 +690,7 @@ const normalizeTaskLibraryItem = (item) => ({
   id: item.id,
   taskName: item.task_name,
   taskContent: item.task_content,
-  taskCategory: item.task_category || '',
+  taskCategory: normalizeTaskCategory(item.task_category),
   scoreMethod: item.score_method || '',
   standardHours: item.standard_hours,
   quantity: item.quantity ?? 1,
@@ -687,21 +705,104 @@ const normalizeTaskLibraryItem = (item) => ({
   createdByName: item.created_by_name || item.creator?.real_name
 });
 
+const resolvePageTitle = () => {
+  if (typeof route?.meta?.title === 'string' && route.meta.title.trim()) {
+    return route.meta.title.trim();
+  }
+  return '临时工作任务汇总表';
+};
+
+const resolveTextValue = (value) => (typeof value === 'string' ? value.trim() : '');
+
+const buildListParams = ({ page, pageSize }) => {
+  const params = { page, pageSize };
+
+  if (filters.value.stationId !== 'all') {
+    params.stationId = filters.value.stationId;
+  }
+
+  const keyword = resolveTextValue(filters.value.keyword);
+  if (keyword) params.keyword = keyword;
+
+  const taskCategory = resolveTextValue(filters.value.taskCategory);
+  if (taskCategory) params.taskCategory = taskCategory;
+
+  if (filters.value.scoreMethod !== 'all') {
+    const scoreMethod = resolveTextValue(filters.value.scoreMethod);
+    if (scoreMethod) params.scoreMethod = scoreMethod;
+  }
+
+  if (filters.value.quantityEditable !== 'all') {
+    params.quantityEditable = filters.value.quantityEditable;
+  }
+
+  if (filters.value.dispatchReviewRequired !== 'all') {
+    params.dispatchReviewRequired = filters.value.dispatchReviewRequired;
+  }
+
+  return params;
+};
+
+const resolveExportColumns = () => ([
+  {
+    label: '场站',
+    value: (row) => row?.station?.stationName ?? row?.station?.station_name ?? row?.stationName ?? '通用'
+  },
+  { label: '任务名称', prop: 'taskName' },
+  { label: '任务类别', value: (row) => row?.taskCategory ?? '-' },
+  { label: '给分方式', value: (row) => row?.scoreMethod ?? '-' },
+  { label: '具体工作内容', prop: 'taskContent' },
+  { label: '标准工时(h/d)', prop: 'standardHours' },
+  { label: '单位积分', prop: 'unitPoints' },
+  { label: '数量', prop: 'quantity' },
+  { label: '积分规则', value: (row) => row?.pointsRule ?? '-' },
+  { label: '填报时单位积分是否可修改', value: (row) => (Number(row?.unitPointsEditable) === 1 ? '是' : '否') },
+  { label: '填报时数量是否可修改', value: (row) => (Number(row?.quantityEditable) === 1 ? '是' : '否') },
+  { label: '派发任务是否强制审核', value: (row) => (Number(row?.dispatchReviewRequired) === 1 ? '是' : '否') }
+]);
+
+const handleExport = async () => {
+  if (exporting.value) return;
+  exporting.value = true;
+  try {
+    const title = resolvePageTitle();
+    const fileName = buildExportFileName({ title });
+    const { rows } = await fetchAllPaged({
+      fetchPage: async ({ page, pageSize }) => {
+        const res = await request.get('/temporary-task-library', { params: buildListParams({ page, pageSize }) });
+        return res;
+      },
+      pageSize: 5000
+    });
+
+    const normalized = Array.isArray(rows) ? rows.map(normalizeTaskLibraryItem) : [];
+    if (normalized.length === 0) {
+      ElMessage.warning('没有可导出的数据');
+      return;
+    }
+
+    await exportRowsToXlsx({
+      title,
+      fileName,
+      sheetName: '临时任务汇总',
+      columns: resolveExportColumns(),
+      rows: normalized
+    });
+    ElMessage.success('导出成功');
+  } catch (error) {
+    const msg = typeof error?.message === 'string' && error.message.trim() ? error.message.trim() : '导出失败';
+    ElMessage.error(msg);
+  } finally {
+    exporting.value = false;
+  }
+};
+
 // 加载任务汇总表列表
 const loadTaskLibrary = async () => {
   loading.value = true;
   try {
-    const params = {
-      page: pagination.value.page,
-      pageSize: pagination.value.pageSize,
-      stationId: filters.value.stationId === 'all' ? undefined : filters.value.stationId,
-      keyword: filters.value.keyword?.trim() || undefined,
-      taskCategory: filters.value.taskCategory?.trim() || undefined,
-      scoreMethod: filters.value.scoreMethod === 'all' ? undefined : filters.value.scoreMethod,
-      quantityEditable: filters.value.quantityEditable === 'all' ? undefined : filters.value.quantityEditable,
-      dispatchReviewRequired: filters.value.dispatchReviewRequired === 'all' ? undefined : filters.value.dispatchReviewRequired
-    };
-    const res = await request.get('/temporary-task-library', { params });
+    const params = buildListParams({ page: pagination.value.page, pageSize: pagination.value.pageSize });
+    const res = await request.get('/temporary-task-library', { params: { ...params } });
     const list = Array.isArray(res.list) ? res.list : [];
     taskList.value = list.map(normalizeTaskLibraryItem);
     pagination.value.total = res.total || 0;
@@ -1016,29 +1117,29 @@ const downloadTemplate = async () => {
       {
         '场站': '示例场站',
         '任务名称': '场地清扫',
-        '任务类别': '环境清洁',
+        '任务类别': 'Ⅰ类',
         '给分方式': '奖扣结合式',
         '具体工作内容': '清扫厂区道路及公共区域',
         '标准工时': 2,
         '单位积分': 10,
-        '单位积分是否可修改': '是',
+        '填报时单位积分是否可修改': '是',
         '数量': 1,
         '积分规则': '完成一次计10分',
-        '数量是否可修改': '否',
+        '填报时数量是否可修改': '否',
         '派发任务是否强制审核': '是'
       },
       {
         '场站': '示例场站',
         '任务名称': '设备维修',
-        '任务类别': '设备维护',
+        '任务类别': 'Ⅰ类',
         '给分方式': '奖分项',
         '具体工作内容': '更换破损零部件',
         '标准工时': 4,
         '单位积分': 20,
-        '单位积分是否可修改': '否',
+        '填报时单位积分是否可修改': '否',
         '数量': 1,
         '积分规则': '更换零件按单计分',
-        '数量是否可修改': '是',
+        '填报时数量是否可修改': '是',
         '派发任务是否强制审核': '是'
       }
     ];
@@ -1052,15 +1153,15 @@ const downloadTemplate = async () => {
     addTemplateInstructionSheet(XLSX, wb, [
       ['场站', '选填，场站名称；空或“通用”表示通用任务。'],
       ['任务名称', '必填，任务名称。'],
-      ['任务类别', '选填。'],
+      ['任务类别', `选填（不填默认“Ⅰ类”），可选：${TASK_CATEGORY_OPTIONS.join(' / ')}；为空或其它值将按“Ⅰ类”处理。`],
       ['给分方式', '选填，可填写“奖扣结合式/奖分项/扣分项”。'],
       ['具体工作内容', '必填，任务内容描述。'],
       ['标准工时', '必填，数字，单位 h/d。'],
       ['单位积分', '必填，数字。'],
-      ['单位积分是否可修改', '选填，填“是/否”。'],
+      ['填报时单位积分是否可修改', '选填，填写 是/否；此处调控是在员工完成任务时，是否可以修改填报时的单位积分。默认 否。'],
       ['数量', '必填，1-1000 的整数。'],
       ['积分规则', '选填。'],
-      ['数量是否可修改', '选填，填“是/否”。'],
+      ['填报时数量是否可修改', '选填，填写 是/否；此处调控是在员工完成任务时，是否可以修改填报时的数量。默认 否。'],
       ['派发任务是否强制审核', '选填，填“是/否”。']
     ]);
     XLSX.writeFile(wb, '临时工作任务汇总表导入模板.xlsx');
@@ -1116,15 +1217,15 @@ const handleImport = async (event) => {
     };
     const tasks = jsonData.map(row => ({
       taskName: String(row['任务名称'] || '').trim(),
-      taskCategory: String(row['任务类别'] || '').trim(),
+      taskCategory: normalizeTaskCategory(String(row['任务类别'] || '').trim()),
       scoreMethod: String(row['给分方式'] || '').trim(),
       taskContent: String(row['具体工作内容'] || '').trim(),
       standardHours: parseFloat(row['标准工时']) || 1,
       unitPoints: parseInt(row['单位积分']) || 0,
-      unitPointsEditable: normalizeYesNo(row['单位积分是否可修改']),
+      unitPointsEditable: normalizeYesNo(row['填报时单位积分是否可修改'] ?? row['单位积分是否可修改']),
       quantity: parseInt(row['数量']) || 1,
       pointsRule: String(row['积分规则'] || '').trim(),
-      quantityEditable: normalizeYesNo(row['数量是否可修改']),
+      quantityEditable: normalizeYesNo(row['填报时数量是否可修改'] ?? row['数量是否可修改']),
       dispatchReviewRequired: normalizeYesNo(row['派发任务是否强制审核']),
       stationId: resolveStationId(row['场站'])
     })).filter(task => task.taskName && task.taskContent);

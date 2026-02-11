@@ -48,6 +48,9 @@ import PlcFileImport from './PlcFileImport.js';
 import PlcCategory from './PlcCategory.js';
 import PlcMonitorConfig from './PlcMonitorConfig.js';
 import PlcReading from './PlcReading.js';
+import ManualPointsEntry from './ManualPointsEntry.js';
+import ManualWorkHour from './ManualWorkHour.js';
+import AdjustedHourlyPoints from './AdjustedHourlyPoints.js';
 
 // 导出所有模型
 export {
@@ -98,7 +101,10 @@ export {
   PlcFileImport,
   PlcCategory,
   PlcMonitorConfig,
-  PlcReading
+  PlcReading,
+  ManualPointsEntry,
+  ManualWorkHour,
+  AdjustedHourlyPoints
 };
 
 // 定义模型关联关系

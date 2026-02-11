@@ -3,6 +3,9 @@
     <div class="page-header">
       <h2>监控点配置</h2>
       <div class="header-actions">
+        <el-button type="primary" :loading="exporting" @click="handleExport">
+          <el-icon><Upload /></el-icon>批量导出
+        </el-button>
         <el-button type="primary" @click="handleAdd">新增配置</el-button>
         <el-button type="success" @click="handleImport">
           <el-icon><Download /></el-icon>批量导入
@@ -229,16 +232,19 @@
 
 <script setup>
 import { ref, reactive, onMounted } from 'vue';
-import { UploadFilled } from '@element-plus/icons-vue';
+import { UploadFilled, Upload } from '@element-plus/icons-vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
+import { useRoute } from 'vue-router';
 import {
   getConfigs, createConfig, updateConfig, deleteConfig,
   importConfigFile, getCategories, downloadConfigTemplate
 } from '@/api/plcMonitor';
 import TableWrapper from '@/components/common/TableWrapper.vue';
 import request from '@/utils/request';
+import { buildExportFileName, exportRowsToXlsx, fetchAllPaged } from '@/utils/tableExport';
 
 const loading = ref(false);
+const exporting = ref(false);
 const submitting = ref(false);
 const importing = ref(false);
 const dialogVisible = ref(false);
@@ -250,6 +256,7 @@ const categories = ref([]);
 const formRef = ref(null);
 const uploadRef = ref(null);
 const uploadFile = ref(null);
+const route = useRoute();
 
 const filterForm = reactive({
   stationId: 'all',
@@ -305,6 +312,72 @@ const resetForm = () => {
   formData.isActive = true;
 };
 
+const resolvePageTitle = () => {
+  if (typeof route?.meta?.title === 'string' && route.meta.title.trim()) {
+    return route.meta.title.trim();
+  }
+  return '监控点配置';
+};
+
+const buildListParams = ({ page, pageSize }) => {
+  const params = { page, pageSize };
+  if (filterForm.stationId && filterForm.stationId !== 'all') params.stationId = filterForm.stationId;
+  if (filterForm.categoryId && filterForm.categoryId !== 'all') params.categoryId = filterForm.categoryId;
+  if (filterForm.isActive && filterForm.isActive !== 'all') params.isActive = filterForm.isActive;
+  return params;
+};
+
+const resolveExportColumns = () => ([
+  { label: '监控点名称', prop: 'name' },
+  { label: '场站', value: (row) => row?.station?.station_name ?? '-' },
+  { label: 'PLC IP', prop: 'plc_ip' },
+  {
+    label: '地址',
+    value: (row) => {
+      const dbNumber = row?.db_number ?? '';
+      const offset = row?.offset_address ?? '';
+      return `DB${dbNumber}.${offset}`;
+    }
+  },
+  { label: '数据类型', prop: 'data_type' },
+  { label: '分类', value: (row) => row?.category?.category_name ?? '-' },
+  { label: '单位', value: (row) => row?.unit ?? '-' },
+  { label: '状态', value: (row) => (row?.is_active ? '启用' : '禁用') }
+]);
+
+const handleExport = async () => {
+  if (exporting.value) return;
+  exporting.value = true;
+  try {
+    const title = resolvePageTitle();
+    const fileName = buildExportFileName({ title });
+    const { rows } = await fetchAllPaged({
+      fetchPage: ({ page, pageSize }) => getConfigs(buildListParams({ page, pageSize })),
+      pageSize: 5000
+    });
+
+    const list = Array.isArray(rows) ? rows : [];
+    if (list.length === 0) {
+      ElMessage.warning('没有可导出的数据');
+      return;
+    }
+
+    await exportRowsToXlsx({
+      title,
+      fileName,
+      sheetName: '监控点配置',
+      columns: resolveExportColumns(),
+      rows: list
+    });
+    ElMessage.success('导出成功');
+  } catch (error) {
+    const msg = typeof error?.message === 'string' && error.message.trim() ? error.message.trim() : '导出失败';
+    ElMessage.error(msg);
+  } finally {
+    exporting.value = false;
+  }
+};
+
 const fetchStations = async () => {
   try {
     const res = await request.get('/stations/all');
@@ -326,14 +399,7 @@ const fetchCategories = async () => {
 const fetchData = async () => {
   loading.value = true;
   try {
-    const params = {
-      page: pagination.page,
-      pageSize: pagination.pageSize
-    };
-    if (filterForm.stationId && filterForm.stationId !== 'all') params.stationId = filterForm.stationId;
-    if (filterForm.categoryId && filterForm.categoryId !== 'all') params.categoryId = filterForm.categoryId;
-    if (filterForm.isActive && filterForm.isActive !== 'all') params.isActive = filterForm.isActive;
-
+    const params = buildListParams({ page: pagination.page, pageSize: pagination.pageSize });
     const res = await getConfigs(params);
     tableData.value = res?.list || [];
     pagination.total = res?.total || 0;

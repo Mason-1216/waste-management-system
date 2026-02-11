@@ -2,6 +2,11 @@
   <div class="device-fault-page">
     <div class="page-header">
       <h2>故障上报</h2>
+      <div class="header-actions">
+        <el-button type="primary" :loading="exporting" @click="handleExport">
+          <el-icon><Upload /></el-icon>批量导出
+        </el-button>
+      </div>
     </div>
 
     <el-card v-if="canReport && reportForm" class="report-form-card">
@@ -320,7 +325,8 @@ import dayjs from 'dayjs';
 import { createListSuggestionFetcher } from '@/utils/filterAutocomplete';
 import { useUserStore } from '@/store/modules/user';
 import MaintenanceFaultDetailDialog from '@/modules/maintenance/components/MaintenanceFaultDetailDialog.vue';
-import { WarningFilled } from '@element-plus/icons-vue';
+import { WarningFilled, Upload } from '@element-plus/icons-vue';
+import { buildExportFileName, exportRowsToXlsx, fetchAllPaged } from '@/utils/tableExport';
 import {
   getRepairRecords,
   createRepairRecord,
@@ -342,6 +348,7 @@ const records = ref([]);
 const recordSuggestionList = ref([]);
 const loading = ref(false);
 const saving = ref({});
+const exporting = ref(false);
 
 const reportFormKey = 'report-form';
 const reportFormRef = ref(null);
@@ -670,24 +677,99 @@ const ensurePlanRange = (row) => {
   return row;
 };
 
+const resolvePageTitle = () => '故障上报';
+
+const resolveTextValue = (value) => (typeof value === 'string' ? value.trim() : '');
+
+const buildListParamsForPage = ({ page, pageSize }) => {
+  const isRework = filters.value.status === 'rework';
+  const rawStatus = filters.value.status;
+  const statusParam = isRework
+    ? 'repairing'
+    : (rawStatus === 'all' ? undefined : (rawStatus ? rawStatus : undefined));
+
+  const isMaintenance = userStore.hasRole('maintenance');
+  const selectedStationId = filters.value.stationId === 'all' ? null : filters.value.stationId;
+  const resolvedStationId = selectedStationId ? selectedStationId : (isMaintenance ? null : userStore.currentStationId);
+
+  const params = {
+    page,
+    pageSize,
+    stationId: resolvedStationId ? resolvedStationId : undefined,
+    status: statusParam
+  };
+
+  const equipmentName = resolveTextValue(filters.value.equipmentName);
+  if (equipmentName) params.equipmentName = equipmentName;
+
+  if (filters.value.urgencyLevel !== 'all') {
+    params.urgencyLevel = filters.value.urgencyLevel;
+  }
+
+  const repairPersonName = resolveTextValue(filters.value.repairPersonName);
+  if (repairPersonName) params.repairPersonName = repairPersonName;
+
+  return params;
+};
+
+const resolveExportColumns = () => ([
+  { label: '表单编号', value: (row) => row?.record_code ?? '-' },
+  { label: '场站', value: (row) => row?.station?.station_name ?? row?.station_name ?? '-' },
+  { label: '设备名称', value: (row) => row?.equipment_name ?? '-' },
+  { label: '安装地点', value: (row) => row?.equipment_location ?? '-' },
+  { label: '状态', value: (row) => statusLabel(row) },
+  { label: '紧急程度', value: (row) => urgencyLabel(row?.urgency_level) },
+  { label: '上报人', value: (row) => row?.reporter_name ?? '-' },
+  { label: '派单人', value: (row) => row?.dispatch_by_name ?? '-' },
+  { label: '维修人员', value: (row) => formatRepairNames(row) },
+  { label: '任务积分合计', value: (row) => formatRepairTaskPointsTotal(row) },
+  { label: '验收人', value: (row) => row?.verifier_name ?? '-' }
+]);
+
+const handleExport = async () => {
+  if (exporting.value) return;
+  exporting.value = true;
+  try {
+    const title = resolvePageTitle();
+    const fileName = buildExportFileName({ title });
+
+    const { rows } = await fetchAllPaged({
+      fetchPage: ({ page, pageSize }) => getRepairRecords(buildListParamsForPage({ page, pageSize })),
+      pageSize: 5000
+    });
+
+    const isRework = filters.value.status === 'rework';
+    let list = (Array.isArray(rows) ? rows : []).map(normalizeRecord);
+    if (isRework) {
+      list = list.filter(item => item.status === 'repairing' && ['fail', 'reject'].includes(item.verify_result));
+    }
+
+    if (list.length === 0) {
+      ElMessage.warning('没有可导出的数据');
+      return;
+    }
+
+    await exportRowsToXlsx({
+      title,
+      fileName,
+      sheetName: '故障上报',
+      columns: resolveExportColumns(),
+      rows: list
+    });
+    ElMessage.success('导出成功');
+  } catch (error) {
+    const msg = typeof error?.message === 'string' && error.message.trim() ? error.message.trim() : '导出失败';
+    ElMessage.error(msg);
+  } finally {
+    exporting.value = false;
+  }
+};
+
 const loadRecords = async () => {
   loading.value = true;
   try {
     const isRework = filters.value.status === 'rework';
-    const statusParam = isRework ? 'repairing' : (filters.value.status === 'all' ? undefined : filters.value.status || undefined);
-    const isMaintenance = userStore.hasRole('maintenance');
-    const selectedStationId = filters.value.stationId === 'all' ? null : filters.value.stationId;
-    const resolvedStationId = selectedStationId || (isMaintenance ? null : userStore.currentStationId);
-
-    const params = {
-      page: pagination.value.page,
-      pageSize: pagination.value.pageSize,
-      stationId: resolvedStationId || undefined,
-      status: statusParam,
-      equipmentName: filters.value.equipmentName?.trim() || undefined,
-      urgencyLevel: filters.value.urgencyLevel === 'all' ? undefined : filters.value.urgencyLevel,
-      repairPersonName: filters.value.repairPersonName?.trim() || undefined
-    };
+    const params = buildListParamsForPage({ page: pagination.value.page, pageSize: pagination.value.pageSize });
     const res = await getRepairRecords(params);
     let list = (res.list || []).map(normalizeRecord);
     if (isRework) {

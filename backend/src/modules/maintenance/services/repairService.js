@@ -3,7 +3,23 @@ import dayjs from 'dayjs';
 import { FaultReport, RepairRecord, Station, User } from '../../../models/index.js';
 import { createError } from '../../../middlewares/error.js';
 import { formatPaginationResponse, generateRecordCode, getOrderBy, getPagination } from '../../../utils/helpers.js';
+import { normalizeTaskCategory } from '../../../utils/taskCategory.js';
 import { publishNotification, publishNotifications } from '../../notification/services/notificationPublisher.js';
+
+const normalizeRepairTasks = (value) => {
+  const list = Array.isArray(value) ? value : [];
+  return list
+    .filter(item => item && typeof item === 'object')
+    .map((item) => {
+      const rawCategory = item.task_category ?? item.taskCategory;
+      const category = normalizeTaskCategory(rawCategory);
+      return {
+        ...item,
+        task_category: category,
+        taskCategory: category
+      };
+    });
+};
 
 const fillDispatchByNames = async (records) => {
   const list = Array.isArray(records) ? records : [records];
@@ -340,7 +356,7 @@ export const completeRepair = async ({ id, body, user }) => {
     repair_content: repairContent,
     repair_tools: repairTools,
     work_contents: Array.isArray(workContents) ? workContents : [],
-    repair_tasks: Array.isArray(repairTasks) ? repairTasks : [],
+    repair_tasks: normalizeRepairTasks(repairTasks),
     consumables_list: consumablesList || [],
     consumables_total: consumablesTotal || 0,
     parts_list: partsList || [],

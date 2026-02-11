@@ -6,6 +6,9 @@
         <el-button type="primary" @click="isRecordsView ? goFormView() : goRecordsView()">
           {{ isRecordsView ? '他检表单' : '查询' }}
         </el-button>
+        <el-button v-if="isRecordsView" type="primary" :loading="exporting" @click="exportRecords">
+          <el-icon><Upload /></el-icon>批量导出
+        </el-button>
       </div>
     </div>
 
@@ -389,6 +392,7 @@ import { useUserStore } from '@/store/modules/user';
 import { useUpload } from '@/composables/useUpload';
 import request from '@/api/request';
 import dayjs from 'dayjs';
+import { buildExportFileName, exportRowsToXlsx, fetchAllPaged } from '@/utils/tableExport';
 
 import { createListSuggestionFetcher } from '@/utils/filterAutocomplete';
 import SafetyCheckItemList from '@/modules/inspection/components/SafetyCheckItemList.vue';
@@ -460,6 +464,7 @@ const pagination = reactive({
 const inspectionList = ref([]);
 const inspectionSuggestionList = ref([]);
 const loading = ref(false);
+const exporting = ref(false);
 
 const fetchInspectedNameSuggestions = createListSuggestionFetcher(
   () => inspectionSuggestionList.value,
@@ -920,6 +925,79 @@ const loadInspectionList = async () => {
     
   } finally {
     loading.value = false;
+  }
+};
+
+const buildInspectionListParams = ({ page, pageSize }) => {
+  const params = {
+    page,
+    pageSize,
+    inspectionType: 'hygiene',
+    includeSelf: 1
+  };
+
+  if (filters.startDate) {
+    params.startDate = filters.startDate;
+  }
+  if (filters.endDate) {
+    params.endDate = filters.endDate;
+  }
+  if (filters.stationId && filters.stationId !== 'all') {
+    params.stationId = filters.stationId;
+  }
+
+  const inspectedName = typeof filters.inspectedName === 'string' ? filters.inspectedName.trim() : '';
+  if (inspectedName) {
+    params.inspectedUserName = inspectedName;
+  }
+
+  if (filters.workTypeIds && filters.workTypeIds.length > 0 && !filters.workTypeIds.includes('all')) {
+    params.workTypeIds = filters.workTypeIds.join(',');
+  }
+  if (filters.inspectionKind && filters.inspectionKind !== 'all') {
+    params.inspectionKind = filters.inspectionKind;
+  }
+  if (filters.inspectionResult && filters.inspectionResult !== 'all') {
+    params.inspectionResult = filters.inspectionResult;
+  }
+  if (filters.sortOrder) {
+    params.sortOrder = filters.sortOrder;
+  }
+
+  return params;
+};
+
+const exportRecords = async () => {
+  exporting.value = true;
+  try {
+    const { rows } = await fetchAllPaged({
+      pageSize: 5000,
+      fetchPage: async ({ page, pageSize }) => {
+        const res = await request.get('/other-inspections', { params: buildInspectionListParams({ page, pageSize }) });
+        const list = Array.isArray(res?.list) ? res.list : (Array.isArray(res) ? res : []);
+        return { list, total: res?.total };
+      }
+    });
+
+    const columns = [
+      { label: '检查日期', value: row => row.inspection_date ?? '' },
+      { label: '检查性质', value: row => getInspectionKindLabel(row) },
+      { label: '场站', value: row => row.station?.station_name ?? '-' },
+      { label: '被检查人', value: row => row.inspected_user_name ?? '-' },
+      { label: '责任区', value: row => getWorkTypeNames(row.work_type_ids) },
+      { label: '积分', value: row => getInspectionPoints(row) },
+      { label: '检查人', value: row => row.inspector?.real_name ?? row.inspector_name ?? '-' },
+      { label: '检查结果', value: row => getInspectionResult(row).text }
+    ];
+
+    const pageTitle = typeof route?.meta?.title === 'string' ? route.meta.title : '卫生他检';
+    const fileName = buildExportFileName({ title: pageTitle });
+    await exportRowsToXlsx({ title: pageTitle, fileName, sheetName: '记录列表', columns, rows });
+  } catch (error) {
+    const message = typeof error?.message === 'string' && error.message.trim() ? error.message : '导出失败';
+    ElMessage.error(message);
+  } finally {
+    exporting.value = false;
   }
 };
 

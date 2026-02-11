@@ -1,50 +1,32 @@
 <template>
   <div class="module-permission-config">
-    <div v-for="module in moduleTree" :key="module.code" class="module-group">
-      <div class="module-header">{{ module.name }}</div>
+    <el-empty
+      v-if="permissionGroups.length === 0"
+      description="未加载到模块权限列表"
+    />
+
+    <div v-else v-for="group in permissionGroups" :key="group.code" class="module-group">
+      <div class="module-header">{{ group.name }}</div>
       <div class="module-items">
-        <template v-if="module.subModules && module.subModules.length">
-          <!-- 有子模块的情况（如组织架构管理） -->
-          <div v-for="sub in module.subModules" :key="sub.code" class="permission-row">
-            <span class="permission-label">{{ sub.name }}</span>
-            <div class="permission-checkboxes">
-              <el-checkbox
-                :model-value="hasPermission(sub.viewCode)"
-                @change="(val) => handleViewChange(sub, val)"
-              >
-                查看
-              </el-checkbox>
-              <el-checkbox
-                :model-value="hasPermission(sub.editCode)"
-                :disabled="!hasPermission(sub.viewCode)"
-                @change="(val) => handleEditChange(sub, val)"
-              >
-                编辑
-              </el-checkbox>
-            </div>
+        <div v-for="item in group.items" :key="item.viewCode" class="permission-row">
+          <span class="permission-label">{{ item.label }}</span>
+          <div class="permission-checkboxes">
+            <el-checkbox
+              :model-value="hasPermission(item.viewCode)"
+              @change="(val) => handleViewChange(item, val)"
+            >
+              查看
+            </el-checkbox>
+            <el-checkbox
+              v-if="item.editCode"
+              :model-value="hasPermission(item.editCode)"
+              :disabled="!hasPermission(item.viewCode)"
+              @change="(val) => handleEditChange(item, val)"
+            >
+              编辑
+            </el-checkbox>
           </div>
-        </template>
-        <template v-else>
-          <!-- 没有子模块的情况 -->
-          <div class="permission-row">
-            <span class="permission-label">{{ module.name }}</span>
-            <div class="permission-checkboxes">
-              <el-checkbox
-                :model-value="hasPermission(module.viewCode)"
-                @change="(val) => handleViewChange(module, val)"
-              >
-                查看
-              </el-checkbox>
-              <el-checkbox
-                :model-value="hasPermission(module.editCode)"
-                :disabled="!hasPermission(module.viewCode)"
-                @change="(val) => handleEditChange(module, val)"
-              >
-                编辑
-              </el-checkbox>
-            </div>
-          </div>
-        </template>
+        </div>
       </div>
     </div>
   </div>
@@ -52,14 +34,13 @@
 
 <script setup>
 import { computed } from 'vue';
+import { menuConfig } from '@/config/menuConfig';
 
 const props = defineProps({
-  // 所有权限列表 [{id, code, name, type, parentId}]
   permissions: {
     type: Array,
     default: () => []
   },
-  // 已选中的权限ID列表
   selectedIds: {
     type: Array,
     default: () => []
@@ -71,71 +52,155 @@ const emit = defineEmits(['update:selectedIds']);
 // 构建权限code到id的映射
 const codeToId = computed(() => {
   const map = new Map();
-  props.permissions.forEach(p => {
-    map.set(p.code, p.id);
+  (props.permissions || []).forEach(p => {
+    const code = p?.code ?? p?.permissionCode ?? p?.permission_code;
+    const id = p?.id ?? p?.permissionId ?? p?.permission_id;
+    if (code && id) {
+      map.set(code, id);
+    }
   });
   return map;
 });
 
-// 构建模块权限树
-const moduleTree = computed(() => {
-  const modules = props.permissions.filter(p => p.type === 'module');
+// 构建权限code到name的映射
+const codeToName = computed(() => {
+  const map = new Map();
+  (props.permissions || []).forEach(p => {
+    const code = p?.code ?? p?.permissionCode ?? p?.permission_code;
+    const name = p?.name ?? p?.permissionName ?? p?.permission_name;
+    if (code && name) {
+      map.set(code, name);
+    }
+  });
+  return map;
+});
 
-  // 找出父模块（没有:view或:edit后缀的）
-  const parentModules = modules.filter(m =>
-    !m.code.endsWith(':view') && !m.code.endsWith(':edit')
-  );
+// 从所有角色菜单构建菜单名称映射
+const buildMenuNameMap = () => {
+  const map = new Map();
+  const walk = (items) => {
+    (items || []).forEach(item => {
+      if (item?.path && item?.name) {
+        // 将路径转换为模块码格式
+        const moduleCode = item.path.startsWith('/') ? item.path.slice(1) : item.path;
+        map.set(moduleCode, item.name);
+      }
+      if (Array.isArray(item?.children)) {
+        walk(item.children);
+      }
+    });
+  };
+  Object.values(menuConfig).forEach(walk);
+  return map;
+};
 
-  return parentModules.map(parent => {
-    // 找出子权限
-    const children = modules.filter(m =>
-      m.parentId === parent.id ||
-      (m.code.startsWith(parent.code + ':') && m.code !== parent.code)
-    );
+const menuNameMap = buildMenuNameMap();
 
-    // 检查是否有子模块（如 organization 有 station, department 等子模块）
-    const subModuleCodes = new Set();
-    children.forEach(c => {
-      // 从 module:organization:station:view 中提取 station
-      const parts = c.code.replace(parent.code + ':', '').split(':');
-      if (parts.length >= 2) {
-        subModuleCodes.add(parts[0]);
+// 分组配置：定义每个分组包含哪些模块前缀
+const groupConfig = [
+  { key: 'schedule', name: '排班表', prefixes: ['module:schedule'] },
+  { key: 'safety', name: '安全检查', prefixes: ['module:safety-self-inspection', 'module:safety-other-inspection', 'module:safety-check-management'] },
+  { key: 'safety-rectification', name: '安全隐患', prefixes: ['module:safety-rectification'] },
+  { key: 'hygiene', name: '卫生检查', prefixes: ['module:hygiene-self-inspection', 'module:hygiene-other-inspection', 'module:hygiene-work-arrangement'] },
+  { key: 'position-work', name: '岗位工作', prefixes: ['module:position-work'] },
+  { key: 'temporary-tasks', name: '临时任务', prefixes: ['module:temporary-tasks'] },
+  { key: 'maintenance-task', name: '设备保养', prefixes: ['module:maintenance-task'] },
+  { key: 'device-faults', name: '设备故障', prefixes: ['module:device-faults', 'module:fault-report', 'module:repair-work', 'module:maintenance-approval'] },
+  { key: 'plc', name: 'PLC监控', prefixes: ['module:plc-records', 'module:plc-data-report', 'module:plc-visual-report'] },
+  { key: 'reports', name: '维保数据报表', prefixes: ['module:reports'] },
+  { key: 'points-summary', name: '积分统计', prefixes: ['module:points-summary'] },
+  { key: 'notifications', name: '消息通知', prefixes: ['module:notifications'] },
+  { key: 'user', name: '用户管理', prefixes: ['module:user'] },
+  { key: 'organization', name: '组织架构', prefixes: ['module:organization'] },
+  { key: 'help-feedback', name: '帮助与反馈', prefixes: ['module:help-feedback'] }
+];
+
+// 从权限名称中提取简短标签
+const extractLabel = (code, name) => {
+  if (!name) return code;
+  // 移除 "-查看" 或 "-编辑" 后缀
+  let label = name.replace(/-查看$/, '').replace(/-编辑$/, '');
+  return label;
+};
+
+// 构建权限分组
+const permissionGroups = computed(() => {
+  // 获取所有 module:xxx:view 权限
+  const viewPermissions = [];
+  codeToId.value.forEach((id, code) => {
+    if (code.startsWith('module:') && code.endsWith(':view')) {
+      viewPermissions.push({
+        code,
+        id,
+        name: codeToName.value.get(code) || code
+      });
+    }
+  });
+
+  const groups = [];
+  const usedCodes = new Set();
+
+  groupConfig.forEach(config => {
+    const items = [];
+
+    viewPermissions.forEach(perm => {
+      // 检查是否匹配任何前缀
+      const matches = config.prefixes.some(prefix => perm.code.startsWith(prefix + ':'));
+      if (matches && !usedCodes.has(perm.code)) {
+        usedCodes.add(perm.code);
+
+        // 获取对应的 edit 权限码
+        const editCode = perm.code.replace(/:view$/, ':edit');
+        const hasEdit = codeToId.value.has(editCode);
+
+        items.push({
+          viewCode: perm.code,
+          editCode: hasEdit ? editCode : null,
+          label: extractLabel(perm.code, perm.name)
+        });
       }
     });
 
-    if (subModuleCodes.size > 0) {
-      // 有子模块
-      const subModules = Array.from(subModuleCodes).map(subCode => {
-        const viewCode = `${parent.code}:${subCode}:view`;
-        const editCode = `${parent.code}:${subCode}:edit`;
-        const viewPerm = children.find(c => c.code === viewCode);
-        return {
-          code: subCode,
-          name: viewPerm?.name?.replace('-查看', '') || subCode,
-          viewCode,
-          editCode
-        };
+    if (items.length > 0) {
+      // 按标签排序
+      items.sort((a, b) => a.label.localeCompare(b.label));
+      groups.push({
+        code: config.key,
+        name: config.name,
+        items
       });
-      return {
-        ...parent,
-        subModules
-      };
-    } else {
-      // 没有子模块，直接有 view/edit
-      const viewCode = `${parent.code}:view`;
-      const editCode = `${parent.code}:edit`;
-      return {
-        ...parent,
-        viewCode,
-        editCode,
-        subModules: null
-      };
     }
   });
+
+  // 处理未分组的权限
+  const otherItems = [];
+  viewPermissions.forEach(perm => {
+    if (!usedCodes.has(perm.code)) {
+      const editCode = perm.code.replace(/:view$/, ':edit');
+      const hasEdit = codeToId.value.has(editCode);
+      otherItems.push({
+        viewCode: perm.code,
+        editCode: hasEdit ? editCode : null,
+        label: extractLabel(perm.code, perm.name)
+      });
+    }
+  });
+
+  if (otherItems.length > 0) {
+    otherItems.sort((a, b) => a.label.localeCompare(b.label));
+    groups.push({
+      code: '__other__',
+      name: '其他',
+      items: otherItems
+    });
+  }
+
+  return groups;
 });
 
 // 检查是否有某个权限
 const hasPermission = (code) => {
+  if (!code) return false;
   const id = codeToId.value.get(code);
   return id && props.selectedIds.includes(id);
 };
@@ -148,12 +213,10 @@ const handleViewChange = (item, checked) => {
   let newIds = [...props.selectedIds];
 
   if (checked) {
-    // 添加查看权限
     if (viewId && !newIds.includes(viewId)) {
       newIds.push(viewId);
     }
   } else {
-    // 移除查看权限，同时移除编辑权限
     newIds = newIds.filter(id => id !== viewId && id !== editId);
   }
 
@@ -162,6 +225,7 @@ const handleViewChange = (item, checked) => {
 
 // 处理编辑权限变更
 const handleEditChange = (item, checked) => {
+  if (!item.editCode) return;
   const editId = codeToId.value.get(item.editCode);
 
   let newIds = [...props.selectedIds];

@@ -2,9 +2,14 @@
   <div class="maintenance-plan-page">
     <div class="page-header">
       <h2>保养计划</h2>
-      <el-button type="primary" @click="showAddDialog">
-        <el-icon><Plus /></el-icon>新增计划
-      </el-button>
+      <div class="header-actions">
+        <el-button type="primary" :loading="exporting" @click="handleExport">
+          <el-icon><Upload /></el-icon>批量导出
+        </el-button>
+        <el-button type="primary" @click="showAddDialog">
+          <el-icon><Plus /></el-icon>新增计划
+        </el-button>
+      </div>
     </div>
 
     <el-card class="filter-card">
@@ -79,21 +84,41 @@
 <script setup>
 import { ref, onMounted, computed, watch } from 'vue';
 import { ElMessage } from 'element-plus';
+import { Upload } from '@element-plus/icons-vue';
+import { useRoute } from 'vue-router';
 
 import FilterBar from '@/components/common/FilterBar.vue';
 import request from '@/api/request';
 import FormDialog from '@/components/system/FormDialog.vue';
+import { buildExportFileName, exportRowsToXlsx } from '@/utils/tableExport';
 
 const planList = ref([]);
+const exporting = ref(false);
 const pagination = ref({ page: 1, pageSize: 5, total: 0 });
 const dialogVisible = ref(false);
 const isEdit = ref(false);
 const form = ref({ equipmentName: '', planType: 'monthly', nextDate: '' });
+const route = useRoute();
 
 const getPlanTypeLabel = (type) => {
   const labels = { daily: '日常保养', weekly: '周保养', monthly: '月保养', quarterly: '季度保养', yearly: '年度保养' };
   return labels[type] || type;
 };
+
+const resolvePageTitle = () => {
+  if (typeof route?.meta?.title === 'string' && route.meta.title.trim()) {
+    return route.meta.title.trim();
+  }
+  return '保养计划';
+};
+
+const resolveExportColumns = () => ([
+  { label: '设备名称', prop: 'equipmentName' },
+  { label: '计划类型', value: (row) => getPlanTypeLabel(row?.planType) },
+  { label: '下次保养日期', prop: 'nextDate' },
+  { label: '负责人', value: (row) => row?.assignee?.realName ?? '-' },
+  { label: '状态', value: (row) => (row?.status === 'active' ? '启用' : '停用') }
+]);
 
 const loadList = async () => {
   try {
@@ -110,6 +135,35 @@ const planTableRows = computed(() => {
   const endIndex = startIndex + pagination.value.pageSize;
   return list.slice(startIndex, endIndex);
 });
+
+const handleExport = async () => {
+  if (exporting.value) return;
+  exporting.value = true;
+  try {
+    const title = resolvePageTitle();
+    const fileName = buildExportFileName({ title });
+    const rows = Array.isArray(planList.value) ? planList.value : [];
+
+    if (rows.length === 0) {
+      ElMessage.warning('没有可导出的数据');
+      return;
+    }
+
+    await exportRowsToXlsx({
+      title,
+      fileName,
+      sheetName: '保养计划',
+      columns: resolveExportColumns(),
+      rows
+    });
+    ElMessage.success('导出成功');
+  } catch (error) {
+    const msg = typeof error?.message === 'string' && error.message.trim() ? error.message.trim() : '导出失败';
+    ElMessage.error(msg);
+  } finally {
+    exporting.value = false;
+  }
+};
 
 const handlePageChange = (page) => {
   pagination.value.page = page;

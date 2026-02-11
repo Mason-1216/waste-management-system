@@ -11,6 +11,20 @@ export const menuPermissions = [
 
 export const modulePermissions = [
   {
+    "code": "module:maintenance-task",
+    "name": "保养任务",
+    "children": [
+      {
+        "code": "module:maintenance-task:view",
+        "name": "保养任务-查看"
+      },
+      {
+        "code": "module:maintenance-task:edit",
+        "name": "保养任务-编辑"
+      }
+    ]
+  },
+  {
     "code": "module:device-faults",
     "name": "设备故障",
     "children": [

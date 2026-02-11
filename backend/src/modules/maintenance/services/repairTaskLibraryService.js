@@ -6,6 +6,7 @@ import { fileURLToPath } from 'url';
 import { RepairTaskLibrary } from '../../../models/index.js';
 import { createError } from '../../../middlewares/error.js';
 import { formatPaginationResponse, getOrderBy, getPagination } from '../../../utils/helpers.js';
+import { normalizeTaskCategory } from '../../../utils/taskCategory.js';
 import { validateBody, validateParams, validateQuery } from '../../core/validators/validate.js';
 import {
   batchDeleteRepairTaskLibraryBodySchema,
@@ -140,12 +141,12 @@ export const createRepairTaskLibrary = async (ctx) => {
   }
 
   const taskNameValue = resolveText(taskName);
-  const taskCategoryValue = resolveText(taskCategory);
+  const taskCategoryValue = normalizeTaskCategory(taskCategory);
 
   const existing = await RepairTaskLibrary.findOne({
     where: {
       task_name: taskNameValue,
-      task_category: taskCategoryValue || null
+      task_category: taskCategoryValue
     }
   });
 
@@ -155,7 +156,7 @@ export const createRepairTaskLibrary = async (ctx) => {
 
   const record = await RepairTaskLibrary.create({
     task_name: taskNameValue,
-    task_category: taskCategoryValue || null,
+    task_category: taskCategoryValue,
     score_method: scoreMethod ?? null,
     points: normalizedPoints,
     quantity: quantityValue,
@@ -192,14 +193,14 @@ export const updateRepairTaskLibrary = async (ctx) => {
   }
 
   const taskNameValue = taskName !== undefined ? resolveText(taskName) : undefined;
-  const taskCategoryValue = taskCategory !== undefined ? resolveText(taskCategory) : undefined;
+  const taskCategoryValue = taskCategory !== undefined ? normalizeTaskCategory(taskCategory) : undefined;
 
   if (taskNameValue) {
     const existing = await RepairTaskLibrary.findOne({
       where: {
         id: { [Op.ne]: id },
         task_name: taskNameValue,
-        task_category: taskCategoryValue !== undefined ? (taskCategoryValue || null) : record.task_category
+        task_category: taskCategoryValue !== undefined ? taskCategoryValue : record.task_category
       }
     });
     if (existing) {
@@ -209,7 +210,7 @@ export const updateRepairTaskLibrary = async (ctx) => {
 
   const updateData = {
     task_name: taskNameValue !== undefined ? taskNameValue : record.task_name,
-    task_category: taskCategoryValue !== undefined ? (taskCategoryValue || null) : record.task_category
+    task_category: taskCategoryValue !== undefined ? taskCategoryValue : record.task_category
   };
 
   if (scoreMethod !== undefined) {
@@ -349,7 +350,7 @@ export const importRepairTaskLibrary = async (ctx) => {
     if (!row.hasValues) continue;
 
     const taskName = row.getCell(1).value?.toString().trim();
-    const taskCategory = row.getCell(2).value?.toString().trim();
+    const taskCategory = normalizeTaskCategory(row.getCell(2).value?.toString().trim());
     const scoreMethod = row.getCell(3).value?.toString().trim();
     const points = parseNumber(row.getCell(4).value);
     const quantityCell = normalizeCellValue(row.getCell(5).value);
@@ -392,14 +393,14 @@ export const importRepairTaskLibrary = async (ctx) => {
     const existing = await RepairTaskLibrary.findOne({
       where: {
         task_name: taskName,
-        task_category: taskCategory ?? null
+        task_category: taskCategory
       }
     });
 
     if (!existing) {
       await RepairTaskLibrary.create({
         task_name: taskName,
-        task_category: taskCategory ?? null,
+        task_category: taskCategory,
         score_method: scoreMethod ?? null,
         points,
         quantity: quantityValue,

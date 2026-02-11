@@ -207,18 +207,16 @@
             </div>
             <div class="filter-item">
               <span class="filter-label">任务类别</span>
-              <FilterAutocomplete
+              <FilterSelect
                 v-model="filters.taskCategory"
-                :fetch-suggestions="fetchTaskCategorySuggestions"
-                trigger-on-focus
                 placeholder="全部"
                 clearable
                 style="width: 140px"
-                @select="handleJobSearch"
-                @input="handleJobSearch"
+                @change="handleJobSearch"
                 @clear="handleJobSearch"
-                @keyup.enter="handleJobSearch"
-              />
+              >
+                <el-option v-for="option in taskCategoryOptions" :key="option.value" :label="option.label" :value="option.value" />
+              </FilterSelect>
             </div>
             <div class="filter-item">
               <span class="filter-label">给分方式</span>
@@ -346,14 +344,14 @@
                 </span>
               </template>
             </el-table-column>
-            <el-table-column prop="quantity_editable" label="数量是否可修改" width="140">
+            <el-table-column prop="quantity_editable" label="填报时数量是否可修改" width="160">
               <template #default="{ row }">
                 <el-tag :type="row.quantity_editable === 1 ? 'success' : 'info'">
                   {{ row.quantity_editable === 1 ? '是' : '否' }}
                 </el-tag>
               </template>
             </el-table-column>
-            <el-table-column prop="points_editable" label="积分是否可修改" width="140">
+            <el-table-column prop="points_editable" label="填报时积分是否可修改" width="160">
               <template #default="{ row }">
                 <el-tag :type="row.points_editable === 1 ? 'success' : 'info'">
                   {{ row.points_editable === 1 ? '是' : '否' }}
@@ -457,7 +455,9 @@
           />
         </el-form-item>
         <el-form-item label="任务类别">
-          <el-input v-model="jobForm.taskCategory" placeholder="自由文本，用于筛选" />
+          <el-select v-model="jobForm.taskCategory" placeholder="请选择任务类别" style="width: 100%;">
+            <el-option v-for="option in taskCategoryOptionsNoAll" :key="option.value" :label="option.label" :value="option.value" />
+          </el-select>
         </el-form-item>
         <el-form-item label="给分方式">
           <el-select v-model="jobForm.scoreMethod" placeholder="请选择给分方式">
@@ -493,10 +493,10 @@
             maxlength="200"
           />
         </el-form-item>
-        <el-form-item label="数量是否可修改">
+        <el-form-item label="填报时数量是否可修改">
           <el-switch v-model="jobForm.quantityEditable" :active-value="1" :inactive-value="0" />
         </el-form-item>
-        <el-form-item label="积分是否可修改">
+        <el-form-item label="填报时积分是否可修改">
           <el-switch v-model="jobForm.pointsEditable" :active-value="1" :inactive-value="0" />
         </el-form-item>
         <el-form-item label="派发任务是否强制审核">
@@ -604,6 +604,7 @@ import { Plus, Download, Upload } from '@element-plus/icons-vue';
 import dayjs from 'dayjs';
 
 import { createListSuggestionFetcher } from '@/utils/filterAutocomplete';
+import { buildExportFileName, exportRowsToXlsx, fetchAllPaged } from '@/utils/tableExport';
 import * as positionWorkLogApi from '@/api/positionWorkLog';
 import * as positionJobApi from '@/api/positionJob';
 import * as stationApi from '@/api/station';
@@ -816,10 +817,6 @@ const fetchJobNameSuggestions = createListSuggestionFetcher(
   () => positionJobSuggestionList.value,
   (row) => row.job_name
 );
-const fetchTaskCategorySuggestions = createListSuggestionFetcher(
-  () => positionJobSuggestionList.value,
-  (row) => row.task_category
-);
 
 const filters = reactive({
   stationId: 'all',
@@ -948,63 +945,36 @@ const exportPositionJobs = async () => {
   if (!canManageLibrary.value) return;
   exportingJobs.value = true;
   try {
-    const result = await positionJobApi.getPositionJobs({
-      page: 1,
+    const { rows } = await fetchAllPaged({
       pageSize: 5000,
-      ...buildJobQuery()
+      fetchPage: ({ page, pageSize }) => positionJobApi.getPositionJobs({
+        page,
+        pageSize,
+        ...buildJobQuery()
+      })
     });
-    const list = result?.list ?? [];
-    if (list.length === 0) {
-      ElMessage.warning('没有可导出的数据');
-      return;
-    }
 
-    const rows = list.map(row => ([
-      row.station?.station_name ?? '',
-      row.position_name ?? '',
-      row.sort_order ?? 1,
-      row.job_name ?? '',
-      row.result_definition ?? '',
-      row.task_category ?? '',
-      row.score_method ?? '',
-      row.standard_hours ?? '',
-      row.points ?? '',
-      row.quantity ?? 1,
-      row.points_rule ?? '',
-      Number(row.quantity_editable) === 1 ? '是' : '否',
-      Number(row.points_editable) === 1 ? '是' : '否',
-      Number(row.dispatch_review_required) === 1 ? '是' : '否',
-      Number(row.is_active) === 1 ? '启用' : '停用'
-    ]));
-
-    const header = [
-      '场站',
-      '岗位',
-      '排序',
-      '任务名称',
-      '结果定义',
-      '任务类别',
-      '给分方式',
-      '标准工时(h/d)',
-      '单位积分',
-      '数量',
-      '积分规则',
-      '数量可修改',
-      '积分可修改',
-      '派发强制审核',
-      '状态'
+    const columns = [
+      { label: '场站', value: row => row.station?.station_name ?? '' },
+      { label: '岗位', value: row => row.position_name ?? '' },
+      { label: '排序', value: row => row.sort_order ?? 1 },
+      { label: '任务名称', value: row => row.job_name ?? '' },
+      { label: '结果定义', value: row => row.result_definition ?? '' },
+      { label: '任务类别', value: row => row.task_category ?? '' },
+      { label: '给分方式', value: row => row.score_method ?? '' },
+      { label: '标准工时(h/d)', value: row => row.standard_hours ?? '' },
+      { label: '单位积分', value: row => row.points ?? '' },
+      { label: '数量', value: row => row.quantity ?? 1 },
+      { label: '积分规则', value: row => row.points_rule ?? '' },
+      { label: '数量可修改', value: row => (Number(row.quantity_editable) === 1 ? '是' : '否') },
+      { label: '积分可修改', value: row => (Number(row.points_editable) === 1 ? '是' : '否') },
+      { label: '派发强制审核', value: row => (Number(row.dispatch_review_required) === 1 ? '是' : '否') },
+      { label: '状态', value: row => (Number(row.is_active) === 1 ? '启用' : '停用') }
     ];
 
-    const XLSX = await import('xlsx');
-    const ws = XLSX.utils.aoa_to_sheet([header, ...rows]);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, '岗位工作任务汇总表');
-    XLSX.writeFile(wb, `岗位工作任务汇总表_${dayjs().format('YYYYMMDD_HHmmss')}.xlsx`);
-
-    const total = result?.total ?? list.length;
-    if (total > list.length) {
-      ElMessage.warning('导出已截断，请缩小筛选范围后再导出');
-    }
+    const title = managementTitle.value;
+    const fileName = buildExportFileName({ title, date: dayjs().format('YYYYMMDD') });
+    await exportRowsToXlsx({ title, fileName, sheetName: '岗位工作任务汇总表', columns, rows });
   } catch (error) {
     ElMessage.error(error.message ?? '导出失败');
   } finally {
@@ -1013,6 +983,15 @@ const exportPositionJobs = async () => {
 };
 
 const scoreMethodOptions = ['奖扣结合式', '扣分项', '奖分项'];
+
+const TASK_CATEGORY_OPTIONS = ['Ⅰ类', 'Ⅱ类', 'Ⅲ类', 'Ⅳ类'];
+const normalizeTaskCategory = (value) => {
+  const text = typeof value === 'string' ? value.trim() : '';
+  return TASK_CATEGORY_OPTIONS.includes(text) ? text : 'Ⅰ类';
+};
+
+const taskCategoryOptions = TASK_CATEGORY_OPTIONS.map(v => ({ label: v, value: v }));
+const taskCategoryOptionsNoAll = taskCategoryOptions;
 const jobDialogVisible = ref(false);
 const savingJob = ref(false);
 const jobForm = reactive({
@@ -1021,7 +1000,7 @@ const jobForm = reactive({
   positionName: '',
   jobName: '',
   resultDefinition: '',
-  taskCategory: '',
+  taskCategory: 'Ⅰ类',
   scoreMethod: '',
   standardHours: null,
   points: null,
@@ -1042,7 +1021,7 @@ const resetJobForm = () => {
   jobForm.positionName = '';
   jobForm.jobName = '';
   jobForm.resultDefinition = '';
-  jobForm.taskCategory = '';
+  jobForm.taskCategory = 'Ⅰ类';
   jobForm.scoreMethod = '';
   jobForm.standardHours = null;
   jobForm.points = null;
@@ -1062,7 +1041,7 @@ const openJobDialog = (row = null) => {
     jobForm.positionName = row.position_name;
     jobForm.jobName = row.job_name;
     jobForm.resultDefinition = row.result_definition ?? '';
-    jobForm.taskCategory = row.task_category ?? '';
+    jobForm.taskCategory = normalizeTaskCategory(row.task_category);
     jobForm.scoreMethod = row.score_method ?? '';
     jobForm.standardHours = row.standard_hours ?? null;
     jobForm.points = row.points ?? null;

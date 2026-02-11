@@ -11,6 +11,23 @@
           <el-button v-if="canEditStation" type="primary" @click="showAddStationDialog">
             <el-icon><Plus /></el-icon>新增场站
           </el-button>
+          <el-button v-if="canEditStation" type="info" @click="downloadImportTemplate('station')">
+            <el-icon><Download /></el-icon>下载模板
+          </el-button>
+          <BaseUpload
+            v-if="canEditStation"
+            :auto-upload="false"
+            :show-file-list="false"
+            accept=".xlsx,.xls"
+            :on-change="(file) => handleImportFileChange('station', file)"
+          >
+            <el-button type="success">
+              <el-icon><Download /></el-icon>批量导入
+            </el-button>
+          </BaseUpload>
+          <el-button type="primary" :loading="stationExporting" @click="exportStations">
+            <el-icon><Upload /></el-icon>批量导出
+          </el-button>
         </div>
         <el-card class="filter-card">
           <FilterBar>
@@ -47,7 +64,7 @@
           </el-table-column>
           <el-table-column label="描述" min-width="200" show-overflow-tooltip>
             <template #default="{ row }">
-              {{ row.description || '-' }}
+              {{ row.location || row.description || '-' }}
             </template>
           </el-table-column>
           <el-table-column v-if="canEditStation" label="操作" width="150">
@@ -76,6 +93,23 @@
         <div class="tab-header">
           <el-button v-if="canEditDepartment" type="primary" @click="showAddDeptDialog">
             <el-icon><Plus /></el-icon>新增部门
+          </el-button>
+          <el-button v-if="canEditDepartment" type="info" @click="downloadImportTemplate('department')">
+            <el-icon><Download /></el-icon>下载模板
+          </el-button>
+          <BaseUpload
+            v-if="canEditDepartment"
+            :auto-upload="false"
+            :show-file-list="false"
+            accept=".xlsx,.xls"
+            :on-change="(file) => handleImportFileChange('department', file)"
+          >
+            <el-button type="success">
+              <el-icon><Download /></el-icon>批量导入
+            </el-button>
+          </BaseUpload>
+          <el-button type="primary" :loading="deptExporting" @click="exportDepartments">
+            <el-icon><Upload /></el-icon>批量导出
           </el-button>
         </div>
         <el-card class="filter-card">
@@ -148,6 +182,23 @@
           <el-button v-if="canEditCompany" type="primary" @click="showAddCompanyDialog">
             <el-icon><Plus /></el-icon>新增公司
           </el-button>
+          <el-button v-if="canEditCompany" type="info" @click="downloadImportTemplate('company')">
+            <el-icon><Download /></el-icon>下载模板
+          </el-button>
+          <BaseUpload
+            v-if="canEditCompany"
+            :auto-upload="false"
+            :show-file-list="false"
+            accept=".xlsx,.xls"
+            :on-change="(file) => handleImportFileChange('company', file)"
+          >
+            <el-button type="success">
+              <el-icon><Download /></el-icon>批量导入
+            </el-button>
+          </BaseUpload>
+          <el-button type="primary" :loading="companyExporting" @click="exportCompanies">
+            <el-icon><Upload /></el-icon>批量导出
+          </el-button>
         </div>
         <el-card class="filter-card">
           <FilterBar>
@@ -219,6 +270,23 @@
           <el-button v-if="canEditRole" type="primary" @click="showAddRoleDialog">
             <el-icon><Plus /></el-icon>新增角色
           </el-button>
+          <el-button v-if="canEditRole" type="info" @click="downloadImportTemplate('role')">
+            <el-icon><Download /></el-icon>下载模板
+          </el-button>
+          <BaseUpload
+            v-if="canEditRole"
+            :auto-upload="false"
+            :show-file-list="false"
+            accept=".xlsx,.xls"
+            :on-change="(file) => handleImportFileChange('role', file)"
+          >
+            <el-button type="success">
+              <el-icon><Download /></el-icon>批量导入
+            </el-button>
+          </BaseUpload>
+          <el-button type="primary" :loading="roleExporting" @click="exportRoles">
+            <el-icon><Upload /></el-icon>批量导出
+          </el-button>
         </div>
         <el-card class="filter-card">
           <FilterBar>
@@ -262,6 +330,68 @@
       </el-tab-pane>
     </el-tabs>
 
+    <FormDialog
+      v-model="importDialogVisible"
+      :title="importDialogTitle"
+      width="900px"
+      :show-confirm="false"
+      :show-cancel="false"
+    >
+      <el-alert
+        v-if="importErrors.length > 0"
+        type="error"
+        :closable="false"
+        style="margin-bottom: 16px;"
+      >
+        <template #title>
+          <span>发现 {{ importErrors.length }} 条数据有问题，请修正后重新导入</span>
+        </template>
+      </el-alert>
+
+      <el-alert
+        v-else-if="importSkipCount > 0"
+        type="warning"
+        :closable="false"
+        style="margin-bottom: 16px;"
+      >
+        <template #title>
+          <span>发现 {{ importSkipCount }} 条已存在数据，导入时将自动跳过</span>
+        </template>
+      </el-alert>
+
+      <el-table :data="importPreviewData" border max-height="400">
+        <el-table-column prop="rowIndex" label="行号" width="80" />
+        <el-table-column
+          v-for="col in importPreviewColumns"
+          :key="col.prop"
+          :prop="col.prop"
+          :label="col.label"
+          :width="col.width"
+          :min-width="col.minWidth"
+          show-overflow-tooltip
+        />
+        <el-table-column label="状态" width="160">
+          <template #default="{ row }">
+            <el-tag :type="importRowTagType(row)" size="small">
+              {{ importRowStatusText(row) }}
+            </el-tag>
+          </template>
+        </el-table-column>
+      </el-table>
+
+      <template #footer>
+        <el-button @click="importDialogVisible = false">取消</el-button>
+        <el-button
+          type="primary"
+          :loading="importing"
+          :disabled="importErrors.length > 0 || importOkCount === 0"
+          @click="confirmImport"
+        >
+          确认导入 ({{ importOkCount }} 条)
+        </el-button>
+      </template>
+    </FormDialog>
+
     <!-- 场站编辑对话框 -->
     <FormDialog
       v-model="stationDialogVisible"
@@ -277,7 +407,7 @@
           <el-input v-model="stationForm.stationName" placeholder="请输入场站名称" />
         </el-form-item>
         <el-form-item label="描述">
-          <el-input v-model="stationForm.description" type="textarea" :rows="3" placeholder="请输入描述" />
+          <el-input v-model="stationForm.location" type="textarea" :rows="3" placeholder="请输入描述" />
         </el-form-item>
         <el-form-item label="状态">
           <el-switch
@@ -365,7 +495,7 @@
       :confirm-loading="roleSaving"
       @confirm="saveRole"
     >
-      <el-form :model="roleForm" :rules="roleRules" ref="roleFormRef" label-width="110px">
+        <el-form :model="roleForm" :rules="roleRules" ref="roleFormRef" label-width="110px">
         <el-form-item label="角色名称" prop="roleName">
           <el-input v-model="roleForm.roleName" placeholder="请输入角色名称" />
         </el-form-item>
@@ -385,16 +515,6 @@
         <el-form-item label="描述">
           <el-input v-model="roleForm.description" type="textarea" :rows="3" placeholder="请输入描述" />
         </el-form-item>
-        <el-form-item label="菜单权限">
-          <el-tree
-            ref="menuTreeRef"
-            :data="menuPermissionTree"
-            node-key="id"
-            show-checkbox
-            default-expand-all
-            :props="{ label: 'name', children: 'children' }"
-          />
-        </el-form-item>
         <el-form-item label="模块权限">
           <ModulePermissionConfig
             :permissions="allPermissions"
@@ -409,8 +529,13 @@
 <script setup>
 import { ref, computed, nextTick, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { useRoute } from 'vue-router'
+import * as XLSX from 'xlsx'
 
 import FilterBar from '@/components/common/FilterBar.vue'
+import BaseUpload from '@/components/common/BaseUpload.vue'
+import { addTemplateInstructionSheet, applyTemplateHeaderStyle } from '@/utils/excelTemplate'
+import { buildExportFileName, exportRowsToXlsx, fetchAllPaged } from '@/utils/tableExport'
 import { getAllStations, getStations, createStation, updateStation, deleteStation as deleteStationApi } from '@/api/station'
 import { getDepartments, createDepartment, updateDepartment, deleteDepartment as deleteDepartmentApi } from '@/api/department'
 import { getCompanies, createCompany, updateCompany, deleteCompany as deleteCompanyApi } from '@/api/company'
@@ -421,6 +546,7 @@ import FormDialog from '@/components/system/FormDialog.vue'
 import { useUserStore } from '@/store/modules/user'
 import { createListSuggestionFetcher } from '@/utils/filterAutocomplete'
 
+const route = useRoute()
 const userStore = useUserStore()
 
 // 权限检查
@@ -453,12 +579,579 @@ const defaultTab = computed(() => {
 
 const activeTab = ref('')
 
+const resolvePageTitle = () => (typeof route?.meta?.title === 'string' ? route.meta.title : '组织架构')
+const resolveExportFileName = () => buildExportFileName({ title: resolvePageTitle() })
+
+// ==================== 批量导入（组织架构） ====================
+const importDialogVisible = ref(false)
+const importing = ref(false)
+const importType = ref('')
+const importPreviewData = ref([])
+const importErrors = ref([])
+
+const resolveImportTypeLabel = (type) => {
+  if (type === 'station') return '场站管理'
+  if (type === 'department') return '部门管理'
+  if (type === 'company') return '公司管理'
+  if (type === 'role') return '角色管理'
+  return ''
+}
+
+const importDialogTitle = computed(() => {
+  const label = resolveImportTypeLabel(importType.value)
+  return label ? `${label} - 导入预览` : '导入预览'
+})
+
+const importOkCount = computed(() => importPreviewData.value.filter(row => row.status === 'ok').length)
+const importSkipCount = computed(() => importPreviewData.value.filter(row => row.status === 'skip').length)
+
+const importPreviewColumns = computed(() => {
+  if (importType.value === 'station') {
+    return [
+      { prop: 'stationName', label: '场站名称', minWidth: 180 },
+      { prop: 'location', label: '描述', minWidth: 220 },
+      { prop: 'statusText', label: '状态', width: 120 }
+    ]
+  }
+  if (importType.value === 'department') {
+    return [
+      { prop: 'deptName', label: '部门名称', minWidth: 180 },
+      { prop: 'deptCode', label: '部门编码', width: 160 },
+      { prop: 'description', label: '描述', minWidth: 220 },
+      { prop: 'statusText', label: '状态', width: 120 }
+    ]
+  }
+  if (importType.value === 'company') {
+    return [
+      { prop: 'companyName', label: '公司名称', minWidth: 180 },
+      { prop: 'companyCode', label: '公司编码', width: 160 },
+      { prop: 'description', label: '描述', minWidth: 220 },
+      { prop: 'statusText', label: '状态', width: 120 }
+    ]
+  }
+  if (importType.value === 'role') {
+    return [
+      { prop: 'roleName', label: '角色名称', minWidth: 180 },
+      { prop: 'roleCode', label: '角色编码', width: 180 },
+      { prop: 'baseRoleCode', label: '基准角色编码', width: 180 },
+      { prop: 'description', label: '描述', minWidth: 220 }
+    ]
+  }
+  return []
+})
+
+const importRowTagType = (row) => {
+  const status = row?.status
+  if (status === 'error') return 'danger'
+  if (status === 'skip') return 'info'
+  return 'success'
+}
+
+const importRowStatusText = (row) => {
+  const status = row?.status
+  if (status === 'error') return row?.error || '数据错误'
+  if (status === 'skip') return '已存在（跳过）'
+  return '可导入'
+}
+
+const normalizeText = (value) => (value === undefined || value === null ? '' : String(value).trim())
+
+const normalizeStatus = (value) => {
+  const text = normalizeText(value)
+  if (!text) return 'active'
+  if (text === '启用' || text === 'active' || text === '1') return 'active'
+  if (text === '禁用' || text === 'inactive' || text === '0') return 'inactive'
+  return null
+}
+
+const resolveHeaderIndexMap = (headerRow) => {
+  const map = new Map()
+  const headers = Array.isArray(headerRow) ? headerRow : []
+  headers.forEach((value, idx) => {
+    const key = normalizeText(value)
+    if (key) map.set(key, idx)
+  })
+  return map
+}
+
+const hasRowValue = (row) => {
+  const list = Array.isArray(row) ? row : []
+  return list.some(value => normalizeText(value))
+}
+
+const readUploadFile = (file) => new Promise((resolve, reject) => {
+  const raw = file?.raw
+  if (!raw) {
+    reject(new Error('请选择文件'))
+    return
+  }
+  const reader = new FileReader()
+  reader.onload = (e) => resolve(e?.target?.result)
+  reader.onerror = reject
+  reader.readAsArrayBuffer(raw)
+})
+
+const loadAllStations = async () => {
+  const { rows } = await fetchAllPaged({
+    pageSize: 5000,
+    fetchPage: ({ page, pageSize }) => getStations({ page, pageSize })
+  })
+  return rows
+}
+
+const loadAllDepartments = async () => {
+  const { rows } = await fetchAllPaged({
+    pageSize: 5000,
+    fetchPage: ({ page, pageSize }) => getDepartments({ page, pageSize })
+  })
+  return rows
+}
+
+const loadAllCompanies = async () => {
+  const { rows } = await fetchAllPaged({
+    pageSize: 5000,
+    fetchPage: ({ page, pageSize }) => getCompanies({ page, pageSize })
+  })
+  return rows
+}
+
+const ensureRolesLoaded = async () => {
+  if (Array.isArray(roleList.value) && roleList.value.length > 0) return
+  await loadRoles()
+}
+
+const parseStationImport = async ({ headerMap, rows }) => {
+  const stationNameCol = headerMap.get('场站名称') ?? headerMap.get('场站') ?? 0
+  const descCol = headerMap.get('描述') ?? headerMap.get('地址') ?? 1
+  const statusCol = headerMap.get('状态') ?? 2
+
+  const existingRows = await loadAllStations()
+  const existingNames = new Set(existingRows.map(r => normalizeText(r.station_name ?? r.stationName ?? r.name)).filter(Boolean))
+
+  return rows.map((row, idx) => {
+    const rowIndex = idx + 2
+    const stationName = normalizeText(row[stationNameCol])
+    const location = normalizeText(row[descCol])
+    const resolvedStatus = normalizeStatus(row[statusCol])
+    const statusText = resolvedStatus === 'inactive' ? '禁用' : '启用'
+
+    const item = {
+      rowIndex,
+      stationName,
+      location,
+      statusValue: resolvedStatus,
+      statusText,
+      status: 'ok',
+      error: null
+    }
+
+    if (!stationName) {
+      item.status = 'error'
+      item.error = '场站名称不能为空'
+      return item
+    }
+
+    if (existingNames.has(stationName)) {
+      item.status = 'skip'
+      return item
+    }
+
+    if (!resolvedStatus) {
+      item.status = 'error'
+      item.error = '状态无效（可填 启用/禁用）'
+      return item
+    }
+
+    return item
+  })
+}
+
+const parseDepartmentImport = async ({ headerMap, rows }) => {
+  const nameCol = headerMap.get('部门名称') ?? 0
+  const codeCol = headerMap.get('部门编码') ?? 1
+  const descCol = headerMap.get('描述') ?? 2
+  const statusCol = headerMap.get('状态') ?? 3
+
+  const existingRows = await loadAllDepartments()
+  const existingNames = new Set(existingRows.map(r => normalizeText(r.dept_name)).filter(Boolean))
+  const existingCodes = new Set(existingRows.map(r => normalizeText(r.dept_code)).filter(Boolean))
+
+  return rows.map((row, idx) => {
+    const rowIndex = idx + 2
+    const deptName = normalizeText(row[nameCol])
+    const deptCode = normalizeText(row[codeCol])
+    const description = normalizeText(row[descCol])
+    const resolvedStatus = normalizeStatus(row[statusCol])
+    const statusText = resolvedStatus === 'inactive' ? '禁用' : '启用'
+
+    const item = {
+      rowIndex,
+      deptName,
+      deptCode,
+      description,
+      statusValue: resolvedStatus,
+      statusText,
+      status: 'ok',
+      error: null
+    }
+
+    if (!deptName) {
+      item.status = 'error'
+      item.error = '部门名称不能为空'
+      return item
+    }
+
+    if (existingNames.has(deptName) || (deptCode && existingCodes.has(deptCode))) {
+      item.status = 'skip'
+      return item
+    }
+
+    if (!resolvedStatus) {
+      item.status = 'error'
+      item.error = '状态无效（可填 启用/禁用）'
+      return item
+    }
+
+    return item
+  })
+}
+
+const parseCompanyImport = async ({ headerMap, rows }) => {
+  const nameCol = headerMap.get('公司名称') ?? 0
+  const codeCol = headerMap.get('公司编码') ?? 1
+  const descCol = headerMap.get('描述') ?? 2
+  const statusCol = headerMap.get('状态') ?? 3
+
+  const existingRows = await loadAllCompanies()
+  const existingNames = new Set(existingRows.map(r => normalizeText(r.company_name)).filter(Boolean))
+  const existingCodes = new Set(existingRows.map(r => normalizeText(r.company_code)).filter(Boolean))
+
+  return rows.map((row, idx) => {
+    const rowIndex = idx + 2
+    const companyName = normalizeText(row[nameCol])
+    const companyCode = normalizeText(row[codeCol])
+    const description = normalizeText(row[descCol])
+    const resolvedStatus = normalizeStatus(row[statusCol])
+    const statusText = resolvedStatus === 'inactive' ? '禁用' : '启用'
+
+    const item = {
+      rowIndex,
+      companyName,
+      companyCode,
+      description,
+      statusValue: resolvedStatus,
+      statusText,
+      status: 'ok',
+      error: null
+    }
+
+    if (!companyName) {
+      item.status = 'error'
+      item.error = '公司名称不能为空'
+      return item
+    }
+
+    if (existingNames.has(companyName) || (companyCode && existingCodes.has(companyCode))) {
+      item.status = 'skip'
+      return item
+    }
+
+    if (!resolvedStatus) {
+      item.status = 'error'
+      item.error = '状态无效（可填 启用/禁用）'
+      return item
+    }
+
+    return item
+  })
+}
+
+const parseRoleImport = async ({ headerMap, rows }) => {
+  await ensureRolesLoaded()
+
+  const nameCol = headerMap.get('角色名称') ?? 0
+  const codeCol = headerMap.get('角色编码') ?? 1
+  const baseCol = headerMap.get('基准角色编码') ?? 2
+  const descCol = headerMap.get('描述') ?? 3
+
+  const existingNames = new Set(roleList.value.map(r => normalizeText(r.roleName)).filter(Boolean))
+  const existingCodes = new Set(roleList.value.map(r => normalizeText(r.roleCode)).filter(Boolean))
+  const allowedBaseRoleCodes = new Set(baseRoleOptions.value.map(r => normalizeText(r.roleCode)).filter(Boolean))
+
+  return rows.map((row, idx) => {
+    const rowIndex = idx + 2
+    const roleName = normalizeText(row[nameCol])
+    const roleCode = normalizeText(row[codeCol])
+    const baseRoleCode = normalizeText(row[baseCol])
+    const description = normalizeText(row[descCol])
+
+    const item = {
+      rowIndex,
+      roleName,
+      roleCode,
+      baseRoleCode,
+      description,
+      status: 'ok',
+      error: null
+    }
+
+    if (!roleName) {
+      item.status = 'error'
+      item.error = '角色名称不能为空'
+      return item
+    }
+
+    if (!roleCode) {
+      item.status = 'error'
+      item.error = '角色编码不能为空'
+      return item
+    }
+
+    if (!baseRoleCode) {
+      item.status = 'error'
+      item.error = '基准角色编码不能为空'
+      return item
+    }
+
+    if (roleCode === 'dev_test' || roleName === '开发测试') {
+      item.status = 'error'
+      item.error = '开发测试角色不允许导入'
+      return item
+    }
+
+    if (existingNames.has(roleName) || existingCodes.has(roleCode)) {
+      item.status = 'skip'
+      return item
+    }
+
+    if (!allowedBaseRoleCodes.has(baseRoleCode)) {
+      item.status = 'error'
+      item.error = '基准角色编码无效'
+      return item
+    }
+
+    return item
+  })
+}
+
+const downloadImportTemplate = (type) => {
+  const templates = {
+    station: {
+      fileName: '场站管理导入模板.xlsx',
+      sheetName: '场站管理',
+      data: [
+        ['场站名称', '描述', '状态'],
+        ['示例场站A', '示例描述', '启用'],
+        ['示例场站B', '示例描述', '禁用']
+      ],
+      instructions: [
+        ['场站名称', '必填，唯一名称；若已存在则跳过。'],
+        ['描述', '选填，描述/地址信息。'],
+        ['状态', '选填，启用/禁用；不填默认启用。'],
+        ['导入数量', '一次最多导入 100 条数据。']
+      ]
+    },
+    department: {
+      fileName: '部门管理导入模板.xlsx',
+      sheetName: '部门管理',
+      data: [
+        ['部门名称', '部门编码', '描述', '状态'],
+        ['运营部', 'OP', '示例描述', '启用'],
+        ['维修部', 'MT', '示例描述', '禁用']
+      ],
+      instructions: [
+        ['部门名称', '必填；若已存在则跳过。'],
+        ['部门编码', '选填；若编码已存在则跳过。'],
+        ['描述', '选填。'],
+        ['状态', '选填，启用/禁用；不填默认启用。'],
+        ['导入数量', '一次最多导入 100 条数据。']
+      ]
+    },
+    company: {
+      fileName: '公司管理导入模板.xlsx',
+      sheetName: '公司管理',
+      data: [
+        ['公司名称', '公司编码', '描述', '状态'],
+        ['示例公司A', 'C001', '示例描述', '启用'],
+        ['示例公司B', 'C002', '示例描述', '禁用']
+      ],
+      instructions: [
+        ['公司名称', '必填；若已存在则跳过。'],
+        ['公司编码', '选填；若编码已存在则跳过。'],
+        ['描述', '选填。'],
+        ['状态', '选填，启用/禁用；不填默认启用。'],
+        ['导入数量', '一次最多导入 100 条数据。']
+      ]
+    },
+    role: {
+      fileName: '角色管理导入模板.xlsx',
+      sheetName: '角色管理',
+      data: [
+        ['角色名称', '角色编码', '基准角色编码', '描述'],
+        ['示例角色A', 'sample_role_a', 'operator', '示例描述'],
+        ['示例角色B', 'sample_role_b', 'station_manager', '示例描述']
+      ],
+      instructions: [
+        ['角色名称', '必填；若已存在则跳过。'],
+        ['角色编码', '必填；若已存在则跳过。'],
+        ['基准角色编码', '必填；必须为系统已存在角色编码。导入时默认复制基准角色的权限。'],
+        ['描述', '选填。'],
+        ['导入数量', '一次最多导入 100 条数据。']
+      ]
+    }
+  }
+
+  const template = templates[type]
+  if (!template) return
+
+  const ws = XLSX.utils.aoa_to_sheet(template.data)
+  applyTemplateHeaderStyle(XLSX, ws, 1)
+
+  const wb = XLSX.utils.book_new()
+  XLSX.utils.book_append_sheet(wb, ws, template.sheetName)
+  addTemplateInstructionSheet(XLSX, wb, template.instructions)
+
+  XLSX.writeFile(wb, template.fileName)
+  ElMessage.success('模板已下载')
+}
+
+const handleImportFileChange = async (type, file) => {
+  importType.value = type
+  importing.value = false
+  importPreviewData.value = []
+  importErrors.value = []
+
+  try {
+    const buffer = await readUploadFile(file)
+    const data = new Uint8Array(buffer)
+    const workbook = XLSX.read(data, { type: 'array' })
+    const firstSheet = workbook.Sheets[workbook.SheetNames[0]]
+    const aoa = XLSX.utils.sheet_to_json(firstSheet, { header: 1 })
+    const headerRow = Array.isArray(aoa[0]) ? aoa[0] : []
+    const bodyRows = aoa.slice(1).filter(hasRowValue)
+
+    if (bodyRows.length === 0) {
+      ElMessage.warning('没有找到有效数据')
+      return
+    }
+    if (bodyRows.length > 100) {
+      ElMessage.warning('一次最多导入100条数据')
+      return
+    }
+
+    const headerMap = resolveHeaderIndexMap(headerRow)
+
+    let preview = []
+    if (type === 'station') {
+      preview = await parseStationImport({ headerMap, rows: bodyRows })
+    } else if (type === 'department') {
+      preview = await parseDepartmentImport({ headerMap, rows: bodyRows })
+    } else if (type === 'company') {
+      preview = await parseCompanyImport({ headerMap, rows: bodyRows })
+    } else if (type === 'role') {
+      preview = await parseRoleImport({ headerMap, rows: bodyRows })
+    }
+
+    importPreviewData.value = preview
+    importErrors.value = preview.filter(row => row.status === 'error')
+    importDialogVisible.value = true
+  } catch (e) {
+    ElMessage.error('文件解析失败，请检查文件格式')
+  }
+}
+
+const afterImportReload = async () => {
+  if (importType.value === 'station') {
+    loadStationSuggestions()
+    loadStations()
+    return
+  }
+  if (importType.value === 'department') {
+    loadDepartments()
+    return
+  }
+  if (importType.value === 'company') {
+    loadCompanies()
+    return
+  }
+  if (importType.value === 'role') {
+    loadRoles()
+  }
+}
+
+const confirmImport = async () => {
+  const okRows = importPreviewData.value.filter(row => row.status === 'ok')
+  if (okRows.length === 0) {
+    ElMessage.warning('没有可导入的有效数据')
+    return
+  }
+
+  importing.value = true
+  try {
+    let success = 0
+    let skipped = importSkipCount.value
+    let failed = 0
+
+    for (const row of okRows) {
+      try {
+        if (importType.value === 'station') {
+          await createStation({
+            stationName: row.stationName,
+            location: row.location,
+            status: row.statusValue
+          })
+        } else if (importType.value === 'department') {
+          await createDepartment({
+            dept_name: row.deptName,
+            dept_code: row.deptCode,
+            description: row.description,
+            status: row.statusValue
+          })
+        } else if (importType.value === 'company') {
+          await createCompany({
+            company_name: row.companyName,
+            company_code: row.companyCode,
+            description: row.description,
+            status: row.statusValue
+          })
+        } else if (importType.value === 'role') {
+          await roleApi.createRole({
+            roleName: row.roleName,
+            roleCode: row.roleCode,
+            baseRoleCode: row.baseRoleCode,
+            description: row.description
+          })
+        }
+        success += 1
+      } catch (e) {
+        failed += 1
+      }
+    }
+
+    if (failed === 0) {
+      const tip = skipped > 0 ? `导入完成：成功${success}条，跳过${skipped}条` : `导入完成：成功${success}条`
+      ElMessage.success(tip)
+      importDialogVisible.value = false
+    } else {
+      ElMessage.warning(`导入完成：成功${success}条，跳过${skipped}条，失败${failed}条`)
+      importDialogVisible.value = false
+    }
+
+    importPreviewData.value = []
+    importErrors.value = []
+    await afterImportReload()
+  } finally {
+    importing.value = false
+  }
+}
+
 // ==================== 场站管理 ====================
 const stationFormRef = ref(null)
 const stationList = ref([])
 // Auto-complete suggestions should not depend on table pagination (default pageSize=5).
 const stationSuggestionList = ref([])
 const stationLoading = ref(false)
+const stationExporting = ref(false)
 const stationDialogVisible = ref(false)
 const isStationEdit = ref(false)
 const stationSaving = ref(false)
@@ -480,7 +1173,7 @@ const stationPagination = ref({
 
 const stationForm = ref({
   stationName: '',
-  description: '',
+  location: '',
   status: 'active'
 })
 
@@ -514,11 +1207,43 @@ const loadStations = async () => {
   }
 }
 
+const exportStations = async () => {
+  stationExporting.value = true
+  try {
+    const title = resolvePageTitle()
+    const fileName = resolveExportFileName()
+    const keyword = typeof stationFilters.value.keyword === 'string' ? stationFilters.value.keyword.trim() : ''
+
+    const { rows } = await fetchAllPaged({
+      pageSize: 5000,
+      fetchPage: ({ page, pageSize }) => getStations({
+        page,
+        pageSize,
+        keyword: keyword ? keyword : undefined
+      })
+    })
+
+    const columns = [
+      { label: 'ID', value: row => row.id ?? '' },
+      { label: '场站名称', value: row => row.stationName ?? row.station_name ?? row.name ?? '' },
+      { label: '状态', value: row => (row.status === 'active' ? '启用' : '禁用') },
+      { label: '描述', value: row => row.location ?? row.description ?? '-' }
+    ]
+
+    await exportRowsToXlsx({ title, fileName, sheetName: '场站管理', columns, rows })
+  } catch (error) {
+    const message = typeof error?.message === 'string' && error.message.trim() ? error.message : '导出失败'
+    ElMessage.error(message)
+  } finally {
+    stationExporting.value = false
+  }
+}
+
 const showAddStationDialog = () => {
   isStationEdit.value = false
   stationForm.value = {
     stationName: '',
-    description: '',
+    location: '',
     status: 'active'
   }
   stationDialogVisible.value = true
@@ -529,7 +1254,7 @@ const editStation = (row) => {
   stationForm.value = {
     id: row.id,
     stationName: row.stationName || row.station_name,
-    description: row.description || '',
+    location: row.location || row.description || '',
     status: row.status || 'active'
   }
   stationDialogVisible.value = true
@@ -541,7 +1266,7 @@ const saveStation = async () => {
   try {
     const data = {
       stationName: stationForm.value.stationName,
-      description: stationForm.value.description,
+      location: stationForm.value.location,
       status: stationForm.value.status
     }
 
@@ -577,6 +1302,7 @@ const deptFormRef = ref(null)
 const deptList = ref([])
 const deptSuggestionList = ref([])
 const deptLoading = ref(false)
+const deptExporting = ref(false)
 const deptDialogVisible = ref(false)
 const isDeptEdit = ref(false)
 const deptSaving = ref(false)
@@ -622,6 +1348,39 @@ const loadDepartments = async () => {
   } catch (e) {
     } finally {
     deptLoading.value = false
+  }
+}
+
+const exportDepartments = async () => {
+  deptExporting.value = true
+  try {
+    const title = resolvePageTitle()
+    const fileName = resolveExportFileName()
+    const keyword = typeof deptFilters.value.keyword === 'string' ? deptFilters.value.keyword.trim() : ''
+
+    const { rows } = await fetchAllPaged({
+      pageSize: 5000,
+      fetchPage: ({ page, pageSize }) => getDepartments({
+        page,
+        pageSize,
+        keyword: keyword ? keyword : undefined
+      })
+    })
+
+    const columns = [
+      { label: 'ID', value: row => row.id ?? '' },
+      { label: '部门名称', value: row => row.dept_name ?? '' },
+      { label: '部门编码', value: row => row.dept_code ?? '-' },
+      { label: '状态', value: row => (row.status === 'active' ? '启用' : '禁用') },
+      { label: '描述', value: row => row.description ?? '-' }
+    ]
+
+    await exportRowsToXlsx({ title, fileName, sheetName: '部门管理', columns, rows })
+  } catch (error) {
+    const message = typeof error?.message === 'string' && error.message.trim() ? error.message : '导出失败'
+    ElMessage.error(message)
+  } finally {
+    deptExporting.value = false
   }
 }
 
@@ -702,6 +1461,7 @@ const companyFormRef = ref(null)
 const companyList = ref([])
 const companySuggestionList = ref([])
 const companyLoading = ref(false)
+const companyExporting = ref(false)
 const companyDialogVisible = ref(false)
 const isCompanyEdit = ref(false)
 const companySaving = ref(false)
@@ -747,6 +1507,39 @@ const loadCompanies = async () => {
   } catch (e) {
     } finally {
     companyLoading.value = false
+  }
+}
+
+const exportCompanies = async () => {
+  companyExporting.value = true
+  try {
+    const title = resolvePageTitle()
+    const fileName = resolveExportFileName()
+    const keyword = typeof companyFilters.value.keyword === 'string' ? companyFilters.value.keyword.trim() : ''
+
+    const { rows } = await fetchAllPaged({
+      pageSize: 5000,
+      fetchPage: ({ page, pageSize }) => getCompanies({
+        page,
+        pageSize,
+        keyword: keyword ? keyword : undefined
+      })
+    })
+
+    const columns = [
+      { label: 'ID', value: row => row.id ?? '' },
+      { label: '公司名称', value: row => row.company_name ?? '' },
+      { label: '公司编码', value: row => row.company_code ?? '-' },
+      { label: '状态', value: row => (row.status === 'active' ? '启用' : '禁用') },
+      { label: '描述', value: row => row.description ?? '-' }
+    ]
+
+    await exportRowsToXlsx({ title, fileName, sheetName: '公司管理', columns, rows })
+  } catch (error) {
+    const message = typeof error?.message === 'string' && error.message.trim() ? error.message : '导出失败'
+    ElMessage.error(message)
+  } finally {
+    companyExporting.value = false
   }
 }
 
@@ -824,9 +1617,9 @@ const deleteCompanyRow = async (row) => {
 
 // ==================== 角色管理 ====================
 const roleFormRef = ref(null)
-const menuTreeRef = ref(null)
 const roleList = ref([])
 const roleLoading = ref(false)
+const roleExporting = ref(false)
 const roleDialogVisible = ref(false)
 const isRoleEdit = ref(false)
 const roleSaving = ref(false)
@@ -861,9 +1654,6 @@ const systemRoleCodes = new Set([
 ])
 
 const permissionCodeById = ref(new Map())
-const permissionIdByCode = ref(new Map())
-const menuPermissionTree = ref([])
-const modulePermissions = ref([])
 const selectedModulePermissionIds = ref([])
 const allPermissions = ref([])
 
@@ -892,48 +1682,17 @@ const fetchRoleKeywordSuggestions = createListSuggestionFetcher(
 
 const baseRoleOptions = computed(() => roleList.value.filter(role => !isHiddenRole(role)))
 
-const menuCodeToModuleCode = (menuCode) => {
-  if (!menuCode || !menuCode.startsWith('menu:/')) return null
-  return `module:${menuCode.slice(6)}`
-}
-
-const buildTree = (items) => {
-  const map = new Map()
-  const roots = []
-  items.forEach(item => {
-    map.set(item.id, { ...item, children: [] })
-  })
-  map.forEach(node => {
-    if (node.parentId && map.has(node.parentId)) {
-      map.get(node.parentId).children.push(node)
-    } else {
-      roots.push(node)
-    }
-  })
-  return roots
-}
-
 const loadPermissions = async () => {
   try {
     const res = await permissionApi.getPermissions()
     const list = res.list || []
     const codeById = new Map()
-    const idByCode = new Map()
     list.forEach(item => {
       codeById.set(item.id, item.code)
-      idByCode.set(item.code, item.id)
     })
     permissionCodeById.value = codeById
-    permissionIdByCode.value = idByCode
     allPermissions.value = list
-
-    const menuPermissions = list.filter(item => item.type === 'menu')
-    const moduleList = list.filter(item => item.type === 'module')
-    menuPermissionTree.value = buildTree(menuPermissions)
-    modulePermissions.value = moduleList
   } catch (e) {
-    menuPermissionTree.value = []
-    modulePermissions.value = []
     allPermissions.value = []
   }
 }
@@ -950,6 +1709,30 @@ const loadRoles = async () => {
   }
 }
 
+const exportRoles = async () => {
+  roleExporting.value = true
+  try {
+    const title = resolvePageTitle()
+    const fileName = resolveExportFileName()
+    const rows = Array.isArray(filteredRoleList.value) ? filteredRoleList.value : []
+
+    const columns = [
+      { label: 'ID', value: row => row.id ?? '' },
+      { label: '角色名称', value: row => row.roleName ?? '' },
+      { label: '角色编码', value: row => row.roleCode ?? '' },
+      { label: '基准角色', value: row => row.baseRoleName ?? '-' },
+      { label: '描述', value: row => row.description ?? '' }
+    ]
+
+    await exportRowsToXlsx({ title, fileName, sheetName: '角色管理', columns, rows })
+  } catch (error) {
+    const message = typeof error?.message === 'string' && error.message.trim() ? error.message : '导出失败'
+    ElMessage.error(message)
+  } finally {
+    roleExporting.value = false
+  }
+}
+
 const resetRoleForm = () => {
   roleForm.value = {
     id: null,
@@ -959,9 +1742,6 @@ const resetRoleForm = () => {
     description: ''
   }
   selectedModulePermissionIds.value = []
-  nextTick(() => {
-    menuTreeRef.value?.setCheckedKeys([])
-  })
 }
 
 const showAddRoleDialog = () => {
@@ -974,23 +1754,13 @@ const applyRolePermissions = async (roleId) => {
   try {
     const res = await roleApi.getRolePermissions(roleId)
     const permissionIds = res.permissionIds || []
-    const menuIds = permissionIds.filter(id => {
-      const code = permissionCodeById.value.get(id) || ''
-      return code.startsWith('menu:/')
-    })
     const moduleIds = permissionIds.filter(id => {
       const code = permissionCodeById.value.get(id) || ''
       return code.startsWith('module:')
     })
     selectedModulePermissionIds.value = moduleIds
-    nextTick(() => {
-      menuTreeRef.value?.setCheckedKeys(menuIds)
-    })
   } catch (e) {
     selectedModulePermissionIds.value = []
-    nextTick(() => {
-      menuTreeRef.value?.setCheckedKeys([])
-    })
   }
 }
 
@@ -1015,18 +1785,8 @@ const editRole = async (row) => {
 }
 
 const buildSelectedPermissionIds = () => {
-  const menuChecked = menuTreeRef.value?.getCheckedKeys() || []
-  const menuHalfChecked = menuTreeRef.value?.getHalfCheckedKeys() || []
-  const menuIds = [...new Set([...menuChecked, ...menuHalfChecked])]
   const moduleIds = [...new Set(selectedModulePermissionIds.value || [])]
-
-  const moduleIdsFromMenus = menuIds
-    .map(id => permissionCodeById.value.get(id))
-    .map(menuCode => menuCodeToModuleCode(menuCode))
-    .map(moduleCode => permissionIdByCode.value.get(moduleCode))
-    .filter(Boolean)
-
-  return Array.from(new Set([...menuIds, ...moduleIds, ...moduleIdsFromMenus]))
+  return moduleIds
 }
 
 const saveRole = async () => {

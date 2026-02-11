@@ -6,6 +6,9 @@
         <el-button type="primary" @click="isRecordsView ? goFormView() : goRecordsView()">
           {{ isRecordsView ? '自检表单' : '查询' }}
         </el-button>
+        <el-button v-if="isRecordsView" type="primary" :loading="exporting" @click="exportRecords">
+          <el-icon><Upload /></el-icon>批量导出
+        </el-button>
       </div>
     </div>
 
@@ -287,6 +290,7 @@ import { getHygieneAreasByPosition } from '@/api/hygieneManagement';
 import HygieneAreaChecklist from '@/modules/inspection/components/HygieneAreaChecklist.vue';
 import FilterBar from '@/components/common/FilterBar.vue';
 import FormDialog from '@/components/system/FormDialog.vue';
+import { buildExportFileName, exportRowsToXlsx } from '@/utils/tableExport';
 
 const userStore = useUserStore();
 const route = useRoute();
@@ -313,6 +317,7 @@ const historyList = ref([]);
 const currentRecord = ref(null);
 const detailVisible = ref(false);
 const submitting = ref(false);
+const exporting = ref(false);
 const formHint = ref('');
 const incompleteStatusTitle = computed(() => {
   if (formHint.value) return formHint.value;
@@ -637,6 +642,31 @@ const loadHistory = async () => {
     applyHistoryFilters(normalized);
   } catch (e) {
 
+  }
+};
+
+const exportRecords = async () => {
+  exporting.value = true;
+  try {
+    const source = Array.isArray(historySource.value) ? historySource.value : [];
+    const rows = sortHistoryList(filterHistoryList(source));
+
+    const columns = [
+      { label: '日期', value: row => formatDate(row.inspectionDate) },
+      { label: '责任区', value: row => getWorkTypeNames(row) },
+      { label: '积分', value: row => getInspectionPoints(row) },
+      { label: '检查结果', value: row => getInspectionResult(row).text },
+      { label: '提交时间', value: row => formatDateTime(row.submitTime) }
+    ];
+
+    const pageTitle = typeof route?.meta?.title === 'string' ? route.meta.title : '卫生自检';
+    const fileName = buildExportFileName({ title: pageTitle });
+    await exportRowsToXlsx({ title: pageTitle, fileName, sheetName: '记录列表', columns, rows });
+  } catch (error) {
+    const message = typeof error?.message === 'string' && error.message.trim() ? error.message : '导出失败';
+    ElMessage.error(message);
+  } finally {
+    exporting.value = false;
   }
 };
 

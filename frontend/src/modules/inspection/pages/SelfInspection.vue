@@ -6,6 +6,9 @@
         <el-button type="primary" @click="isRecordsView ? goFormView() : goRecordsView()">
           {{ isRecordsView ? '自检表单' : '查询' }}
         </el-button>
+        <el-button v-if="isRecordsView" type="primary" :loading="exporting" @click="exportRecords">
+          <el-icon><Upload /></el-icon>批量导出
+        </el-button>
       </div>
     </div>
 
@@ -328,6 +331,7 @@ import dayjs from 'dayjs';
 import SafetyCheckItemList from '@/modules/inspection/components/SafetyCheckItemList.vue';
 import FilterBar from '@/components/common/FilterBar.vue';
 import FormDialog from '@/components/system/FormDialog.vue';
+import { buildExportFileName, exportRowsToXlsx, fetchAllPaged } from '@/utils/tableExport';
 
 const userStore = useUserStore();
 const route = useRoute();
@@ -441,6 +445,7 @@ const isActiveStatus = (status) => status === undefined || status === null || st
 // 上传配置
 
 const submitting = ref(false);
+const exporting = ref(false);
 const inspectionForm = reactive({
   selectedWorkTypes: [],
   remark: ''
@@ -835,6 +840,63 @@ const loadHistory = async () => {
 
   } finally {
     loadingHistory.value = false;
+  }
+};
+
+const exportRecords = async () => {
+  exporting.value = true;
+  try {
+    const baseParams = {
+      inspectionType: 'safety',
+      merge: 1
+    };
+    if (historyFilters.value.workTypeId && historyFilters.value.workTypeId !== 'all') {
+      baseParams.workTypeId = historyFilters.value.workTypeId;
+    }
+    if (historyFilters.value.result && historyFilters.value.result !== 'all') {
+      baseParams.inspectionResult = historyFilters.value.result;
+    }
+    if (historyFilters.value.sortOrder) {
+      baseParams.sortOrder = historyFilters.value.sortOrder;
+    }
+
+    const { rows } = await fetchAllPaged({
+      pageSize: 5000,
+      fetchPage: async ({ page, pageSize }) => {
+        const res = await request.get('/self-inspections/my', {
+          params: {
+            ...baseParams,
+            page,
+            pageSize
+          }
+        });
+
+        if (res?.list) {
+          return { list: res.list ?? [], total: res.total ?? 0 };
+        }
+
+        const merged = mergeInspectionRecords(res ?? []);
+        return { list: merged, total: merged.length };
+      }
+    });
+
+    const filteredRows = filterInspectionList(rows);
+    const columns = [
+      { label: '日期', value: row => row.inspection_date ?? '' },
+      { label: '工作性质', value: row => getWorkTypeNames(row.work_type_ids) },
+      { label: '积分', value: row => getInspectionPoints(row) },
+      { label: '检查结果', value: row => getInspectionResult(row).text },
+      { label: '提交时间', value: row => formatDateTime(row.submit_time) }
+    ];
+
+    const pageTitle = typeof route?.meta?.title === 'string' ? route.meta.title : '安全自检';
+    const fileName = buildExportFileName({ title: pageTitle });
+    await exportRowsToXlsx({ title: pageTitle, fileName, sheetName: '记录列表', columns, rows: filteredRows });
+  } catch (error) {
+    const message = typeof error?.message === 'string' && error.message.trim() ? error.message : '导出失败';
+    ElMessage.error(message);
+  } finally {
+    exporting.value = false;
   }
 };
 

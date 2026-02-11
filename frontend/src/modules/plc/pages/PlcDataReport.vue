@@ -3,7 +3,7 @@
     <div class="page-header">
       <h2>PLC 数据报表</h2>
       <div class="header-actions">
-        <el-button type="primary" @click="handleExport(activeTab)">
+        <el-button type="primary" :loading="exporting" @click="handleExport">
           <el-icon><Upload /></el-icon>批量导出
         </el-button>
       </div>
@@ -205,14 +205,18 @@
 import { ref, reactive, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import dayjs from 'dayjs'
+import { useRoute } from 'vue-router'
 import { getCumulativeReport, getFluctuatingReport, getCategories } from '@/api/plcMonitor'
 import { getAllStations } from '@/api/station'
+import { buildExportFileName, exportSheetsToXlsx, fetchAllPaged } from '@/utils/tableExport'
 const activeTab = ref('cumulative')
 const startDate = ref(dayjs().subtract(5, 'day').format('YYYY-MM-DD'))
 const endDate = ref(dayjs().format('YYYY-MM-DD'))
 const timeGranularity = ref('day')
 const stations = ref([])
 const categories = ref([])
+const exporting = ref(false)
+const route = useRoute()
 
 const filters = reactive({
   stationId: 'all',
@@ -264,6 +268,13 @@ const loadCategories = async () => {
   } catch (error) {
     console.error('Failed to load categories:', error)
   }
+}
+
+const resolvePageTitle = () => {
+  if (typeof route?.meta?.title === 'string' && route.meta.title.trim()) {
+    return route.meta.title.trim()
+  }
+  return 'PLC 数据报表'
 }
 
 const loadData = async () => {
@@ -380,8 +391,127 @@ const handleFluctuatingSizeChange = () => {
   loadFluctuatingData()
 }
 
-const handleExport = (type) => {
-  ElMessage.info('导出功能开发中')
+const buildBaseParams = ({ page, pageSize }) => ({
+  stationId: filters.stationId === 'all' ? undefined : filters.stationId,
+  categoryId: filters.categoryId === 'all' ? undefined : filters.categoryId,
+  startDate: startDate.value,
+  endDate: endDate.value,
+  page,
+  pageSize,
+  timeGranularity: timeGranularity.value
+})
+
+const normalizeCumulativeRows = (list = []) => list.map(item => ({
+  ...item,
+  start_value: Number(item.start_value),
+  end_value: Number(item.end_value),
+  usage: Number(item.usage)
+}))
+
+const normalizeFluctuatingRows = (list = []) => list.map(item => ({
+  ...item,
+  min_value: Number(item.min_value),
+  avg_value: Number(item.avg_value),
+  max_value: Number(item.max_value)
+}))
+
+const resolveCumulativeColumns = () => ([
+  { label: '日期', prop: 'date' },
+  { label: '场站', prop: 'station_name' },
+  { label: '监控点', prop: 'config_name' },
+  { label: '地址', prop: 'address' },
+  { label: '起始值', value: (row) => formatNumber(row?.start_value) },
+  { label: '结束值', value: (row) => formatNumber(row?.end_value) },
+  { label: '用量', value: (row) => formatNumber(row?.usage) },
+  { label: '单位', prop: 'unit' }
+])
+
+const resolveCumulativeTopColumns = () => ([
+  { label: '排名', prop: 'rank' },
+  { label: '日期', prop: 'date' },
+  { label: '监控点', prop: 'config_name' },
+  { label: '用量', value: (row) => formatNumber(row?.usage) },
+  { label: '单位', prop: 'unit' }
+])
+
+const resolveFluctuatingColumns = () => ([
+  { label: '日期', prop: 'date' },
+  { label: '场站', prop: 'station_name' },
+  { label: '监控点', prop: 'config_name' },
+  { label: '地址', prop: 'address' },
+  { label: '最小值', value: (row) => formatNumber(row?.min_value) },
+  { label: '平均值', value: (row) => formatNumber(row?.avg_value) },
+  { label: '最大值', value: (row) => formatNumber(row?.max_value) },
+  { label: '样本数', prop: 'sample_count' },
+  { label: '单位', prop: 'unit' }
+])
+
+const handleExport = async () => {
+  if (exporting.value) return
+  exporting.value = true
+  try {
+    const title = resolvePageTitle()
+    const fileName = buildExportFileName({ title })
+
+    if (activeTab.value === 'cumulative') {
+      const { rows } = await fetchAllPaged({
+        fetchPage: async ({ page, pageSize }) => {
+          const res = await getCumulativeReport(buildBaseParams({ page, pageSize }))
+          const result = res || {}
+          return { list: normalizeCumulativeRows(result.data || []), total: result.total }
+        },
+        pageSize: 5000
+      })
+
+      const mainRows = Array.isArray(rows) ? rows : []
+      const topRes = await getCumulativeReport(buildBaseParams({ page: 1, pageSize: 5 }))
+      const topRankings = topRes?.topRankings?.list ? normalizeCumulativeRows(topRes.topRankings.list) : []
+
+      if (mainRows.length === 0 && topRankings.length === 0) {
+        ElMessage.warning('没有可导出的数据')
+        return
+      }
+
+      const sheets = []
+      if (mainRows.length > 0) {
+        sheets.push({ name: '计量型报表', columns: resolveCumulativeColumns(), rows: mainRows })
+      }
+      if (Array.isArray(topRankings) && topRankings.length > 0) {
+        sheets.push({ name: '用量排名Top10', columns: resolveCumulativeTopColumns(), rows: topRankings })
+      }
+
+      await exportSheetsToXlsx({ title, fileName, sheets })
+      ElMessage.success('导出成功')
+      return
+    }
+
+    const { rows } = await fetchAllPaged({
+      fetchPage: async ({ page, pageSize }) => {
+        const res = await getFluctuatingReport(buildBaseParams({ page, pageSize }))
+        const result = res || {}
+        return { list: normalizeFluctuatingRows(result.data || []), total: result.total }
+      },
+      pageSize: 5000
+    })
+
+    const mainRows = Array.isArray(rows) ? rows : []
+    if (mainRows.length === 0) {
+      ElMessage.warning('没有可导出的数据')
+      return
+    }
+
+    await exportSheetsToXlsx({
+      title,
+      fileName,
+      sheets: [{ name: '变化型报表', columns: resolveFluctuatingColumns(), rows: mainRows }]
+    })
+    ElMessage.success('导出成功')
+  } catch (error) {
+    const msg = typeof error?.message === 'string' && error.message.trim() ? error.message.trim() : '导出失败'
+    ElMessage.error(msg)
+  } finally {
+    exporting.value = false
+  }
 }
 </script>
 

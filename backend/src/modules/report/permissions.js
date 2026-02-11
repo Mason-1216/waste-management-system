@@ -42,6 +42,20 @@ export const modulePermissions = [
         "name": "设备故障统计-编辑"
       }
     ]
+  },
+  {
+    "code": "module:points-summary",
+    "name": "积分统计",
+    "children": [
+      {
+        "code": "module:points-summary:view",
+        "name": "积分统计-查看"
+      },
+      {
+        "code": "module:points-summary:edit",
+        "name": "积分统计-编辑"
+      }
+    ]
   }
 ];
 

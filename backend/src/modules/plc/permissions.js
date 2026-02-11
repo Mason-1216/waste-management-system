@@ -27,6 +27,34 @@ export const modulePermissions = [
         "name": "PLC记录-编辑"
       }
     ]
+  },
+  {
+    "code": "module:plc-data-report",
+    "name": "PLC数据报表",
+    "children": [
+      {
+        "code": "module:plc-data-report:view",
+        "name": "PLC数据报表-查看"
+      },
+      {
+        "code": "module:plc-data-report:edit",
+        "name": "PLC数据报表-编辑"
+      }
+    ]
+  },
+  {
+    "code": "module:plc-visual-report",
+    "name": "PLC可视化报表",
+    "children": [
+      {
+        "code": "module:plc-visual-report:view",
+        "name": "PLC可视化报表-查看"
+      },
+      {
+        "code": "module:plc-visual-report:edit",
+        "name": "PLC可视化报表-编辑"
+      }
+    ]
   }
 ];
 

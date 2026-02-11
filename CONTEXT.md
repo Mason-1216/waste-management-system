@@ -1,6 +1,6 @@
 【编码要求】本文件必须使用UTF-8保存与写入，禁止使用其它编码。
 # 运行项目管理系统 - 上下文摘要
-> 最后更新 2026-02-09
+> 最后更新 2026-02-11
 
 ## 项目目标
 构建废弃物处理场站的运行管理系统，覆盖多角色、多场站的日常运营管理：
@@ -13,7 +13,11 @@
 
 ## 当前状态
 ### 已完成（摘要）
-- 新增积分统计页面与接口：侧边栏排班表下方入口（仅开发测试角色可见），按日期+人员汇总所有积分来源，默认近7天并支持姓名模糊筛选。积分来源包括：安全自检/他检（从工作性质积分汇总）、卫生自检/他检（从责任区积分汇总）、维修任务（从维修任务库积分计算）、保养工作（按合格项数量计算）、岗位工作（固定/派发/自行申请）、扣分（审核扣分）。接口 GET /api/reports/points-summary 支持日期范围和姓名筛选，返回按日期+人员维度汇总的积分明细与总计。
+- 积分统计模块升级：新增“积分汇总/应用小时积分/季度积分奖(占位)”三个子项（侧边栏子菜单）；积分汇总支持日/周/月/年（默认日=当天，周=周一~周日），包含“积分统计表+积分明细表”两张独立表格（统一样式、均分页）；积分统计表与积分明细表筛选项彻底分离；积分统计表筛选放回统计表卡片内部（统计筛选），筛选项/列名统一使用“姓名”；积分明细表筛选放在明细表卡片内部，筛选项为维度/日期/姓名/任务名称/任务类别/数据来源，并新增“任务类别”列；页面优化：表格标题字号高于筛选标题，筛选区恢复全局 FilterBar 默认布局（非折叠/非网格），并将积分明细表展示在积分统计表上方；统计表点击各类别数字会在该行下方展开/折叠粗略明细（项目/单位积分/次数/得分/来源），点另一行自动收起上一行；“派发任务”在积分统计中更名为“临时任务”；数据来源统一为“汇总表统计/人工录入”。
+- 积分统计新增接口与导入：GET /api/reports/points-summary-period、GET /api/reports/points-details、GET /api/reports/points-manual-template、POST /api/reports/points-manual-import（经理角色，模板新增“任务类别(Ⅰ类/Ⅱ类/Ⅲ类/Ⅳ类)”列，选填不填默认Ⅰ类）；GET /api/reports/applied-hourly-points（近6个月累计总积分/工时）、GET /api/reports/work-hours-manual-template、POST /api/reports/work-hours-manual-import（经理角色）。
+- 积分可视化分析：新增 /points-summary/visual（Top10+个人分层堆叠，支持“得分大类/任务类别”两套维度且顺序可调并本地保存；筛选项统一使用“姓名”；任务类别固定为Ⅰ类/Ⅱ类/Ⅲ类/Ⅳ类，来源包含岗位工作/临时任务/自行申请/维修任务/人工导入）、新增 /points-summary/applied-hourly-visual（Top10应用小时积分+个人分类分层堆叠，筛选项统一使用“姓名”）。
+- 任务类别统一：岗位工作任务汇总表/临时工作任务汇总表/维修任务汇总表任务类别固定为Ⅰ类/Ⅱ类/Ⅲ类/Ⅳ类；新增/编辑/导入时空值或旧值统一按Ⅰ类；导入模板与“填写说明”同步更新。
+- 积分统计页面结构调整：从 Tab 改为侧边栏子菜单后，页面顶部标题随当前子菜单动态显示（积分汇总/应用小时积分/季度积分奖）。
 - 安全检查项目管理改为一体化表单：新增/编辑工作性质时可直接维护父子项与触发值，列表新增类型/父项/触发列并在工作性质名称显示积分。
 - 安全自检/他检子项展示修复：父项未选择“是/否”时不显示子项。
 - 安全自检拆分：安全自检页仅保留“我的安全自检”并新增积分列；员工检查记录合并人员自检与他检，新增检查性质/积分列并支持他检奖励/扣除积分。
@@ -147,7 +151,7 @@
 - 新增“开发测试”(dev_test) 角色：全量菜单/模块/操作权限、不可删除，并预置账号 sum/605315220。
 - 修复 dev_test 模块权限默认值为字符串数组，避免 /api/roles 500。
 - 修复 sum 账号密码哈希，恢复 sum/605315220 登录。
-- 备份脚本 backup-all.ps1 改为 UTF-8 BOM，PowerShell 可直接运行。
+- 备份脚本 backup-all.ps1：卷备份改用 docker create + docker cp（避免 Windows 盘符共享导致“volume output file not created”），mysqldump 通过 MYSQL_PWD 注入避免参数传递异常。
 - 后端路由模块化：核心平台与排班路由拆到 backend/src/modules/core/routes.js 与 backend/src/modules/schedule/routes.js。
 - 角色菜单、角色首页快捷操作与统计卡片。
 - 权限体系细化：permissions 支持 module 类型，新增 user_permissions 表；模块权限按子选项卡拆分（报表/保养/故障/临时工作/岗位工作/自检他检等），用户支持额外允许/禁止权限叠加在基准角色上。
@@ -380,8 +384,8 @@
 - 维修任务库保留批量删除功能，支持多选任务批量清理。
 - 维修任务库新增“数量/数量是否可修改”字段，列表/弹窗/导入模板同步扩展。
 - 设备故障“新增报障”按钮权限判断改为基于基础角色，移动端与自定义角色可正常显示。
-- 维修任务库新增导入模板文件（docs/templates/repair_task_library_import_template.xlsx），并完成批量导入/批量删除验证。
-- 维修任务库模板下载改为读取后端 templates/repair_task_library_import_template.xlsx 文件，保持与表头模板一致。
+- 维修任务库新增导入模板文件（backend/src/modules/maintenance/templates/repair_task_library_import_template.xlsx），并完成批量导入/批量删除验证。
+- 维修任务库模板下载读取模块内静态模板（backend/src/modules/maintenance/templates/repair_task_library_import_template.xlsx），保持与表头模板一致；清理根目录 templates/ 与 docs/templates/ 的重复副本，静态模板统一收敛到 backend/src/modules/<module>/templates。
 - 维修任务库导入模板工作表名称改为中文“维修任务模板”。
 - 维修任务库导入模板新增“填写说明”工作表，包含表头/填写说明两列提示。
 - 维修任务库“填写说明”补充示例与格式要求（必填/选填、可用值、示例）。
@@ -827,12 +831,12 @@ docker logs wms-backend --tail 50
 - 自动运行测试，在代码发生修改之后，重启前端和后端，并重构镜像。
 - 数据库与连接统一使用 utf8mb4。
 - 乱码根因：部分前端文件被以错误编码读写或二次解码导致文本损坏。
-- Docker 镜像加速：使用 DaoCloud/阿里云/1Panel 镜像源，配置文件见 scripts/docker-daemon.json。
+- Docker 镜像加速：可配置 Docker Desktop registry-mirrors（DaoCloud/阿里云/1Panel 等），用于提升 pull/build 稳定性。
 - PLC 微服务独立运行，后端通过 plcBridgeService.js 与其通信。
 - 根目录脚本：update_stations.sql、update_schema.sql、update_approval_tables.sql、update_inspection_fault_tables.sql
 - 数据库补充脚本：database/migration_user_permissions.sql（扩展 permissions 枚举并创建 user_permissions 表，用于用户额外权限）。
 - 用户管理：基准角色自动勾选菜单权限；前端树控件改为在角色切换/新增时调用 setCheckedKeys，确保菜单权限勾选显示正常。
-- scripts/ 目录：backup-all.ps1/sh (数据库备份)、docker-daemon.json (镜像加速配置)、setup-docker-mirrors.ps1 (配置镜像源)
+- scripts/ 目录：backup-all.ps1（备份：SQL dump + MySQL 数据卷打包）、restore-all.ps1（恢复：从卷备份还原并启动服务）。
 - 此版本为恢复重建版，若需继续补充历史细节请告知。
 
 ### 安全检查与卫生管理积分功能及菜单重构（2026-01-20）
@@ -1050,3 +1054,68 @@ docker logs wms-backend --tail 50
 - 工程化: 清理误提交的备份包（从 git 移除 root 下的 backups*mysql_data_*.tar.gz 并补充 .gitignore 规则）。
 - 工程化: 清理误加的嵌套仓库目录（移除 gitlink/submodule: waste-management-system，并在 .gitignore 忽略该目录）。
 - 前端(Maintenance): 设备保养表格字段调整：保养时间→保养日期，保养规范→规范，保养标准→工作名称；保养周期列移动到积分右侧；保养日期按同周期合并单元格；保养计划导入模板同步调整并兼容旧表头。
+- 工程化: 修复 scripts/restore-all.ps1（卷恢复改为 docker create+docker cp，不依赖 Windows 盘符共享；SQL 导入改为 docker cp + MYSQL_PWD，并增加 -DryRun 与 root 账号导入参数）。
+
+## 2026-02-10 
+- 报表: 积分汇总筛选日期统一为“开始日期/结束日期”（保留日/周/月/年维度）；修复维度=周且清空日期导致 startDate/endDate=Invalid Date 触发后端500的问题；积分可视化分析页同步改为开始/结束日期筛选。
+- 权限体系: 新增/编辑用户、角色管理统一仅使用“模块权限(view/edit)”配置，移除“菜单权限”配置入口。 
+- 权限体系: 登录与 /auth/me 返回的 `menuCodes` 改为由模块权限自动派生（勾选模块查看/编辑即可显示对应菜单并通过路由守卫）。 
+- 权限体系: `menuCodes` 派生仅识别 `module:*:view` / `module:*:edit`（忽略基础 `module:*` 分组码），确保取消模块权限后菜单可正确增减。 
+- 后端(PermissionSeeds): 补齐缺失模块权限种子：积分统计(`module:points-summary:*`)、保养任务(`module:maintenance-task:*`)、PLC报表(`module:plc-data-report:*`、`module:plc-visual-report:*`)，并同步更新角色默认模块权限。
+- 前端(Admin): `ModulePermissionConfig` 支持“有子模块的模块”同时展示模块自身的查看/编辑权限，避免基础权限被子模块遮蔽。
+- 前端(Admin): 新增/编辑用户、角色管理的“模块权限”按侧边栏菜单（所有角色菜单并集）分组展示，PLC 等模块不再拆散显示；勾选仍落到真实 `module:*:view/edit` 权限。
+- 前端(Admin): 模块权限分组中，当多个权限项映射到同一菜单节点时，优先显示各自权限名称（如“我的安全自检/人员安全自检”），避免重复显示同一个菜单名导致看不懂。
+- 前端(Admin): 模块权限按“页面菜单节点”折叠展示：细分权限（如安全/卫生的“我的/人员”）会归到对应页面下，可展开/收起配置。
+- 前端(Admin): 修复“根菜单节点(如维保数据报表/用户管理/组织架构等)的权限项不显示”导致模块权限区域空白的问题；同时兼容权限列表字段名差异，避免接口返回但 UI 解析失败。
+- 前端(Admin): 增加模块权限树构建失败的兜底：当某个分组存在权限项但无法挂载到菜单树节点时，自动降级为平铺列表展示，确保权限仍可勾选生效。
+- 前端(Admin): 模块权限树交互优化：叶子菜单节点仅有一条权限行时，不再需要点击展开，直接显示“查看/编辑”勾选，避免安全/卫生/PLC 等看起来为空。
+- 后端(PermissionSeeds): 新增“卫生工作管理”模块权限 `module:hygiene-work-arrangement:view/edit`，并纳入站长/副站长/部门经理/安全员/高层角色默认模块权限，确保菜单与路由可被模块权限驱动。
+- 前端(Admin): 模块权限行生成改为以所有 `module:*:view` 权限为准，不再依赖父模块记录，避免部分模块父级缺失时分组为空或无法勾选。
+- 前端(Admin): 叶子菜单节点展示优先使用侧边栏菜单名，修复菜单名与模块权限名不一致导致的理解困难（如"安全他检/员工检查记录"）。
+- 前端(Admin): 模块权限树取消折叠交互，默认全展开展示（父项→子项缩进），避免“安全检查/卫生检查/PLC监控”等分组需要点开导致误以为没有权限项。
+- 前端(Report): 积分汇总页面拆分为3个Tab子路由：积分明细表(/points-summary/summary/detail)、积分统计表(/points-summary/summary/stats)、可视化分析(/points-summary/summary/visual)；默认进入积分明细表；原独立可视化分析页面(/points-summary/visual)重定向到新Tab路由。
+- 前端(Admin): 重写 ModulePermissionConfig 组件：简化权限配置逻辑，按侧边栏模块分组展示（排班表/安全检查/卫生检查/岗位工作/临时任务/设备保养/设备故障/PLC监控/维保数据报表/积分统计/消息通知/用户管理/组织架构/帮助与反馈），每个权限项显示"查看/编辑"复选框；修复之前因复杂映射逻辑导致的权限列表不显示问题。
+- 前端(Report): 积分汇总页面样式统一：el-tabs 改为 type="card"（与组织架构管理一致）；积分明细表/积分统计表的筛选/表格/分页间距调整为 20px（与系统统一样式一致）；积分统计表的操作按钮区添加白色背景卡片样式。
+- 前端(Report): 积分明细表功能调整：移除"清空筛选"按钮；将"下载模板"和"人工导入"按钮从积分统计表移至积分明细表；新增"得分大类"列（显示安全/卫生/维修/保养/固定工作/临时任务/自行申请/扣分等分类）。
+- 前端(Export): 统一页面级表格导出：文件名“页面标题_YYYYMMDD.xlsx”，导出数据与页面筛选项一致（不筛选则全量）；补齐任务/维保/排班/帮助与反馈/PLC/积分统计 等模块页面导出；导出入口按钮文案统一为“批量导出”（不修改成功/失败提示文案）。
+- 后端(Report): 积分明细接口新增 scoreCategory 字段，返回得分大类标签（安全/卫生/维修/保养/固定工作/临时任务/自行申请/扣分）。
+- 后端(Report): 积分明细任务名称优化：安全自检显示"工作性质名称"、安全他检显示"安全他检"、卫生自检显示"责任区名称"、卫生他检显示"卫生他检"。
+- 后端(Inspection): 简化安全/卫生检查模块权限：删除冗余的细分权限（my/staff/inspection/management-areas/management-assignments），每个页面只保留 view/edit 两个权限；菜单名称统一为"安全自检/安全他检/卫生自检/卫生他检"。
+- 后端(PermissionSeeds): 更新所有角色的默认模块权限，移除已删除的细分权限码。
+
+## 2026-02-10 (应用小时积分模块重构)
+- 前端(Report): 应用小时积分页面重构为三个Tab子路由：应用小时积分计算(/points-summary/applied-hourly/calc)、工时导入(/points-summary/applied-hourly/import)、可视化分析(/points-summary/applied-hourly/visual)；默认进入应用小时积分计算；原独立可视化分析页面(/points-summary/applied-hourly-visual)重定向到新Tab路由。
+- 前端(Report): 新增 AppliedHourlyContainer.vue Tab容器组件，与积分汇总页面风格统一（el-tabs type="card"）。
+- 前端(Report): 新增 AppliedHourlyCalcTab.vue 应用小时积分计算页面，显示姓名/6个月总积分/6个月工时/应用小时积分，支持统计截止月筛选。
+- 前端(Report): 新增 WorkHoursImportTab.vue 工时导入页面，支持下载模板/导入工时/查看已导入工时记录列表/编辑/删除功能；筛选支持日期范围和姓名。
+- 前端(Report): 新增 AppliedHourlyVisualTab.vue 可视化分析页面（从原独立页面迁移），包含Top10应用小时积分图表、个人分类积分堆叠图、类别层顺序调整。
+- 后端(Report): 新增 GET /api/reports/work-hours-list 接口，获取已导入的工时记录列表（支持分页、日期范围、姓名筛选）。
+- 后端(Report): 新增 PUT /api/reports/work-hours/:id 接口，编辑工时记录（仅管理角色）。
+- 后端(Report): 新增 DELETE /api/reports/work-hours/:id 接口，删除工时记录（仅管理角色）。
+- 后端(Validation): 新增 manualWorkHoursListQuerySchema 和 manualWorkHourUpdateSchema 校验规则。
+- 前端(Report): 应用小时积分可视化分析页面重构：删除个人分类积分堆叠图和类别层顺序调整功能；新增人员多选功能（按钮式选择、分页、搜索筛选、全选/清除）；图表改为TOP10排名+全量排名（最多100人）两个图表。
+
+## 2026-02-11
+- 前端(Report): 修复积分可视化分析切换"得分大类/任务类别"后 ECharts 报错（Cannot read properties of undefined (reading 'push')）：分层堆叠图表 setOption 改为 notMerge=true，避免合并旧 series 时崩溃。
+- 前端(Report): 积分可视化分析"任务类别"维度始终显示 Ⅰ/Ⅱ/Ⅲ/Ⅳ 类（即使某类别无数据也显示），修复切换到任务类别后只显示 Ⅰ 类的问题。
+- 前端(Report): 积分可视化分析新增"可改进分析"卡片，显示选中用户的扣分明细（任务名称/扣分原因/扣分值）及合计。
+- 前端(Report): 积分可视化分析雷达图"扣分"维度使用红色显示。
+- 后端(Report): 积分统计接口返回数据新增 deductions 数组，包含扣分明细（taskName/reason/points）。
+- 前端(排班): 修复排班管理批量导出缺少日期列：导出列按当月 1..天数生成，确保与页面一致。
+- 前端(Report): 工时导入页移除“查询”按钮，姓名筛选改为输入即搜索（300ms 防抖），日期变更保持自动查询。
+- 前端(Report): 应用小时积分页面顶部标题固定为“应用小时积分”，不随子 Tab（计算/工时导入/可视化分析）切换。
+- 前端(Admin): 组织架构管理新增批量导入（场站/部门/公司/角色）：支持下载模板、导入预览、已存在跳过。
+- 前端(Admin): 场站管理字段对齐：页面“描述”字段读写后端 stations.location（新增/编辑/导入/导出一致）。
+- 后端(Core): 新增场站接口支持传入 status（active/inactive）。
+- 任务配置(汇总表): 岗位工作任务汇总表/临时工作任务汇总表/维修任务汇总表字段文案调整：数量是否可修改→"填报时数量是否可修改"；积分是否可修改→"填报时积分是否可修改"；临时工作单位积分是否可修改→"填报时单位积分是否可修改"；导入模板与"填写说明"同步更新，并说明该开关用于控制员工完成任务时是否允许修改填报时的数量/积分。
+- 前端(Report): 积分汇总"可视化分析"Tab 更名为"任务积分分析"；新增"周期性积分分析"Tab（/points-summary/summary/cycle），包含日累计积分/月累计积分/年累计积分三个图表，每个图表展示选定范围内按日/月/年统计的最大值/最小值柱状图和平均值折线图，支持人员多选筛选。
+- 后端(Report): 新增 GET /api/reports/points-cycle-analysis 接口，返回每个用户在选定日期范围内的每日积分数据（dailyPoints），用于前端计算日/月/年统计。
+- 后端(Report): 修复 GET /api/reports/points-cycle-analysis 500：对齐数据表字段（safety_other_inspections：inspected_user_id/inspected_user_name/points；repair_records：verify_date/repair_end_date + repair_tasks；temporary_tasks：approve_time + points），移除旧字段 complete_time/assistant_names/task_points 等。
+- 前端(Layout): 修复积分汇总侧边栏点击子项后自动折叠：侧边栏激活菜单改为“最长前缀匹配”真实菜单路径（例如 /points-summary/summary/detail 映射为 /points-summary/summary），并据此保持父级菜单展开。
+- 前端(Layout): 修复侧边栏重复点击菜单出现空白页：点击菜单不再强制刷新 routeKey/整页 reload；重复点击已激活菜单时直接跳过；增加导航中防抖避免并发导航。
+- 数据修复(DB): 修复测试账号姓名乱码（cz1/zz1/jl1 的 real_name 被写成 ??-??1），并同步修正 notifications/temporary_tasks 等冗余姓名字段。
+
+## 2026-02-11 (周期性积分分析堆积柱状图)
+- 后端(Report): GET /api/reports/points-cycle-analysis 接口返回数据结构升级，dailyPoints 从数字改为对象 { total, byCategory, byTaskCategory }，支持按得分大类（safety/hygiene/repair/maintenance/fixed/dispatch/selfApply/deduction）和任务类别（Ⅰ类/Ⅱ类/Ⅲ类/Ⅳ类）分类统计。
+- 前端(Report): 周期性积分分析页面图表改为堆积柱状图，每个日期/月份/年份显示两根柱子（最大值/最小值），每根柱子内部按分类堆积（最大值实色、最小值半透明），同时显示平均值折线图；标题右侧切换按钮支持"任务类别统计"和"得分大类统计"两种维度。
+- 前端(Report): 得分大类统计不含扣分，只显示正向得分类别（安全/卫生/维修/保养/固定工作/临时任务/自行申请）。

@@ -12,6 +12,9 @@
         <div class="page-header">
           <h2>设备保养计划</h2>
           <div class="header-actions">
+            <el-button type="primary" :loading="planExporting" @click="handleExportPlans">
+              <el-icon><Upload /></el-icon>批量导出
+            </el-button>
             <el-button type="primary" @click="showPlanDialog()">
               <el-icon><Plus /></el-icon>新增保养计划
             </el-button>
@@ -140,6 +143,9 @@
         <div class="page-header">
           <h2>保养计划岗位分配</h2>
           <div class="header-actions">
+            <el-button type="primary" :loading="positionExporting" @click="handleExportPositionPlans">
+              <el-icon><Upload /></el-icon>批量导出
+            </el-button>
             <el-button type="primary" @click="showPositionAssignDialog">
               <el-icon><Plus /></el-icon>分配保养计划
             </el-button>
@@ -262,6 +268,11 @@
       <el-tab-pane v-if="!hideTabs || activeTab === 'records'" label="保养工作记录" name="records">
         <div class="page-header">
           <h2>保养工作记录</h2>
+          <div class="header-actions">
+            <el-button type="primary" :loading="recordExporting" @click="handleExportWorkRecords">
+              <el-icon><Upload /></el-icon>批量导出
+            </el-button>
+          </div>
         </div>
 
         <el-card class="filter-card">
@@ -559,7 +570,7 @@
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
-import { Plus, Search, Download } from '@element-plus/icons-vue';
+import { Plus, Search, Download, Upload } from '@element-plus/icons-vue';
 import dayjs from 'dayjs';
 
 import { addTemplateInstructionSheet, applyTemplateHeaderStyle } from '@/utils/excelTemplate';
@@ -570,6 +581,7 @@ import MaintenanceWorkRecordDetailDialog from '@/modules/maintenance/components/
 import MaintenanceWorkPanel from '@/modules/maintenance/components/MaintenanceWorkPanel.vue';
 import MaintenancePlanDialog from '@/modules/maintenance/components/MaintenancePlanDialog.vue';
 import FormDialog from '@/components/system/FormDialog.vue';
+import { buildExportFileName, exportRowsToXlsx, fetchAllPaged } from '@/utils/tableExport';
 
 const props = defineProps({
   defaultTab: { type: String, default: 'work' },
@@ -679,6 +691,185 @@ const planTableRows = computed(() => {
 
   return rows;
 });
+
+const buildPlanExportRows = () => {
+  const rows = [];
+  const groups = Array.from(planGroupMap.value.values());
+
+  groups.forEach((group) => {
+    const cycleEntries = planCycleOrder
+      .map((cycle) => group.cycles[cycle])
+      .filter(Boolean);
+    if (cycleEntries.length === 0) return;
+
+    const cycleData = cycleEntries.map((cycle) => ({
+      cycle,
+      standards: cycle.standards.length > 0 ? cycle.standards : [null]
+    }));
+
+    cycleData.forEach((item) => {
+      item.standards.forEach((std) => {
+        rows.push({
+          groupKey: group.groupKey,
+          station: { stationName: group.stationName },
+          equipmentCode: group.equipmentCode,
+          equipmentName: group.equipmentName,
+          installLocation: group.installLocation,
+          cycleType: item.cycle.cycleType,
+          standard: std ? { ...std } : null
+        });
+      });
+    });
+  });
+
+  return rows;
+};
+
+const resolvePlanExportColumns = () => ([
+  { label: '场站', value: (row) => row?.station?.stationName ?? '-' },
+  { label: '设备编号', prop: 'equipmentCode' },
+  { label: '设备名称', prop: 'equipmentName' },
+  { label: '安装位置', prop: 'installLocation' },
+  { label: '工作名称', value: (row) => row?.standard?.name ?? '-' },
+  { label: '规范', value: (row) => row?.standard?.specification ?? '-' },
+  { label: '积分', value: (row) => (row?.standard ? (row.standard.points ?? 0) : '-') },
+  { label: '保养周期', value: (row) => getCycleLabel(row?.cycleType) },
+  { label: '保养日期', value: (row) => getMaintenanceTimeText(row) }
+]);
+
+const handleExportPlans = async () => {
+  if (planExporting.value) return;
+  planExporting.value = true;
+  try {
+    const title = '设备保养计划';
+    const fileName = buildExportFileName({ title });
+    const rows = buildPlanExportRows();
+
+    if (rows.length === 0) {
+      ElMessage.warning('没有可导出的数据');
+      return;
+    }
+
+    await exportRowsToXlsx({
+      title,
+      fileName,
+      sheetName: '设备保养计划',
+      columns: resolvePlanExportColumns(),
+      rows
+    });
+    ElMessage.success('导出成功');
+  } catch (error) {
+    const msg = typeof error?.message === 'string' && error.message.trim() ? error.message.trim() : '导出失败';
+    ElMessage.error(msg);
+  } finally {
+    planExporting.value = false;
+  }
+};
+
+const getPositionCycleText = (row) => {
+  const labels = [];
+  if (row?.hasDailyCycle) labels.push('日保养');
+  if (row?.hasWeeklyCycle) labels.push('周保养');
+  if (row?.hasMonthlyCycle) labels.push('月保养');
+  if (row?.hasYearlyCycle) labels.push('年保养');
+  return labels.length > 0 ? labels.join('/') : '-';
+};
+
+const resolvePositionExportColumns = () => ([
+  { label: '场站', prop: 'stationName' },
+  { label: '岗位', prop: 'positionName' },
+  { label: '设备编号', prop: 'equipmentCode' },
+  { label: '设备名称', prop: 'equipmentName' },
+  { label: '安装位置', prop: 'installLocation' },
+  { label: '保养周期', value: (row) => getPositionCycleText(row) }
+]);
+
+const handleExportPositionPlans = async () => {
+  if (positionExporting.value) return;
+  positionExporting.value = true;
+  try {
+    const title = '保养计划岗位分配';
+    const fileName = buildExportFileName({ title });
+
+    const { rows } = await fetchAllPaged({
+      fetchPage: ({ page, pageSize }) => {
+        const params = buildPositionPlanParamsForPage({ page, pageSize });
+        return request.get('/maintenance-position-plans', { params: { ...params } });
+      }
+    });
+
+    const list = Array.isArray(rows) ? rows : [];
+    const exportRows = list.map(normalizePositionPlan);
+    if (exportRows.length === 0) {
+      ElMessage.warning('没有可导出的数据');
+      return;
+    }
+
+    await exportRowsToXlsx({
+      title,
+      fileName,
+      sheetName: title,
+      columns: resolvePositionExportColumns(),
+      rows: exportRows
+    });
+    ElMessage.success('导出成功');
+  } catch (error) {
+    const msg = typeof error?.message === 'string' && error.message.trim() ? error.message.trim() : '导出失败';
+    ElMessage.error(msg);
+  } finally {
+    positionExporting.value = false;
+  }
+};
+
+const resolveWorkRecordExportColumns = () => ([
+  { label: '场站', prop: 'stationName' },
+  { label: '岗位', prop: 'positionName' },
+  { label: '设备编号', prop: 'equipmentCode' },
+  { label: '设备名称', prop: 'equipmentName' },
+  { label: '积分', value: (row) => getRecordPoints(row) },
+  { label: '保养周期', value: (row) => getCycleLabel(row?.cycleType) },
+  { label: '工作日期', prop: 'workDate' },
+  { label: '执行人', prop: 'executorName' },
+  { label: '状态', value: (row) => getRecordStatusText(row) },
+  { label: '提交时间', prop: 'submitTime' }
+]);
+
+const handleExportWorkRecords = async () => {
+  if (recordExporting.value) return;
+  recordExporting.value = true;
+  try {
+    const title = '保养工作记录';
+    const fileName = buildExportFileName({ title });
+
+    const { rows } = await fetchAllPaged({
+      fetchPage: ({ page, pageSize }) => {
+        const params = buildWorkRecordParamsForPage({ page, pageSize });
+        return request.get('/maintenance-work-records', { params: { ...params } });
+      }
+    });
+
+    const list = Array.isArray(rows) ? rows : [];
+    const exportRows = list.filter(Boolean).map(normalizeWorkRecord);
+    if (exportRows.length === 0) {
+      ElMessage.warning('没有可导出的数据');
+      return;
+    }
+
+    await exportRowsToXlsx({
+      title,
+      fileName,
+      sheetName: title,
+      columns: resolveWorkRecordExportColumns(),
+      rows: exportRows
+    });
+    ElMessage.success('导出成功');
+  } catch (error) {
+    const msg = typeof error?.message === 'string' && error.message.trim() ? error.message.trim() : '导出失败';
+    ElMessage.error(msg);
+  } finally {
+    recordExporting.value = false;
+  }
+};
 
 const planSpanMethod = ({ row, columnIndex }) => {
   const groupColumns = [1, 2, 3, 4, 10];
@@ -818,6 +1009,9 @@ const allPositions = computed(() => {
 const workRecordList = ref([]);
 const workRecordSuggestionList = ref([]);
 const recordLoading = ref(false);
+const planExporting = ref(false);
+const positionExporting = ref(false);
+const recordExporting = ref(false);
 const defaultRecordFilters = {
   stationId: 'all',
   positionName: '',
@@ -1025,10 +1219,10 @@ const normalizePositionPlan = (item) => ({
   equipmentCode: item.plan?.equipment_code || '-',
   equipmentName: item.plan?.equipment_name || '-',
   installLocation: item.plan?.install_location || '-',
-  hasDailyCycle: item.plan?.cycle_type === 'daily' || item.hasDailyCycle,
-  hasWeeklyCycle: item.plan?.cycle_type === 'weekly' || item.hasWeeklyCycle,
-  hasMonthlyCycle: item.plan?.cycle_type === 'monthly' || item.hasMonthlyCycle,
-  hasYearlyCycle: item.plan?.cycle_type === 'yearly' || item.hasYearlyCycle
+  hasDailyCycle: item.plan?.daily_enabled ?? false,
+  hasWeeklyCycle: item.plan?.weekly_enabled ?? false,
+  hasMonthlyCycle: item.plan?.monthly_enabled ?? false,
+  hasYearlyCycle: item.plan?.yearly_enabled ?? false
 });
 
 const normalizeWorkRecord = (item) => ({
@@ -1650,35 +1844,79 @@ const handlePlanImport = async (event) => {
   }
 };
 
+const buildPositionPlanParamsForPage = ({ page, pageSize } = {}) => {
+  const params = {};
+  if (Number.isFinite(Number(page))) params.page = Number(page);
+  if (Number.isFinite(Number(pageSize))) params.pageSize = Number(pageSize);
+
+  if (positionFilters.value.stationId && positionFilters.value.stationId !== 'all') {
+    params.stationId = positionFilters.value.stationId;
+  }
+  if (positionFilters.value.positionName && positionFilters.value.positionName !== 'all') {
+    params.positionName = positionFilters.value.positionName;
+  }
+  const equipmentCode = String(positionFilters.value.equipmentCode ?? '').trim();
+  if (equipmentCode) {
+    params.equipmentCode = equipmentCode;
+  }
+  const equipmentName = String(positionFilters.value.equipmentName ?? '').trim();
+  if (equipmentName) {
+    params.equipmentName = equipmentName;
+  }
+  const installLocation = String(positionFilters.value.installLocation ?? '').trim();
+  if (installLocation) {
+    params.installLocation = installLocation;
+  }
+  if (positionFilters.value.cycleType && positionFilters.value.cycleType !== 'all') {
+    params.cycleType = positionFilters.value.cycleType;
+  }
+  return params;
+};
+
+const buildWorkRecordParamsForPage = ({ page, pageSize } = {}) => {
+  const params = {};
+  if (Number.isFinite(Number(page))) params.page = Number(page);
+  if (Number.isFinite(Number(pageSize))) params.pageSize = Number(pageSize);
+
+  if (recordFilters.value.stationId && recordFilters.value.stationId !== 'all') {
+    params.stationId = recordFilters.value.stationId;
+  }
+  const positionName = String(recordFilters.value.positionName ?? '').trim();
+  if (positionName) {
+    params.positionName = positionName;
+  }
+  const equipmentCode = String(recordFilters.value.equipmentCode ?? '').trim();
+  if (equipmentCode) {
+    params.equipmentCode = equipmentCode;
+  }
+  const equipmentName = String(recordFilters.value.equipmentName ?? '').trim();
+  if (equipmentName) {
+    params.equipmentName = equipmentName;
+  }
+  if (recordFilters.value.cycleType && recordFilters.value.cycleType !== 'all') {
+    params.cycleType = recordFilters.value.cycleType;
+  }
+  const executorName = String(recordFilters.value.executorName ?? '').trim();
+  if (executorName) {
+    params.executorName = executorName;
+  }
+  if (recordFilters.value.status && recordFilters.value.status !== 'all') {
+    params.status = recordFilters.value.status;
+  }
+  if (recordFilters.value.startDate) {
+    params.startDate = recordFilters.value.startDate;
+  }
+  if (recordFilters.value.endDate) {
+    params.endDate = recordFilters.value.endDate;
+  }
+  return params;
+};
+
 const loadPositionPlans = async () => {
   positionLoading.value = true;
   try {
-    const params = {
-      page: positionPagination.value.page,
-      pageSize: positionPagination.value.pageSize
-    };
-    if (positionFilters.value.stationId && positionFilters.value.stationId !== 'all') {
-      params.stationId = positionFilters.value.stationId;
-    }
-    if (positionFilters.value.positionName && positionFilters.value.positionName !== 'all') {
-      params.positionName = positionFilters.value.positionName;
-    }
-    const equipmentCode = String(positionFilters.value.equipmentCode ?? '').trim();
-    if (equipmentCode) {
-      params.equipmentCode = equipmentCode;
-    }
-    const equipmentName = String(positionFilters.value.equipmentName ?? '').trim();
-    if (equipmentName) {
-      params.equipmentName = equipmentName;
-    }
-    const installLocation = String(positionFilters.value.installLocation ?? '').trim();
-    if (installLocation) {
-      params.installLocation = installLocation;
-    }
-    if (positionFilters.value.cycleType && positionFilters.value.cycleType !== 'all') {
-      params.cycleType = positionFilters.value.cycleType;
-    }
-    const res = await request.get('/maintenance-position-plans', { params });
+    const params = buildPositionPlanParamsForPage({ page: positionPagination.value.page, pageSize: positionPagination.value.pageSize });
+    const res = await request.get('/maintenance-position-plans', { params: { ...params } });
     const list = Array.isArray(res.list) ? res.list : [];
     positionPlanList.value = list.map(normalizePositionPlan);
     positionPagination.value.total = res.total || 0;
@@ -1718,42 +1956,8 @@ const resetPositionFilters = () => {
 const loadWorkRecords = async () => {
   recordLoading.value = true;
   try {
-    const params = {
-      page: recordPagination.value.page,
-      pageSize: recordPagination.value.pageSize
-    };
-    if (recordFilters.value.stationId && recordFilters.value.stationId !== 'all') {
-      params.stationId = recordFilters.value.stationId;
-    }
-    const positionName = String(recordFilters.value.positionName ?? '').trim();
-    if (positionName) {
-      params.positionName = positionName;
-    }
-    const equipmentCode = String(recordFilters.value.equipmentCode ?? '').trim();
-    if (equipmentCode) {
-      params.equipmentCode = equipmentCode;
-    }
-    const equipmentName = String(recordFilters.value.equipmentName ?? '').trim();
-    if (equipmentName) {
-      params.equipmentName = equipmentName;
-    }
-    if (recordFilters.value.cycleType && recordFilters.value.cycleType !== 'all') {
-      params.cycleType = recordFilters.value.cycleType;
-    }
-    const executorName = String(recordFilters.value.executorName ?? '').trim();
-    if (executorName) {
-      params.executorName = executorName;
-    }
-    if (recordFilters.value.status && recordFilters.value.status !== 'all') {
-      params.status = recordFilters.value.status;
-    }
-    if (recordFilters.value.startDate) {
-      params.startDate = recordFilters.value.startDate;
-    }
-    if (recordFilters.value.endDate) {
-      params.endDate = recordFilters.value.endDate;
-    }
-    const res = await request.get('/maintenance-work-records', { params });
+    const params = buildWorkRecordParamsForPage({ page: recordPagination.value.page, pageSize: recordPagination.value.pageSize });
+    const res = await request.get('/maintenance-work-records', { params: { ...params } });
     const records = Array.isArray(res.list) ? res.list.filter(Boolean) : [];
     workRecordList.value = records.map(normalizeWorkRecord);
     recordPagination.value.total = res.total || 0;

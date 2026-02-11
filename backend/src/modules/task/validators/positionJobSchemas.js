@@ -1,4 +1,5 @@
 import { Joi } from '../../core/validators/validate.js';
+import { TASK_CATEGORY_OPTIONS } from '../../../utils/taskCategory.js';
 
 const intOrEmpty = Joi.alternatives().try(
   Joi.number().integer(),
@@ -18,7 +19,7 @@ export const getPositionJobsQuerySchema = Joi.object({
   positionName: Joi.string().allow('').max(200).optional(),
   stationId: intOrEmpty.optional(),
   jobName: Joi.string().allow('').max(200).optional(),
-  taskCategory: Joi.string().allow('').max(200).optional(),
+  taskCategory: Joi.string().allow('').valid('', ...TASK_CATEGORY_OPTIONS).optional(),
   scoreMethod: Joi.string().allow('').max(50).optional(),
   standardHours: Joi.alternatives().try(Joi.number(), Joi.string().allow('')).optional(),
   points: Joi.alternatives().try(Joi.number(), Joi.string().allow('')).optional(),
@@ -35,7 +36,7 @@ export const createPositionJobBodySchema = Joi.object({
   positionName: Joi.string().allow('').max(200).optional(),
   jobName: Joi.string().allow('').max(200).optional(),
   resultDefinition: Joi.string().allow('').max(2000).optional(),
-  taskCategory: Joi.string().allow('').max(200).optional(),
+  taskCategory: Joi.string().allow('').valid('', ...TASK_CATEGORY_OPTIONS).optional(),
   scoreMethod: Joi.string().allow('').max(50).optional(),
   standardHours: Joi.alternatives().try(Joi.number(), Joi.string().allow('')).optional(),
   points: Joi.alternatives().try(Joi.number(), Joi.string().allow('')).optional(),
@@ -52,7 +53,7 @@ export const updatePositionJobBodySchema = Joi.object({
   positionName: Joi.string().allow('').max(200).optional(),
   jobName: Joi.string().allow('').max(200).optional(),
   resultDefinition: Joi.string().allow('').max(2000).optional(),
-  taskCategory: Joi.string().allow('').max(200).optional(),
+  taskCategory: Joi.string().allow('').valid('', ...TASK_CATEGORY_OPTIONS).optional(),
   scoreMethod: Joi.string().allow('').max(50).optional(),
   standardHours: Joi.alternatives().try(Joi.number(), Joi.string().allow('')).optional(),
   points: Joi.alternatives().try(Joi.number(), Joi.string().allow('')).optional(),

@@ -2,6 +2,7 @@ import { PositionJob, Station, Schedule, sequelize } from '../../../models/index
 import { Op } from 'sequelize';
 import { createError } from '../../../middlewares/error.js';
 import { getPagination, formatPaginationResponse, getOrderBy } from '../../../utils/helpers.js';
+import { normalizeTaskCategory, TASK_CATEGORY_OPTIONS } from '../../../utils/taskCategory.js';
 import ExcelJS from 'exceljs';
 import { addTemplateInstructionSheet, applyTemplateHeaderStyle } from '../../import_export/utils/excelTemplate.js';
 import { validateBody, validateParams, validateQuery } from '../../core/validators/validate.js';
@@ -259,7 +260,7 @@ export const createPositionJob = async (ctx) => {
     result_definition: typeof resultDefinition === 'string' && resultDefinition.trim()
       ? resultDefinition.trim()
       : null,
-    task_category: taskCategory ? taskCategory.trim() : null,
+    task_category: normalizeTaskCategory(taskCategory),
     score_method: scoreMethod ?? null,
     standard_hours: standardHours ?? null,
     points: normalizedPoints,
@@ -361,7 +362,7 @@ export const updatePositionJob = async (ctx) => {
   }
 
   if (taskCategory !== undefined) {
-    updateData.task_category = taskCategory ? taskCategory.trim() : null;
+    updateData.task_category = normalizeTaskCategory(taskCategory);
   }
 
   if (scoreMethod !== undefined) {
@@ -740,8 +741,12 @@ export const importPositionJobs = async (ctx) => {
       points: headerMap.get('单位积分') ?? (usesNewOrder ? 9 : 8),
       quantity: headerMap.get('数量') ?? (usesNewOrder ? 10 : 9),
       pointsRule: headerMap.get('积分规则') ?? (usesNewOrder ? 11 : 10),
-      quantityEditable: headerMap.get('数量是否可修改') ?? (usesNewOrder ? 12 : 11),
-      pointsEditable: headerMap.get('积分是否可修改') ?? (usesNewOrder ? 13 : 12),
+      quantityEditable: headerMap.get('填报时数量是否可修改')
+        ?? headerMap.get('数量是否可修改')
+        ?? (usesNewOrder ? 12 : 11),
+      pointsEditable: headerMap.get('填报时积分是否可修改')
+        ?? headerMap.get('积分是否可修改')
+        ?? (usesNewOrder ? 13 : 12),
       dispatchReviewRequired: headerMap.get('派发任务是否强制审核') ?? (usesNewOrder ? 14 : 13)
     };
 
@@ -760,7 +765,8 @@ export const importPositionJobs = async (ctx) => {
       const resultDefinition = colIndex.resultDefinition
         ? parseOptionalText(row.getCell(colIndex.resultDefinition).value)
         : undefined;
-      const taskCategory = parseOptionalText(row.getCell(colIndex.taskCategory).value);
+      const rawTaskCategory = parseOptionalText(row.getCell(colIndex.taskCategory).value);
+      const taskCategory = normalizeTaskCategory(rawTaskCategory);
       const scoreMethod = parseOptionalText(row.getCell(colIndex.scoreMethod).value);
       const standardHours = parseNumber(row.getCell(colIndex.standardHours).value, Number.parseFloat);
 
@@ -856,7 +862,7 @@ export const importPositionJobs = async (ctx) => {
           position_name: positionName,
           job_name: jobName,
           result_definition: resultDefinition ?? null,
-          task_category: taskCategory ?? null,
+          task_category: taskCategory,
           score_method: scoreMethod ?? null,
           standard_hours: standardHours ?? null,
           points: points,
@@ -943,8 +949,8 @@ export const getPositionJobsTemplate = async (ctx) => {
       { header: '单位积分', key: 'points', width: 12 },
       { header: '数量', key: 'quantity', width: 10 },
       { header: '积分规则', key: 'pointsRule', width: 20 },
-      { header: '数量是否可修改', key: 'quantityEditable', width: 15 },
-      { header: '积分是否可修改', key: 'pointsEditable', width: 15 },
+      { header: '填报时数量是否可修改', key: 'quantityEditable', width: 20 },
+      { header: '填报时积分是否可修改', key: 'pointsEditable', width: 20 },
       { header: '派发任务是否强制审核', key: 'dispatchReviewRequired', width: 20 }
     ];
 
@@ -954,7 +960,7 @@ export const getPositionJobsTemplate = async (ctx) => {
       sortOrder: 1,
       jobName: '示例任务',
       resultDefinition: '例：拍照上传/记录台账/完成验收等',
-      taskCategory: '自由文本',
+      taskCategory: 'Ⅰ类',
       scoreMethod: '奖扣结合式',
       standardHours: 8,
       points: 10,
@@ -972,14 +978,14 @@ export const getPositionJobsTemplate = async (ctx) => {
       ['排序', '可不填，默认 1，整数 1-9999'],
       ['任务名称', '任务名称必填'],
       ['结果定义', '选填，描述该任务的产出/验收口径（纯文本）'],
-      ['任务类别', '自由文本，用于筛选区'],
+      ['任务类别', `选填（不填默认“Ⅰ类”），可选：${TASK_CATEGORY_OPTIONS.join(' / ')}；为空或其它值将按“Ⅰ类”处理。`],
       ['给分方式', '奖扣结合式/ 扣分项/ 奖分项'],
       ['标准工时(h/d)', '标准工时，可不填'],
       ['单位积分', '可不填，默认 0；可为正数/负数/0'],
       ['数量', '整数 1-1000，默认 1'],
       ['积分规则', '备注说明'],
-      ['数量是否可修改', '填写 是/否'],
-      ['积分是否可修改', '填写 是/否'],
+      ['填报时数量是否可修改', '选填，填写 是/否；此处调控是在员工完成任务时，是否可以修改填报时的数量。默认 否。'],
+      ['填报时积分是否可修改', '选填，填写 是/否；此处调控是在员工完成任务时，是否可以修改填报时的积分。默认 否。'],
       ['派发任务是否强制审核', '填写 是/否']
     ]);
 

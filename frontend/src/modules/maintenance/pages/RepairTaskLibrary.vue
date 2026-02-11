@@ -2,37 +2,43 @@
   <div class="repair-task-library">
     <div class="page-header">
       <h2>维修任务汇总表</h2>
-      <div class="header-actions" v-if="canManage">
-        <el-button type="primary" @click="openDialog()">
-          <el-icon><Plus /></el-icon>
-          新增任务
+      <div class="header-actions">
+        <el-button type="primary" :loading="exporting" @click="handleExport">
+          <el-icon><Upload /></el-icon>
+          批量导出
         </el-button>
-        <el-upload
-          :action="`${apiBaseUrl}/repair-task-library/import`"
-          :headers="uploadHeaders"
-          :on-success="handleImportSuccess"
-          :on-error="handleImportError"
-          :show-file-list="false"
-          accept=".xlsx,.xls"
-          :before-upload="beforeUpload"
-        >
-          <el-button type="success">
-            <el-icon><Download /></el-icon>
-            批量导入
+        <template v-if="canManage">
+          <el-button type="primary" @click="openDialog()">
+            <el-icon><Plus /></el-icon>
+            新增任务
           </el-button>
-        </el-upload>
-        <el-button type="info" @click="downloadTemplate">
-          <el-icon><Download /></el-icon>
-          下载模板
-        </el-button>
-        <el-button
-          v-if="canManage && selectedRows.length > 0"
-          type="danger"
-          @click="batchDeleteTasks"
-        >
-          <el-icon><Delete /></el-icon>
-          批量删除 ({{ selectedRows.length }})
-        </el-button>
+          <el-upload
+            :action="`${apiBaseUrl}/repair-task-library/import`"
+            :headers="uploadHeaders"
+            :on-success="handleImportSuccess"
+            :on-error="handleImportError"
+            :show-file-list="false"
+            accept=".xlsx,.xls"
+            :before-upload="beforeUpload"
+          >
+            <el-button type="success">
+              <el-icon><Download /></el-icon>
+              批量导入
+            </el-button>
+          </el-upload>
+          <el-button type="info" @click="downloadTemplate">
+            <el-icon><Download /></el-icon>
+            下载模板
+          </el-button>
+          <el-button
+            v-if="selectedRows.length > 0"
+            type="danger"
+            @click="batchDeleteTasks"
+          >
+            <el-icon><Delete /></el-icon>
+            批量删除 ({{ selectedRows.length }})
+          </el-button>
+        </template>
       </div>
     </div>
 
@@ -55,18 +61,16 @@
         </div>
         <div class="filter-item">
           <span class="filter-label">任务类别</span>
-          <FilterAutocomplete
+          <FilterSelect
             v-model="filters.taskCategory"
-            :fetch-suggestions="fetchTaskCategorySuggestions"
-            trigger-on-focus
             placeholder="全部"
             clearable
             style="width: 160px"
-            @select="handleSearch"
-            @input="handleSearch"
+            @change="handleSearch"
             @clear="handleSearch"
-            @keyup.enter="handleSearch"
-          />
+          >
+            <el-option v-for="option in taskCategoryOptions" :key="option.value" :label="option.label" :value="option.value" />
+          </FilterSelect>
         </div>
         <div class="filter-item">
           <span class="filter-label">给分方式</span>
@@ -156,14 +160,14 @@
           </span>
         </template>
       </el-table-column>
-      <el-table-column prop="quantity_editable" label="数量是否可修改" width="140">
+      <el-table-column prop="quantity_editable" label="填报时数量是否可修改" width="160">
         <template #default="{ row }">
           <el-tag :type="Number(row.quantity_editable) === 1 ? 'success' : 'info'">
             {{ Number(row.quantity_editable) === 1 ? '是' : '否' }}
           </el-tag>
         </template>
       </el-table-column>
-      <el-table-column prop="points_editable" label="积分是否可修改" width="140">
+      <el-table-column prop="points_editable" label="填报时积分是否可修改" width="160">
         <template #default="{ row }">
           <el-tag :type="Number(row.points_editable) === 1 ? 'success' : 'info'">
             {{ Number(row.points_editable) === 1 ? '是' : '否' }}
@@ -202,7 +206,9 @@
           <el-input v-model="form.taskName" placeholder="请输入任务名称" />
         </el-form-item>
         <el-form-item label="任务类别">
-          <el-input v-model="form.taskCategory" placeholder="自由文本，用于筛选" />
+          <el-select v-model="form.taskCategory" placeholder="请选择任务类别" style="width: 100%;">
+            <el-option v-for="option in taskCategoryOptionsNoAll" :key="option.value" :label="option.label" :value="option.value" />
+          </el-select>
         </el-form-item>
         <el-form-item label="给分方式">
           <el-select v-model="form.scoreMethod" placeholder="请选择给分方式">
@@ -218,10 +224,10 @@
         <el-form-item label="积分规则">
           <el-input v-model="form.pointsRule" type="textarea" :rows="3" maxlength="200" />
         </el-form-item>
-        <el-form-item label="数量是否可修改">
+        <el-form-item label="填报时数量是否可修改">
           <el-switch v-model="form.quantityEditable" :active-value="1" :inactive-value="0" />
         </el-form-item>
-        <el-form-item label="积分是否可修改">
+        <el-form-item label="填报时积分是否可修改">
           <el-switch v-model="form.pointsEditable" :active-value="1" :inactive-value="0" />
         </el-form-item>
       </el-form>
@@ -236,7 +242,8 @@
 <script setup>
 import { computed, onMounted, reactive, ref } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
-import { Plus, Download } from '@element-plus/icons-vue';
+import { Plus, Download, Upload } from '@element-plus/icons-vue';
+import { useRoute } from 'vue-router';
 
 import FilterBar from '@/components/common/FilterBar.vue';
 import FormDialog from '@/components/system/FormDialog.vue';
@@ -250,25 +257,23 @@ import {
   batchDeleteRepairTasks,
   downloadTemplate as downloadRepairTaskTemplate
 } from '@/api/repairTaskLibrary';
+import { buildExportFileName, exportRowsToXlsx, fetchAllPaged } from '@/utils/tableExport';
 
 const userStore = useUserStore();
+const route = useRoute();
 const managerRoles = ['admin', 'department_manager', 'deputy_manager', 'senior_management'];
 const canManage = computed(() => userStore.hasRole(managerRoles));
 
 const tasks = ref([]);
 const taskSuggestionList = ref([]);
 const loading = ref(false);
+const exporting = ref(false);
 const tableRef = ref(null);
 const selectedRows = ref([]);
 
 const fetchTaskNameSuggestions = createListSuggestionFetcher(
   () => taskSuggestionList.value,
   (row) => row.task_name
-);
-
-const fetchTaskCategorySuggestions = createListSuggestionFetcher(
-  () => taskSuggestionList.value,
-  (row) => row.task_category
 );
 
 const pagination = reactive({
@@ -286,12 +291,20 @@ const filters = reactive({
 
 const scoreMethodOptions = ['奖扣结合式', '扣分项', '奖分项'];
 
+const TASK_CATEGORY_OPTIONS = ['Ⅰ类', 'Ⅱ类', 'Ⅲ类', 'Ⅳ类'];
+const normalizeTaskCategory = (value) => {
+  const text = typeof value === 'string' ? value.trim() : '';
+  return TASK_CATEGORY_OPTIONS.includes(text) ? text : 'Ⅰ类';
+};
+const taskCategoryOptions = TASK_CATEGORY_OPTIONS.map(v => ({ label: v, value: v }));
+const taskCategoryOptionsNoAll = taskCategoryOptions;
+
 const dialogVisible = ref(false);
 const saving = ref(false);
 const form = reactive({
   id: null,
   taskName: '',
-  taskCategory: '',
+  taskCategory: 'Ⅰ类',
   scoreMethod: '',
   points: null,
   quantity: 1,
@@ -317,6 +330,31 @@ const buildQuery = () => ({
   pointsEditable: hasFilterValue(filters.pointsEditable) ? filters.pointsEditable : undefined,
   quantityEditable: hasFilterValue(filters.quantityEditable) ? filters.quantityEditable : undefined
 });
+
+const buildQueryForPage = ({ page, pageSize }) => {
+  const params = buildQuery();
+  params.page = page;
+  params.pageSize = pageSize;
+  return params;
+};
+
+const resolvePageTitle = () => {
+  if (typeof route?.meta?.title === 'string' && route.meta.title.trim()) {
+    return route.meta.title.trim();
+  }
+  return '维修任务汇总表';
+};
+
+const resolveExportColumns = () => ([
+  { label: '任务名称', prop: 'task_name' },
+  { label: '任务类别', value: (row) => row?.task_category ?? '-' },
+  { label: '给分方式', value: (row) => row?.score_method ?? '-' },
+  { label: '单位积分', prop: 'points' },
+  { label: '数量', prop: 'quantity' },
+  { label: '积分规则', value: (row) => row?.points_rule ?? '-' },
+  { label: '积分可修改', value: (row) => (Number(row?.points_editable) === 1 ? '是' : '否') },
+  { label: '数量可修改', value: (row) => (Number(row?.quantity_editable) === 1 ? '是' : '否') }
+]);
 
 const clearSelection = () => {
   selectedRows.value = [];
@@ -353,6 +391,40 @@ const loadTaskSuggestions = async () => {
   }
 };
 
+const handleExport = async () => {
+  if (exporting.value) return;
+  exporting.value = true;
+  try {
+    const title = resolvePageTitle();
+    const fileName = buildExportFileName({ title });
+
+    const { rows } = await fetchAllPaged({
+      fetchPage: ({ page, pageSize }) => getRepairTaskLibrary(buildQueryForPage({ page, pageSize })),
+      pageSize: 5000
+    });
+
+    const list = Array.isArray(rows) ? rows : [];
+    if (list.length === 0) {
+      ElMessage.warning('没有可导出的数据');
+      return;
+    }
+
+    await exportRowsToXlsx({
+      title,
+      fileName,
+      sheetName: '维修任务汇总',
+      columns: resolveExportColumns(),
+      rows: list
+    });
+    ElMessage.success('导出成功');
+  } catch (error) {
+    const msg = typeof error?.message === 'string' && error.message.trim() ? error.message.trim() : '导出失败';
+    ElMessage.error(msg);
+  } finally {
+    exporting.value = false;
+  }
+};
+
 const handleSearch = () => {
   pagination.page = 1;
   loadTasks();
@@ -384,7 +456,7 @@ const openDialog = (row = null) => {
   if (row) {
     form.id = row.id;
     form.taskName = row.task_name ?? '';
-    form.taskCategory = row.task_category ?? '';
+    form.taskCategory = normalizeTaskCategory(row.task_category);
     form.scoreMethod = row.score_method ?? '';
     form.points = row.points ?? null;
     form.quantity = row.quantity ?? 1;
@@ -394,7 +466,7 @@ const openDialog = (row = null) => {
   } else {
     form.id = null;
     form.taskName = '';
-    form.taskCategory = '';
+    form.taskCategory = 'Ⅰ类';
     form.scoreMethod = '';
     form.points = null;
     form.quantity = 1;
