@@ -3,6 +3,9 @@
     <div class="page-header">
       <h2>故障上报</h2>
       <div class="header-actions">
+        <el-button v-if="isSimpleMode" @click="simpleShowTable = !simpleShowTable">
+          {{ simpleShowTable ? '切换卡片' : '切换表格' }}
+        </el-button>
         <el-button type="primary" :loading="exporting" @click="handleExport">
           <el-icon><Upload /></el-icon>批量导出
         </el-button>
@@ -105,8 +108,13 @@
       </div>
     </el-card>
 
-    <el-card class="filter-card">
-      <FilterBar>
+    <SimpleFilterBar
+      :enabled="isSimpleMode"
+      v-model:expanded="simpleFilterExpanded"
+      :summary-text="simpleFilterSummary"
+    >
+      <el-card class="filter-card">
+        <FilterBar>
         <div class="filter-item">
           <span class="filter-label">场站</span>
           <FilterSelect v-model="filters.stationId" placeholder="全部" filterable clearable @change="loadRecords" @clear="loadRecords">
@@ -173,10 +181,19 @@
             <el-option label="已归档" value="archived" />
           </FilterSelect>
         </div>
-      </FilterBar>
-    </el-card>
+        </FilterBar>
+      </el-card>
+    </SimpleFilterBar>
+
+    <div v-if="isSimpleMode && !simpleShowTable" class="simple-status-legend">
+      <span v-for="item in simpleStatusLegend" :key="item.label" class="legend-item">
+        <i class="legend-dot" :class="item.className"></i>
+        <span>{{ item.label }}</span>
+      </span>
+    </div>
 
     <el-table
+      v-if="!isSimpleMode || simpleShowTable"
       :data="records"
       border
       stripe
@@ -261,6 +278,49 @@
         </el-table-column>
     </el-table>
 
+    <div v-else class="simple-card-list" v-loading="loading">
+      <el-empty v-if="records.length === 0" description="暂无数据" />
+      <el-card v-for="row in records" :key="rowKey(row)" class="fault-card">
+        <div class="fault-card-header">
+          <div class="fault-title">{{ row.equipment_name || row.equipment_code || '-' }}</div>
+          <div class="status-chip">
+            <i class="legend-dot" :class="statusDotClass(row)"></i>
+            <span>{{ statusLabel(row) }}</span>
+          </div>
+        </div>
+        <div class="fault-card-body">
+          <div class="line"><span>场站：{{ row.station?.station_name || row.station_name || '-' }}</span></div>
+          <div class="line"><span>设备编号：{{ row.equipment_code || '-' }}</span></div>
+          <div class="line"><span>安装地点：{{ row.equipment_location || '-' }}</span></div>
+          <div class="line">
+            <span>上报人：{{ row.reporter_name || '-' }}</span>
+            <span>紧急程度：{{ urgencyLabel(row.urgency_level) }}</span>
+          </div>
+          <div class="line">
+            <span>维修人员：{{ formatRepairNames(row) }}</span>
+          </div>
+          <div class="card-actions">
+            <el-button size="small" @click="openDialog(row)">查看详情</el-button>
+            <el-tooltip
+              v-if="showDelete(row)"
+              :content="deleteState(row).reason"
+              placement="top"
+              :disabled="deleteState(row).allowed"
+            >
+              <el-button
+                size="small"
+                type="danger"
+                :disabled="!deleteState(row).allowed"
+                @click="deleteRow(row)"
+              >
+                删除
+              </el-button>
+            </el-tooltip>
+          </div>
+        </div>
+      </el-card>
+    </div>
+
     <div class="pagination-wrapper">
       <el-pagination
         v-model:current-page="pagination.page"
@@ -318,12 +378,14 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, onMounted, watch } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import dayjs from 'dayjs';
 
 import { createListSuggestionFetcher } from '@/utils/filterAutocomplete';
 import { useUserStore } from '@/store/modules/user';
+import { useUiModeStore } from '@/store/modules/uiMode';
+import SimpleFilterBar from '@/components/common/SimpleFilterBar.vue';
 import MaintenanceFaultDetailDialog from '@/modules/maintenance/components/MaintenanceFaultDetailDialog.vue';
 import { WarningFilled, Upload } from '@element-plus/icons-vue';
 import { buildExportFileName, exportRowsToXlsx, fetchAllPaged } from '@/utils/tableExport';
@@ -343,6 +405,11 @@ import { getEquipmentByCode, getEquipment } from '@/api/equipment';
 import { getAllStations } from '@/api/station';
 
 const userStore = useUserStore();
+const uiModeStore = useUiModeStore();
+const canUseSimpleMode = computed(() => userStore.roleCode === 'dev_test' || userStore.baseRoleCode === 'dev_test');
+const isSimpleMode = computed(() => canUseSimpleMode.value && uiModeStore.isSimpleMode);
+const simpleShowTable = ref(false);
+const simpleFilterExpanded = ref(false);
 
 const records = ref([]);
 const recordSuggestionList = ref([]);
@@ -403,6 +470,28 @@ const defaultFilters = {
   repairPersonName: ''
 };
 const filters = ref({ ...defaultFilters });
+const simpleFilterSummary = computed(() => {
+  const parts = [];
+  const stationItem = stationFilterOptions.value.find(item => String(item.id) === String(filters.value.stationId));
+  if (stationItem && filters.value.stationId !== 'all') parts.push(`场站=${stationItem.name}`);
+  if (filters.value.equipmentName) parts.push(`设备=${filters.value.equipmentName}`);
+  if (filters.value.urgencyLevel && filters.value.urgencyLevel !== 'all') {
+    parts.push(`紧急程度=${urgencyLabel(filters.value.urgencyLevel)}`);
+  }
+  if (filters.value.repairPersonName) parts.push(`维修人=${filters.value.repairPersonName}`);
+  if (filters.value.status && filters.value.status !== 'all') {
+    parts.push(`状态=${statusOptionText(filters.value.status)}`);
+  }
+  return parts.length > 0 ? parts.join(' | ') : '当前筛选：全部';
+});
+
+const simpleStatusLegend = [
+  { label: '草稿', className: 'dot-info' },
+  { label: '已上报/已派单', className: 'dot-warning' },
+  { label: '维修中', className: 'dot-primary' },
+  { label: '退回重做/异常', className: 'dot-danger' },
+  { label: '已验收', className: 'dot-success' }
+];
 
 const stationFilterOptions = computed(() => {
   return (stations.value || [])
@@ -479,6 +568,20 @@ const statusLabel = (row) => {
   return labels[status] || status || '-';
 };
 
+const statusOptionText = (status) => {
+  const map = {
+    draft_report: '草稿',
+    submitted_report: '已上报',
+    dispatched: '已派单',
+    repairing: '维修中',
+    rework: '退回重做',
+    repaired_submitted: '待验收',
+    accepted: '已验收',
+    archived: '已归档'
+  };
+  return map[status] || status || '-';
+};
+
 const statusTag = (row) => {
   const status = row?.status;
   if (status === 'repairing') {
@@ -499,6 +602,15 @@ const statusTag = (row) => {
     archived: 'info'
   };
   return types[status] || 'info';
+};
+
+const statusDotClass = (row) => {
+  const type = statusTag(row);
+  if (type === 'success') return 'dot-success';
+  if (type === 'warning') return 'dot-warning';
+  if (type === 'danger') return 'dot-danger';
+  if (type === 'primary') return 'dot-primary';
+  return 'dot-info';
 };
 
 const formatRepairNames = (row) => {
@@ -1435,6 +1547,12 @@ const handleEquipmentChange = (row) => {
   }
 };
 
+watch(isSimpleMode, (enabled) => {
+  if (enabled) return;
+  simpleShowTable.value = false;
+  simpleFilterExpanded.value = false;
+});
+
 onMounted(async () => {
   loadRecords();
   loadRepairers();
@@ -1456,6 +1574,44 @@ onMounted(async () => {
       font-size: 20px;
     }
   }
+
+  .header-actions {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .simple-status-legend {
+    margin-bottom: 12px;
+    background: #fff;
+    border: 1px solid #ebeef5;
+    border-radius: 8px;
+    padding: 10px 12px;
+    display: flex;
+    gap: 16px;
+    flex-wrap: wrap;
+
+    .legend-item {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      color: #606266;
+      font-size: 13px;
+    }
+  }
+
+  .legend-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    display: inline-block;
+  }
+
+  .dot-success { background: #67c23a; }
+  .dot-warning { background: #e6a23c; }
+  .dot-danger { background: #f56c6c; }
+  .dot-primary { background: #409eff; }
+  .dot-info { background: #909399; }
 
   .report-banner {
     background: #fff;
@@ -1527,6 +1683,60 @@ onMounted(async () => {
 
   .fault-table {
     width: 100%;
+  }
+
+  .simple-card-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .fault-card {
+    border-left: 4px solid #409eff;
+
+    .fault-card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 8px;
+    }
+
+    .fault-title {
+      font-size: 16px;
+      font-weight: 600;
+      color: #303133;
+    }
+
+    .status-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      color: #606266;
+      font-size: 13px;
+    }
+
+    .fault-card-body {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .line {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      color: #606266;
+      font-size: 14px;
+      flex-wrap: wrap;
+    }
+
+    .card-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+      margin-top: 4px;
+    }
   }
 
   .expand-form {

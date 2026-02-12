@@ -1,39 +1,48 @@
 ﻿<template>
   <div class="realtime-monitor">
     <el-card class="filter-card">
-      <FilterBar>
-      <div class="filter-item">
-        <span class="filter-label">场站</span>
-        <FilterSelect v-model="filterForm.stationId" placeholder="全部" filterable clearable style="width: 180px" @change="handleSearch" @clear="handleSearch">
-          <el-option label="全部" value="all" />
-          <el-option
-            v-for="station in stations"
-            :key="station.id"
-            :label="station.station_name"
-            :value="station.id"
+      <SimpleFilterBar
+        :enabled="isSimpleMode"
+        v-model:expanded="simpleFilterExpanded"
+        :summary-text="simpleFilterSummary"
+      >
+        <FilterBar>
+          <div class="filter-item">
+            <span class="filter-label">场站</span>
+            <FilterSelect v-model="filterForm.stationId" placeholder="全部" filterable clearable style="width: 180px" @change="handleSearch" @clear="handleSearch">
+              <el-option label="全部" value="all" />
+              <el-option
+                v-for="station in stations"
+                :key="station.id"
+                :label="station.station_name"
+                :value="station.id"
+              />
+            </FilterSelect>
+          </div>
+          <div class="filter-item">
+            <span class="filter-label">分类</span>
+            <FilterSelect v-model="filterForm.categoryId" placeholder="全部" filterable clearable style="width: 180px" @change="handleSearch" @clear="handleSearch">
+              <el-option label="全部" value="all" />
+              <el-option
+                v-for="cat in categories"
+                :key="cat.id"
+                :label="cat.category_name"
+                :value="cat.id"
+              />
+            </FilterSelect>
+          </div>
+          <el-switch
+            v-model="autoRefresh"
+            active-text="自动刷新"
           />
-        </FilterSelect>
-      </div>
-      <div class="filter-item">
-        <span class="filter-label">分类</span>
-        <FilterSelect v-model="filterForm.categoryId" placeholder="全部" filterable clearable style="width: 180px" @change="handleSearch" @clear="handleSearch">
-          <el-option label="全部" value="all" />
-          <el-option
-            v-for="cat in categories"
-            :key="cat.id"
-            :label="cat.category_name"
-            :value="cat.id"
-          />
-        </FilterSelect>
-      </div>
-      <el-switch
-        v-model="autoRefresh"
-        active-text="自动刷新"
-      />
+          <el-button v-if="isSimpleMode" @click="simpleShowTable = !simpleShowTable">
+            {{ simpleShowTable ? '切换卡片' : '切换表格' }}
+          </el-button>
         <el-button type="primary" :loading="exporting" @click="handleExport">
           <el-icon><Upload /></el-icon>批量导出
         </el-button>
-      </FilterBar>
+        </FilterBar>
+      </SimpleFilterBar>
     </el-card>
 
     <el-card class="status-card">
@@ -66,7 +75,7 @@
     <div class="data-section">
       <div class="section-title">实时监控数据</div>
 
-      <TableWrapper>
+      <TableWrapper v-if="!isSimpleMode || simpleShowTable">
         <el-table
           v-loading="loading"
           :data="pagedData"
@@ -115,6 +124,19 @@
           </el-table-column>
         </el-table>
       </TableWrapper>
+      <div v-else class="simple-card-list" v-loading="loading">
+        <el-empty v-if="pagedData.length === 0" description="暂无数据" />
+        <div v-for="row in pagedData" :key="row.id || `${row.name}-${row.address}`" class="simple-card-item">
+          <div class="card-title">{{ row.name || '-' }}</div>
+          <div class="card-meta">场站：{{ row.station?.station_name || '-' }}</div>
+          <div class="card-meta">分类：{{ row.category?.category_name || '-' }}</div>
+          <div class="card-meta">地址：{{ row.address || '-' }}</div>
+          <div class="card-meta">数据类型：{{ row.dataType || '-' }}</div>
+          <div class="card-meta">当前值：{{ formatValue(row.value, row.dataType) }} {{ row.unit || '' }}</div>
+          <div class="card-meta">连接：{{ ipStatusMap[row.plcIp] ? '在线' : '离线' }}</div>
+          <div class="card-meta">状态：{{ row.success ? '正常' : '异常' }}</div>
+        </div>
+      </div>
 
       <div class="pagination-wrapper">
         <el-pagination
@@ -136,6 +158,8 @@ import { ref, reactive, onMounted, onUnmounted, watch, computed } from 'vue';
 import { ElMessage } from 'element-plus';
 import { Upload } from '@element-plus/icons-vue';
 import { useRoute } from 'vue-router';
+import SimpleFilterBar from '@/components/common/SimpleFilterBar.vue';
+import { useSimpleMode } from '@/composables/useSimpleMode';
 import { getRealtimeData, getCategories, checkServiceStatus } from '@/api/plcMonitor';
 import request from '@/utils/request';
 import { buildExportFileName, exportRowsToXlsx } from '@/utils/tableExport';
@@ -150,10 +174,25 @@ const tableData = ref([]);
 const stations = ref([]);
 const categories = ref([]);
 let refreshTimer = null;
+const { isSimpleMode, simpleShowTable, simpleFilterExpanded } = useSimpleMode();
 
 const filterForm = reactive({
   stationId: 'all',
   categoryId: 'all'
+});
+const resolveStationLabel = (id) => {
+  if (id === 'all') return '全部';
+  const matched = stations.value.find(item => item.id === id);
+  return matched?.station_name || String(id);
+};
+const resolveCategoryLabel = (id) => {
+  if (id === 'all') return '全部';
+  const matched = categories.value.find(item => item.id === id);
+  return matched?.category_name || String(id);
+};
+const simpleFilterSummary = computed(() => {
+  const autoRefreshText = autoRefresh.value ? '开' : '关';
+  return `当前筛选：场站=${resolveStationLabel(filterForm.stationId)} | 分类=${resolveCategoryLabel(filterForm.categoryId)} | 自动刷新=${autoRefreshText}`;
 });
 
 const route = useRoute();
@@ -446,6 +485,29 @@ onUnmounted(() => {
 
     .value-error {
       color: #f56c6c;
+    }
+
+    .simple-card-list {
+      display: grid;
+      gap: 12px;
+    }
+
+    .simple-card-item {
+      background: #fff;
+      border: 1px solid #ebeef5;
+      border-radius: 8px;
+      padding: 12px;
+    }
+
+    .card-title {
+      font-weight: 600;
+      margin-bottom: 8px;
+    }
+
+    .card-meta {
+      color: #606266;
+      font-size: 14px;
+      margin-bottom: 6px;
     }
   }
 

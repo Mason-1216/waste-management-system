@@ -416,14 +416,29 @@ export const importRepairTaskLibrary = async (ctx) => {
         status: 'success'
       });
     } else {
-      await existing.update({
-        score_method: scoreMethod ?? existing.score_method,
-        points,
-        quantity: quantityValue,
-        points_rule: pointsRule ?? existing.points_rule,
-        quantity_editable: quantityEditable === null ? existing.quantity_editable : quantityEditable,
-        points_editable: pointsEditable === null ? existing.points_editable : pointsEditable
+      const { patch } = buildRepairTaskLibraryUpdatePatchWithDiff({
+        existing,
+        payload: {
+          score_method: scoreMethod,
+          points,
+          quantity: quantityValue,
+          points_rule: pointsRule,
+          quantity_editable: quantityEditable,
+          points_editable: pointsEditable
+        }
       });
+
+      if (Object.keys(patch).length === 0) {
+        results.push({
+          row: i,
+          taskName,
+          status: 'skip',
+          message: '无变更，已跳过'
+        });
+        continue;
+      }
+
+      await existing.update(patch);
 
       results.push({
         row: i,
@@ -436,13 +451,205 @@ export const importRepairTaskLibrary = async (ctx) => {
 
   const successCount = results.filter(r => r.status === 'success').length;
   const updatedCount = results.filter(r => r.status === 'updated').length;
+  const skipCount = results.filter(r => r.status === 'skip').length;
   const errorCount = results.filter(r => r.status === 'error').length;
 
   ctx.body = {
     code: 200,
-    message: `导入完成：新增${successCount}条，更新${updatedCount}条，失败${errorCount}条`,
+    message: `导入完成：新增${successCount}条，更新${updatedCount}条，跳过${skipCount}条，失败${errorCount}条`,
     data: results
   };
+};
+
+export const previewImportRepairTaskLibrary = async (ctx) => {
+  const file = ctx.file;
+  if (!file) {
+    throw createError(400, '请上传文件');
+  }
+
+  const workbook = new ExcelJS.Workbook();
+  await workbook.xlsx.load(file.buffer);
+  const worksheet = workbook.worksheets[0];
+  if (!worksheet) {
+    throw createError(400, 'Excel内容为空');
+  }
+
+  const normalizeCellValue = (value) => {
+    if (value && typeof value === 'object') {
+      if (value.text !== undefined) return value.text;
+      if (value.result !== undefined) return value.result;
+      if (Array.isArray(value.richText)) {
+        return value.richText.map(item => item.text ?? '').join('');
+      }
+    }
+    return value;
+  };
+
+  const parseNumber = (value) => {
+    const normalized = normalizeCellValue(value);
+    if (normalized === undefined || normalized === null || normalized === '') return null;
+    const parsed = Number(normalized);
+    return Number.isNaN(parsed) ? null : parsed;
+  };
+
+  const parseBoolean = (value) => {
+    const normalized = normalizeCellValue(value);
+    if (normalized === undefined || normalized === null || normalized === '') return null;
+    const text = String(normalized).trim();
+    if (text === '是') return 1;
+    if (text === '否') return 0;
+    return null;
+  };
+
+  const parseText = (value) => {
+    const normalized = normalizeCellValue(value);
+    if (normalized === undefined || normalized === null) return '';
+    return String(normalized).trim();
+  };
+
+  const parseOptionalText = (value) => {
+    const text = parseText(value);
+    return text ? text : null;
+  };
+
+  const summary = { total: 0, create: 0, update: 0, skip: 0, error: 0 };
+  const rows = [];
+
+  for (let i = 2; i <= worksheet.rowCount; i += 1) {
+    const row = worksheet.getRow(i);
+    if (!row.hasValues) continue;
+
+    summary.total += 1;
+
+    const taskName = parseText(row.getCell(1).value);
+    const taskCategory = normalizeTaskCategory(parseText(row.getCell(2).value));
+    const scoreMethod = parseOptionalText(row.getCell(3).value);
+    const points = parseNumber(row.getCell(4).value);
+    const quantityCell = normalizeCellValue(row.getCell(5).value);
+    const pointsRule = parseOptionalText(row.getCell(6).value);
+    const quantityEditable = parseBoolean(row.getCell(7).value);
+    const pointsEditable = parseBoolean(row.getCell(8).value);
+
+    const previewRow = {
+      rowNum: i,
+      action: 'error',
+      message: '',
+      diff: {},
+      taskName,
+      taskCategory: taskCategory ?? '',
+      scoreMethod: scoreMethod ?? '',
+      points,
+      quantity: quantityCell ?? '',
+      pointsRule: pointsRule ?? '',
+      quantityEditable,
+      pointsEditable
+    };
+
+    if (!taskName) {
+      previewRow.message = '任务名称不能为空';
+      summary.error += 1;
+      rows.push(previewRow);
+      continue;
+    }
+
+    if (points === null || points === undefined) {
+      previewRow.message = '单位积分不能为空';
+      summary.error += 1;
+      rows.push(previewRow);
+      continue;
+    }
+
+    const hasQuantityValue = quantityCell !== undefined && quantityCell !== null && String(quantityCell).trim() !== '';
+    const quantityValue = hasQuantityValue ? ensureQuantity(quantityCell) : 1;
+    if (quantityValue === null) {
+      previewRow.message = '数量必须是 1-1000 的整数';
+      summary.error += 1;
+      rows.push(previewRow);
+      continue;
+    }
+    previewRow.quantity = quantityValue;
+
+    const existing = await RepairTaskLibrary.findOne({
+      where: {
+        task_name: taskName,
+        task_category: taskCategory
+      }
+    });
+
+    if (!existing) {
+      previewRow.action = 'create';
+      previewRow.message = '将新增';
+      summary.create += 1;
+      rows.push(previewRow);
+      continue;
+    }
+
+    const { patch, diff } = buildRepairTaskLibraryUpdatePatchWithDiff({
+      existing,
+      payload: {
+        score_method: scoreMethod,
+        points,
+        quantity: quantityValue,
+        points_rule: pointsRule,
+        quantity_editable: quantityEditable,
+        points_editable: pointsEditable
+      }
+    });
+
+    previewRow.diff = diff;
+    if (Object.keys(patch).length === 0) {
+      previewRow.action = 'skip';
+      previewRow.message = '无变更，跳过';
+      summary.skip += 1;
+      rows.push(previewRow);
+      continue;
+    }
+
+    previewRow.action = 'update';
+    previewRow.message = '将更新';
+    summary.update += 1;
+    rows.push(previewRow);
+  }
+
+  ctx.body = {
+    code: 200,
+    message: 'success',
+    data: { summary, rows }
+  };
+};
+
+const buildRepairTaskLibraryUpdatePatchWithDiff = ({ existing, payload }) => {
+  const patch = {};
+  const diff = {};
+
+  const setIfProvidedAndChanged = (key, nextValue) => {
+    if (nextValue === undefined || nextValue === null || nextValue === '') return;
+    if (existing[key] === nextValue) return;
+    patch[key] = nextValue;
+    diff[key] = { from: existing[key], to: nextValue };
+  };
+
+  setIfProvidedAndChanged('score_method', payload.score_method);
+  if (payload.points !== undefined && payload.points !== null && existing.points !== payload.points) {
+    patch.points = payload.points;
+    diff.points = { from: existing.points, to: payload.points };
+  }
+  if (payload.quantity !== undefined && payload.quantity !== null && existing.quantity !== payload.quantity) {
+    patch.quantity = payload.quantity;
+    diff.quantity = { from: existing.quantity, to: payload.quantity };
+  }
+  setIfProvidedAndChanged('points_rule', payload.points_rule);
+
+  if (payload.quantity_editable !== null && payload.quantity_editable !== undefined && existing.quantity_editable !== payload.quantity_editable) {
+    patch.quantity_editable = payload.quantity_editable;
+    diff.quantity_editable = { from: existing.quantity_editable, to: payload.quantity_editable };
+  }
+  if (payload.points_editable !== null && payload.points_editable !== undefined && existing.points_editable !== payload.points_editable) {
+    patch.points_editable = payload.points_editable;
+    diff.points_editable = { from: existing.points_editable, to: payload.points_editable };
+  }
+
+  return { patch, diff };
 };
 
 export const getRepairTaskLibraryTemplate = async (ctx) => {

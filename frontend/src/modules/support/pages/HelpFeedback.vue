@@ -8,62 +8,73 @@
     <div class="section" v-if="userStore.hasRole('admin')">
       <div style="display: flex; justify-content: space-between; align-items: center;">
         <h3>用户反馈记录</h3>
-        <el-button type="primary" :loading="exportingFeedback" @click="handleExportFeedback">
-          <el-icon><Upload /></el-icon>批量导出
-        </el-button>
+        <div class="feedback-header-actions">
+          <el-button v-if="isSimpleMode" @click="simpleShowTable = !simpleShowTable">
+            {{ simpleShowTable ? '切换卡片' : '切换表格' }}
+          </el-button>
+          <el-button type="primary" :loading="exportingFeedback" @click="handleExportFeedback">
+            <el-icon><Upload /></el-icon>批量导出
+          </el-button>
+        </div>
       </div>
       <el-card class="filter-card">
-        <FilterBar>
-          <div class="filter-item">
-            <span class="filter-label">用户</span>
-            <FilterAutocomplete
-              v-model="feedbackFilters.keyword"
-              :fetch-suggestions="fetchFeedbackUserSuggestions"
-              trigger-on-focus
-              placeholder="全部"
-              clearable
-              style="width: 160px"
-              @select="applyFeedbackFilters"
-              @input="applyFeedbackFilters"
-              @clear="applyFeedbackFilters"
-              @keyup.enter="applyFeedbackFilters"
-            />
-          </div>
-          <div class="filter-item">
-            <span class="filter-label">类型</span>
-            <FilterSelect
-              v-model="feedbackFilters.type"
-              placeholder="全部"
-              clearable
-              filterable
-              style="width: 160px"
-              @change="applyFeedbackFilters"
-              @clear="applyFeedbackFilters"
-            >
-              <el-option label="全部" value="all" />
-              <el-option label="功能建议" value="suggestion" />
-              <el-option label="问题反馈" value="bug" />
-              <el-option label="其他" value="other" />
-            </FilterSelect>
-          </div>
-          <div class="filter-item">
-            <span class="filter-label">反馈内容</span>
-            <FilterAutocomplete
-              v-model="feedbackFilters.content"
-              :fetch-suggestions="fetchFeedbackContentSuggestions"
-              trigger-on-focus
-              placeholder="全部"
-              clearable
-              style="width: 220px"
-              @select="applyFeedbackFilters"
-              @input="applyFeedbackFilters"
-              @clear="applyFeedbackFilters"
-              @keyup.enter="applyFeedbackFilters"
-            />
-          </div>
-        </FilterBar>
+        <SimpleFilterBar
+          :enabled="isSimpleMode"
+          v-model:expanded="simpleFilterExpanded"
+          :summary-text="feedbackFilterSummaryText"
+        >
+          <FilterBar>
+            <div class="filter-item">
+              <span class="filter-label">用户</span>
+              <FilterAutocomplete
+                v-model="feedbackFilters.keyword"
+                :fetch-suggestions="fetchFeedbackUserSuggestions"
+                trigger-on-focus
+                placeholder="全部"
+                clearable
+                style="width: 160px"
+                @select="applyFeedbackFilters"
+                @input="applyFeedbackFilters"
+                @clear="applyFeedbackFilters"
+                @keyup.enter="applyFeedbackFilters"
+              />
+            </div>
+            <div class="filter-item">
+              <span class="filter-label">类型</span>
+              <FilterSelect
+                v-model="feedbackFilters.type"
+                placeholder="全部"
+                clearable
+                filterable
+                style="width: 160px"
+                @change="applyFeedbackFilters"
+                @clear="applyFeedbackFilters"
+              >
+                <el-option label="全部" value="all" />
+                <el-option label="功能建议" value="suggestion" />
+                <el-option label="问题反馈" value="bug" />
+                <el-option label="其他" value="other" />
+              </FilterSelect>
+            </div>
+            <div class="filter-item">
+              <span class="filter-label">反馈内容</span>
+              <FilterAutocomplete
+                v-model="feedbackFilters.content"
+                :fetch-suggestions="fetchFeedbackContentSuggestions"
+                trigger-on-focus
+                placeholder="全部"
+                clearable
+                style="width: 220px"
+                @select="applyFeedbackFilters"
+                @input="applyFeedbackFilters"
+                @clear="applyFeedbackFilters"
+                @keyup.enter="applyFeedbackFilters"
+              />
+            </div>
+          </FilterBar>
+        </SimpleFilterBar>
       </el-card>
-      <el-table :data="feedbackTableRows" stripe border v-loading="loadingFeedback">
+      <el-table v-if="!isSimpleMode || simpleShowTable" :data="feedbackTableRows" stripe border v-loading="loadingFeedback">
         <el-table-column prop="userName" label="用户" width="120" />
         <el-table-column prop="type" label="类型" width="100">
           <template #default="{ row }">
@@ -81,6 +92,19 @@
           </template>
         </el-table-column>
       </el-table>
+      <div v-else class="simple-card-list" v-loading="loadingFeedback">
+        <el-empty v-if="feedbackTableRows.length === 0" description="暂无数据" />
+        <div v-for="row in feedbackTableRows" :key="row.id" class="simple-card-item">
+          <div class="card-title">{{ row.userName || '-' }}</div>
+          <div class="card-meta">类型：{{ resolveFeedbackTypeLabel(row.type) || '其他' }}</div>
+          <div class="card-meta">反馈内容：{{ row.content || '-' }}</div>
+          <div class="card-meta">联系方式：{{ row.contact || '-' }}</div>
+          <div class="card-meta">提交时间：{{ row.createdAt || '-' }}</div>
+          <div class="card-actions">
+            <el-button link type="primary" @click="viewFeedbackDetail(row)">查看</el-button>
+          </div>
+        </div>
+      </div>
       <div class="pagination-wrapper">
         <el-pagination
           v-model:current-page="pagination.page"
@@ -187,18 +211,21 @@ import { Plus, Upload } from '@element-plus/icons-vue';
 import { useRoute } from 'vue-router';
 
 import FilterBar from '@/components/common/FilterBar.vue';
+import SimpleFilterBar from '@/components/common/SimpleFilterBar.vue';
 import request from '@/api/request';
 import { createListSuggestionFetcher } from '@/utils/filterAutocomplete';
 import { markAsRead } from '@/api/notification';
 import { useUserStore } from '@/store/modules/user';
 import { useUpload } from '@/composables/useUpload';
 import { buildExportFileName, exportRowsToXlsx } from '@/utils/tableExport';
+import { useSimpleMode } from '@/composables/useSimpleMode';
 
 const activeFaq = ref(['1']);
 const feedbackFormRef = ref(null);
 const submitting = ref(false);
 const userStore = useUserStore();
 const route = useRoute();
+const { isSimpleMode, simpleShowTable, simpleFilterExpanded } = useSimpleMode();
 
 const { uploadUrl, uploadHeaders, resolveUploadUrl } = useUpload();
 const imageList = ref([]);
@@ -213,6 +240,12 @@ const feedbackFilters = ref({
   keyword: '',
   type: 'all',
   content: ''
+});
+const feedbackFilterSummaryText = computed(() => {
+  const userText = normalizeText(feedbackFilters.value.keyword) || '全部';
+  const typeText = feedbackFilters.value.type === 'all' ? '全部' : resolveFeedbackTypeLabel(feedbackFilters.value.type);
+  const contentText = normalizeText(feedbackFilters.value.content) || '全部';
+  return `当前筛选：用户=${userText} | 类型=${typeText || '全部'} | 内容=${contentText}`;
 });
 
 const normalizeText = (value) => {
@@ -510,8 +543,43 @@ const handleUploadError = () => {
       border-bottom: 1px solid #eee;
     }
 
+    .feedback-header-actions {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
     .filter-card {
       margin-bottom: 16px;
+    }
+
+    .simple-card-list {
+      display: grid;
+      gap: 12px;
+    }
+
+    .simple-card-item {
+      border: 1px solid #ebeef5;
+      border-radius: 8px;
+      padding: 12px;
+      background: #fff;
+    }
+
+    .card-title {
+      font-weight: 600;
+      margin-bottom: 8px;
+    }
+
+    .card-meta {
+      color: #606266;
+      font-size: 14px;
+      margin-bottom: 6px;
+    }
+
+    .card-actions {
+      margin-top: 8px;
+      display: flex;
+      gap: 8px;
     }
 
     p {

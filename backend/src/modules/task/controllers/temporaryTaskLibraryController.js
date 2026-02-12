@@ -3,6 +3,7 @@ import * as temporaryTaskLibraryService from '../services/temporaryTaskLibrarySe
 export const getTemporaryTaskLibrary = temporaryTaskLibraryService.getTemporaryTaskLibrary;
 export const createTemporaryTaskLibrary = temporaryTaskLibraryService.createTemporaryTaskLibrary;
 export const batchImportTemporaryTaskLibrary = temporaryTaskLibraryService.batchImportTemporaryTaskLibrary;
+export const previewBatchImportTemporaryTaskLibrary = temporaryTaskLibraryService.previewBatchImportTemporaryTaskLibrary;
 export const updateTemporaryTaskLibrary = temporaryTaskLibraryService.updateTemporaryTaskLibrary;
 export const deleteTemporaryTaskLibrary = temporaryTaskLibraryService.deleteTemporaryTaskLibrary;
 
@@ -10,6 +11,7 @@ export default {
   getTemporaryTaskLibrary,
   createTemporaryTaskLibrary,
   batchImportTemporaryTaskLibrary,
+  previewBatchImportTemporaryTaskLibrary,
   updateTemporaryTaskLibrary,
   deleteTemporaryTaskLibrary
 };

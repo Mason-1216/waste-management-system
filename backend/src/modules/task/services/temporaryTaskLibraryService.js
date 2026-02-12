@@ -232,6 +232,8 @@ export const batchImportTemporaryTaskLibrary = async (ctx) => {
 
   const results = {
     success: 0,
+    updated: 0,
+    skipped: 0,
     failed: 0,
     errors: []
   };
@@ -260,7 +262,7 @@ export const batchImportTemporaryTaskLibrary = async (ctx) => {
         continue;
       }
 
-      const unitPoints = parseInt(task.unitPoints) || 0;
+      const unitPoints = Number.isFinite(Number(task.unitPoints)) ? Number.parseInt(task.unitPoints, 10) : 0;
       const normalizedQuantity = Number.parseInt(task.quantity ?? 1, 10);
       if (!Number.isInteger(normalizedQuantity) || normalizedQuantity < 1 || normalizedQuantity > 1000) {
         results.failed++;
@@ -268,10 +270,23 @@ export const batchImportTemporaryTaskLibrary = async (ctx) => {
         continue;
       }
 
-      await TemporaryTaskLibrary.create({
-        task_name: task.taskName.trim(),
-        task_content: task.taskContent.trim(),
-        task_category: normalizeTaskCategory(task.taskCategory),
+      const taskName = task.taskName.trim();
+      const taskContent = task.taskContent.trim();
+      const taskCategory = normalizeTaskCategory(task.taskCategory);
+      const stationId = task.stationId ? parseInt(task.stationId) : null;
+
+      const existing = await TemporaryTaskLibrary.findOne({
+        where: {
+          station_id: stationId,
+          task_name: taskName,
+          task_category: taskCategory
+        }
+      });
+
+      const nextPayload = {
+        task_name: taskName,
+        task_content: taskContent,
+        task_category: taskCategory,
         score_method: task.scoreMethod ? String(task.scoreMethod).trim() : null,
         standard_hours: standardHours,
         unit_points: unitPoints,
@@ -280,12 +295,27 @@ export const batchImportTemporaryTaskLibrary = async (ctx) => {
         unit_points_editable: Number(task.unitPointsEditable) === 1 ? 1 : 0,
         quantity_editable: Number(task.quantityEditable) === 1 ? 1 : 0,
         dispatch_review_required: Number(task.dispatchReviewRequired) === 1 ? 1 : 0,
-        station_id: task.stationId ? parseInt(task.stationId) : null,
-        created_by: user.id,
-        created_by_name: user.realName
-      });
+        station_id: stationId
+      };
 
-      results.success++;
+      if (!existing) {
+        await TemporaryTaskLibrary.create({
+          ...nextPayload,
+          created_by: user.id,
+          created_by_name: user.realName
+        });
+        results.success++;
+        continue;
+      }
+
+      const patch = buildTemporaryTaskUpsertPatch({ existing, payload: nextPayload });
+      if (Object.keys(patch).length === 0) {
+        results.skipped++;
+        continue;
+      }
+
+      await existing.update(patch);
+      results.updated++;
     } catch (err) {
       results.failed++;
       results.errors.push(`第${rowNum}行: ${err.message}`);
@@ -294,9 +324,174 @@ export const batchImportTemporaryTaskLibrary = async (ctx) => {
 
   ctx.body = {
     code: 200,
-    message: `导入完成: 成功${results.success}条, 失败${results.failed}条`,
+    message: `导入完成：新增${results.success}条，更新${results.updated}条，跳过${results.skipped}条，失败${results.failed}条`,
     data: results
   };
+};
+
+export const previewBatchImportTemporaryTaskLibrary = async (ctx) => {
+  const { tasks } = await validateBody(ctx, batchImportTemporaryTaskLibraryBodySchema);
+
+  if (!tasks || !Array.isArray(tasks) || tasks.length === 0) {
+    throw createError(400, '导入数据不能为空');
+  }
+
+  const summary = { total: tasks.length, create: 0, update: 0, skip: 0, error: 0 };
+  const rows = [];
+
+  for (let i = 0; i < tasks.length; i += 1) {
+    const task = tasks[i];
+    const rowNum = i + 2;
+
+    const taskName = typeof task.taskName === 'string' ? task.taskName.trim() : '';
+    const taskContent = typeof task.taskContent === 'string' ? task.taskContent.trim() : '';
+    const standardHours = parseFloat(task.standardHours);
+    const unitPoints = Number.isFinite(Number(task.unitPoints)) ? Number.parseInt(task.unitPoints, 10) : 0;
+    const normalizedQuantity = Number.parseInt(task.quantity ?? 1, 10);
+    const stationId = task.stationId ? parseInt(task.stationId) : null;
+    const taskCategory = normalizeTaskCategory(task.taskCategory);
+
+    const previewRow = {
+      rowNum,
+      action: 'error',
+      message: '',
+      diff: {},
+      stationId,
+      taskName,
+      taskContent,
+      taskCategory: taskCategory ?? '',
+      scoreMethod: task.scoreMethod ? String(task.scoreMethod).trim() : '',
+      standardHours,
+      unitPoints,
+      quantity: normalizedQuantity,
+      pointsRule: task.pointsRule ? String(task.pointsRule).trim() : '',
+      unitPointsEditable: Number(task.unitPointsEditable) === 1 ? 1 : 0,
+      quantityEditable: Number(task.quantityEditable) === 1 ? 1 : 0,
+      dispatchReviewRequired: Number(task.dispatchReviewRequired) === 1 ? 1 : 0
+    };
+
+    if (!taskName) {
+      previewRow.message = '任务名称不能为空';
+      summary.error += 1;
+      rows.push(previewRow);
+      continue;
+    }
+    if (!taskContent) {
+      previewRow.message = '具体工作内容不能为空';
+      summary.error += 1;
+      rows.push(previewRow);
+      continue;
+    }
+    if (Number.isNaN(standardHours) || standardHours <= 0) {
+      previewRow.message = '标准工时必须大于0';
+      summary.error += 1;
+      rows.push(previewRow);
+      continue;
+    }
+    if (!Number.isInteger(normalizedQuantity) || normalizedQuantity < 1 || normalizedQuantity > 1000) {
+      previewRow.message = '数量必须是 1-1000 的整数';
+      summary.error += 1;
+      rows.push(previewRow);
+      continue;
+    }
+
+    const existing = await TemporaryTaskLibrary.findOne({
+      where: {
+        station_id: stationId,
+        task_name: taskName,
+        task_category: taskCategory
+      }
+    });
+
+    const nextPayload = {
+      task_name: taskName,
+      task_content: taskContent,
+      task_category: taskCategory,
+      score_method: task.scoreMethod ? String(task.scoreMethod).trim() : null,
+      standard_hours: standardHours,
+      unit_points: unitPoints,
+      quantity: normalizedQuantity,
+      points_rule: task.pointsRule ? String(task.pointsRule).trim() : null,
+      unit_points_editable: Number(task.unitPointsEditable) === 1 ? 1 : 0,
+      quantity_editable: Number(task.quantityEditable) === 1 ? 1 : 0,
+      dispatch_review_required: Number(task.dispatchReviewRequired) === 1 ? 1 : 0,
+      station_id: stationId
+    };
+
+    if (!existing) {
+      previewRow.action = 'create';
+      previewRow.message = '将新增';
+      summary.create += 1;
+      rows.push(previewRow);
+      continue;
+    }
+
+    const { patch, diff } = buildTemporaryTaskUpsertPatchWithDiff({ existing, payload: nextPayload });
+    previewRow.diff = diff;
+
+    if (Object.keys(patch).length === 0) {
+      previewRow.action = 'skip';
+      previewRow.message = '无变更，跳过';
+      summary.skip += 1;
+      rows.push(previewRow);
+      continue;
+    }
+
+    previewRow.action = 'update';
+    previewRow.message = '将更新';
+    summary.update += 1;
+    rows.push(previewRow);
+  }
+
+  ctx.body = {
+    code: 200,
+    message: 'success',
+    data: { summary, rows }
+  };
+};
+
+const buildTemporaryTaskUpsertPatch = ({ existing, payload }) => {
+  const patch = {};
+
+  const setIfProvidedAndChanged = (key, nextValue) => {
+    if (nextValue === undefined || nextValue === null || nextValue === '') return;
+    if (existing[key] === nextValue) return;
+    patch[key] = nextValue;
+  };
+
+  setIfProvidedAndChanged('task_content', payload.task_content);
+  setIfProvidedAndChanged('score_method', payload.score_method);
+  if (payload.standard_hours !== undefined && payload.standard_hours !== null && existing.standard_hours !== payload.standard_hours) {
+    patch.standard_hours = payload.standard_hours;
+  }
+  if (payload.unit_points !== undefined && payload.unit_points !== null && existing.unit_points !== payload.unit_points) {
+    patch.unit_points = payload.unit_points;
+  }
+  if (payload.quantity !== undefined && payload.quantity !== null && existing.quantity !== payload.quantity) {
+    patch.quantity = payload.quantity;
+  }
+  setIfProvidedAndChanged('points_rule', payload.points_rule);
+
+  if (payload.unit_points_editable !== undefined && payload.unit_points_editable !== null && existing.unit_points_editable !== payload.unit_points_editable) {
+    patch.unit_points_editable = payload.unit_points_editable;
+  }
+  if (payload.quantity_editable !== undefined && payload.quantity_editable !== null && existing.quantity_editable !== payload.quantity_editable) {
+    patch.quantity_editable = payload.quantity_editable;
+  }
+  if (payload.dispatch_review_required !== undefined && payload.dispatch_review_required !== null && existing.dispatch_review_required !== payload.dispatch_review_required) {
+    patch.dispatch_review_required = payload.dispatch_review_required;
+  }
+
+  return patch;
+};
+
+const buildTemporaryTaskUpsertPatchWithDiff = ({ existing, payload }) => {
+  const patch = buildTemporaryTaskUpsertPatch({ existing, payload });
+  const diff = {};
+  Object.keys(patch).forEach((key) => {
+    diff[key] = { from: existing[key], to: patch[key] };
+  });
+  return { patch, diff };
 };
 
 export default {
@@ -304,5 +499,6 @@ export default {
   createTemporaryTaskLibrary,
   updateTemporaryTaskLibrary,
   deleteTemporaryTaskLibrary,
-  batchImportTemporaryTaskLibrary
+  batchImportTemporaryTaskLibrary,
+  previewBatchImportTemporaryTaskLibrary
 };

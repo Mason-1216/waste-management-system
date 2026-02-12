@@ -23,6 +23,9 @@
           <el-icon><Delete /></el-icon>
           批量删除 ({{ selectedSchedules.length }})
         </el-button>
+        <el-button v-if="showScheduleTable && isSimpleMode" @click="simpleShowTable = !simpleShowTable">
+          {{ simpleShowTable ? '切换卡片' : '切换表格' }}
+        </el-button>
       </div>
     </div>
 
@@ -70,79 +73,85 @@
       <h3 v-if="showMyCalendar">{{ viewTitle }}</h3>
 
       <!-- 筛选栏 -->
-      <el-card class="filter-card">
-      <FilterBar>
-        <div class="filter-item">
-          <span class="filter-label">排班月份</span>
-          <el-date-picker
-            v-model="currentMonth"
-            type="month"
-            placeholder="全部"
-            format="YYYY年MM月"
-            value-format="YYYY-MM"
-            @change="loadSchedule"
-          />
-        </div>
-        <div class="filter-item">
-          <span class="filter-label">场站</span>
-          <FilterSelect
-            v-model="filters.stationId"
-            placeholder="全部"
-            clearable
-            filterable
-            style="width: 200px"
-            @change="applyFilters"
-            @clear="applyFilters"
-          >
-            <el-option label="全部" value="all" />
-            <el-option
-              v-for="station in stationList"
-              :key="station.id"
-              :label="station.station_name"
-              :value="station.id"
-            />
-          </FilterSelect>
-        </div>
-        <div class="filter-item">
-          <span class="filter-label">岗位</span>
-          <FilterSelect
-            v-model="filters.positionName"
-            placeholder="全部"
-            clearable
-            filterable
-            style="width: 200px"
-            @change="applyFilters"
-            @clear="applyFilters"
-          >
-            <el-option label="全部" value="all" />
-            <el-option
-              v-for="position in allPositionList"
-              :key="position"
-              :label="position"
-              :value="position"
-            />
-          </FilterSelect>
-        </div>
-        <div class="filter-item">
-          <span class="filter-label">姓名</span>
-          <FilterAutocomplete
-            v-model="filters.userName"
-            :fetch-suggestions="fetchUserNameSuggestions"
-            trigger-on-focus
-            placeholder="全部"
-            clearable
-            style="width: 200px"
-            @select="applyFilters"
-            @input="applyFilters"
-            @keyup.enter="applyFilters"
-            @clear="applyFilters"
-          />
-        </div>
-      </FilterBar>
-      </el-card>
+      <SimpleFilterBar
+        :enabled="isSimpleMode"
+        v-model:expanded="simpleFilterExpanded"
+        :summary-text="simpleFilterSummary"
+      >
+        <el-card class="filter-card">
+          <FilterBar>
+            <div class="filter-item">
+              <span class="filter-label">排班月份</span>
+              <el-date-picker
+                v-model="currentMonth"
+                type="month"
+                placeholder="全部"
+                format="YYYY年MM月"
+                value-format="YYYY-MM"
+                @change="loadSchedule"
+              />
+            </div>
+            <div class="filter-item">
+              <span class="filter-label">场站</span>
+              <FilterSelect
+                v-model="filters.stationId"
+                placeholder="全部"
+                clearable
+                filterable
+                style="width: 200px"
+                @change="applyFilters"
+                @clear="applyFilters"
+              >
+                <el-option label="全部" value="all" />
+                <el-option
+                  v-for="station in stationList"
+                  :key="station.id"
+                  :label="station.station_name"
+                  :value="station.id"
+                />
+              </FilterSelect>
+            </div>
+            <div class="filter-item">
+              <span class="filter-label">岗位</span>
+              <FilterSelect
+                v-model="filters.positionName"
+                placeholder="全部"
+                clearable
+                filterable
+                style="width: 200px"
+                @change="applyFilters"
+                @clear="applyFilters"
+              >
+                <el-option label="全部" value="all" />
+                <el-option
+                  v-for="position in allPositionList"
+                  :key="position"
+                  :label="position"
+                  :value="position"
+                />
+              </FilterSelect>
+            </div>
+            <div class="filter-item">
+              <span class="filter-label">姓名</span>
+              <FilterAutocomplete
+                v-model="filters.userName"
+                :fetch-suggestions="fetchUserNameSuggestions"
+                trigger-on-focus
+                placeholder="全部"
+                clearable
+                style="width: 200px"
+                @select="applyFilters"
+                @input="applyFilters"
+                @keyup.enter="applyFilters"
+                @clear="applyFilters"
+              />
+            </div>
+          </FilterBar>
+        </el-card>
+      </SimpleFilterBar>
 
       <!-- 批量操作按钮 -->
-      <TableWrapper>
+      <TableWrapper v-if="!isSimpleMode || simpleShowTable">
         <el-table ref="scheduleTableRef" :data="scheduleData" border stripe style="width: 100%" @selection-change="handleSelectionChange">
           <el-table-column type="selection" width="55" v-if="canAddSchedule" />
           <el-table-column prop="stationName" label="场站名称" width="120" />
@@ -188,6 +197,29 @@
           </el-table-column>
         </el-table>
       </TableWrapper>
+
+      <div v-else class="simple-schedule-view">
+        <div class="simple-view-toggle">
+          <el-radio-group v-model="simpleScheduleView" size="small">
+            <el-radio-button label="station">场站视图</el-radio-button>
+            <el-radio-button label="person">人员视图</el-radio-button>
+          </el-radio-group>
+        </div>
+        <el-empty v-if="simpleScheduleCards.length === 0" description="暂无排班数据" />
+        <div v-else class="simple-schedule-cards">
+          <el-card v-for="item in simpleScheduleCards" :key="item.key" class="simple-schedule-card">
+            <div class="card-title-row">
+              <span class="title">{{ item.title }}</span>
+              <el-tag type="primary">{{ item.countLabel }}</el-tag>
+            </div>
+            <div class="card-subtitle">{{ item.subtitle }}</div>
+            <div class="card-meta">{{ item.meta }}</div>
+            <div v-if="item.row" class="card-actions">
+              <el-button type="primary" link @click="showUserCalendar(item.row)">查看月历</el-button>
+            </div>
+          </el-card>
+        </div>
+      </div>
 
       <div class="pagination-wrapper">
         <el-pagination
@@ -315,33 +347,24 @@
       </template>
     </FormDialog>
 
-    <!-- 导入对话框 -->
-    <FormDialog
-      v-model="importDialogVisible"
-      title="导入排班"
-      width="500px"
-      :confirm-text="'确认导入'"
-      :cancel-text="'取消'"
-      :confirm-loading="importing"
+    <input
+      ref="importFileInputRef"
+      type="file"
+      accept=".xlsx,.xls"
+      style="display: none"
+      @change="handleImportFileSelected"
+    />
+
+    <ImportPreviewDialog
+      v-model="importPreviewVisible"
+      title="排班表 - 导入预览"
+      width="1200px"
+      :rows="importPreviewRows"
+      :summary="importPreviewSummary"
+      :confirm-loading="importSubmitting"
+      :columns="importPreviewColumns"
       @confirm="confirmImport"
-    >
-      <BaseUpload
-        ref="uploadRef"
-        :auto-upload="false"
-        :limit="1"
-        accept=".xlsx,.xls"
-        :on-change="handleFileChange"
-      >
-        <template #trigger>
-          <el-button type="primary">选择文件</el-button>
-        </template>
-        <template #tip>
-          <div class="el-upload__tip">
-            请上传 .xlsx 或 .xls 格式的排班表文件
-          </div>
-        </template>
-      </BaseUpload>
-    </FormDialog>
+    />
 
     <!-- 员工月历对话框 -->
     <FormDialog
@@ -673,10 +696,14 @@ import { createListSuggestionFetcher } from '@/utils/filterAutocomplete';
 import request from '@/api/request';
 import { getPositionNames } from '@/api/positionJob';
 import { useUserStore } from '@/store/modules/user';
+import { useUiModeStore } from '@/store/modules/uiMode';
 import FormDialog from '@/components/system/FormDialog.vue';
+import SimpleFilterBar from '@/components/common/SimpleFilterBar.vue';
+import ImportPreviewDialog from '@/components/common/ImportPreviewDialog.vue';
 import { buildExportFileName, exportRowsToXlsx } from '@/utils/tableExport';
 
 const userStore = useUserStore();
+const uiModeStore = useUiModeStore();
 const route = useRoute();
 
 const currentMonth = ref(dayjs().format('YYYY-MM'));
@@ -706,14 +733,13 @@ const formStationOptions = computed(() => {
   return activeStationList.value;
 });
 const dialogVisible = ref(false);
-const importDialogVisible = ref(false);
 const isEdit = ref(false);
 const saving = ref(false);
-const importing = ref(false);
 const formRef = ref(null);
-const uploadRef = ref(null);
-const importFile = ref(null);
 const selectedSchedules = ref([]);
+const simpleShowTable = ref(false);
+const simpleFilterExpanded = ref(false);
+const simpleScheduleView = ref('station');
 const filters = ref({
   stationId: 'all',
   positionName: 'all',
@@ -723,6 +749,29 @@ const schedulePagination = ref({
   page: 1,
   pageSize: 5,
   total: 0
+});
+
+// ==================== 批量导入（预览 -> 确认导入） ====================
+const importFileInputRef = ref(null);
+const importPreviewVisible = ref(false);
+const importPreviewLoading = ref(false);
+const importSubmitting = ref(false);
+const importPayloadBatches = ref([]);
+const importPreviewSummary = ref({});
+const importPreviewRows = ref([]);
+
+const importPreviewColumns = computed(() => {
+  const baseColumns = [
+    { prop: 'month', label: '月份', width: 110 },
+    { prop: 'stationName', label: '场站', width: 140 },
+    { prop: 'positionName', label: '岗位', width: 120 },
+    { prop: 'userName', label: '员工', width: 120 }
+  ];
+  const dayColumns = Array.from({ length: 31 }, (_, idx) => {
+    const day = idx + 1;
+    return { prop: `d${day}`, label: String(day), width: 60, diffKey: `d${day}` };
+  });
+  return baseColumns.concat(dayColumns);
 });
 
 // 员工月历相关
@@ -846,6 +895,79 @@ const viewMode = computed(() => route.meta?.scheduleView || 'my');
 const showMyCalendar = computed(() => viewMode.value === 'my');
 
 const showScheduleTable = computed(() => viewMode.value === 'manage' && canAddSchedule.value);
+const canUseSimpleMode = computed(() => userStore.roleCode === 'dev_test' || userStore.baseRoleCode === 'dev_test');
+const isSimpleMode = computed(() => canUseSimpleMode.value && uiModeStore.isSimpleMode);
+
+const simpleFilterSummary = computed(() => {
+  const parts = [];
+  if (filters.value.stationId && filters.value.stationId !== 'all') {
+    const station = stationList.value.find(item => String(item.id) === String(filters.value.stationId));
+    if (station?.station_name) parts.push(`场站=${station.station_name}`);
+  }
+  if (filters.value.positionName && filters.value.positionName !== 'all') {
+    parts.push(`岗位=${filters.value.positionName}`);
+  }
+  if (filters.value.userName) {
+    parts.push(`姓名=${filters.value.userName}`);
+  }
+  return parts.length > 0 ? parts.join(' | ') : '当前筛选：全部';
+});
+
+const countWorkDays = (row) => {
+  if (!row) return 0;
+  let count = 0;
+  for (let day = 1; day <= daysInMonth.value; day += 1) {
+    const display = getCellDisplay(row, day);
+    if (display.type === 'work' || display.type === 'multi-work') {
+      count += 1;
+    }
+  }
+  return count;
+};
+
+const simpleScheduleCards = computed(() => {
+  if (simpleScheduleView.value === 'person') {
+    return scheduleData.value.map((row) => {
+      const station = row.stationName || '-';
+      const position = row.positionName || '-';
+      const workCount = countWorkDays(row);
+      return {
+        key: `person-${row.userId}-${row.stationId}-${row.positionName}`,
+        title: row.userName || '-',
+        subtitle: `${station} / ${position}`,
+        meta: `本月排班天数：${workCount}`,
+        countLabel: `${workCount} 天`,
+        row
+      };
+    });
+  }
+
+  const groupMap = new Map();
+  scheduleData.value.forEach((row) => {
+    const key = `${row.stationName || '-'}__${row.positionName || '-'}`;
+    if (!groupMap.has(key)) {
+      groupMap.set(key, {
+        key: `station-${key}`,
+        title: row.stationName || '-',
+        subtitle: `岗位：${row.positionName || '-'}`,
+        members: 0,
+        workCount: 0
+      });
+    }
+    const group = groupMap.get(key);
+    group.members += 1;
+    group.workCount += countWorkDays(row);
+  });
+
+  return Array.from(groupMap.values()).map((item) => ({
+    key: item.key,
+    title: item.title,
+    subtitle: item.subtitle,
+    meta: `排班人数：${item.members}，累计排班天数：${item.workCount}`,
+    countLabel: `${item.members} 人`,
+    row: null
+  }));
+});
 
 // 视图标题
 const viewTitle = computed(() => {
@@ -1628,11 +1750,9 @@ const saveSchedule = async () => {
 
 // 导入处理
 const handleImport = () => {
-  importDialogVisible.value = true;
-};
-
-const handleFileChange = (file) => {
-  importFile.value = file.raw;
+  if (importPreviewLoading.value) return;
+  if (!importFileInputRef.value) return;
+  importFileInputRef.value.click();
 };
 
 const normalizeText = (value) => (value || '').toString().trim();
@@ -1659,6 +1779,25 @@ const isWorkCell = (value) => {
   const text = normalizeText(value);
   if (!text) return false;
   return ['班', '上班', '是', '1', '√', 'Y', 'y', 'true', 'TRUE'].includes(text);
+};
+
+const isRestCell = (value) => {
+  if (value === null || value === undefined) return false;
+  const text = normalizeText(value);
+  if (!text) return false;
+  return ['休', '否', '0', 'N', 'n', 'false', 'FALSE'].includes(text);
+};
+
+const formatScheduleDisplay = (value) => {
+  if (value === null || value === undefined) return '';
+  if (typeof value === 'string') {
+    const text = value.trim();
+    if (!text || text === '休') return '';
+    return text;
+  }
+  if (typeof value === 'boolean') return value ? '班' : '';
+  if (typeof value === 'number') return value ? '班' : '';
+  return value ? '班' : '';
 };
 
 const loadXlsx = async () => {
@@ -1701,15 +1840,14 @@ const downloadTemplate = async () => {
   ElMessage.success('模板已下载');
 };
 
-const confirmImport = async () => {
-  if (!importFile.value) {
-    ElMessage.warning('请选择文件');
-    return;
-  }
+const handleImportFileSelected = async (event) => {
+  const file = event?.target?.files?.[0];
+  if (event?.target) event.target.value = '';
+  if (!file) return;
 
-  importing.value = true;
+  importPreviewLoading.value = true;
   try {
-    const data = await importFile.value.arrayBuffer();
+    const data = await file.arrayBuffer();
     const XLSX = await loadXlsx();
     const workbook = XLSX.read(new Uint8Array(data), { type: 'array' });
     const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
@@ -1725,10 +1863,7 @@ const confirmImport = async () => {
       activeStationList.value.map(s => [normalizeText(s.station_name || s.stationName), s])
     );
     const userMap = new Map(
-      userList.value.map(u => [
-        normalizeText(u.real_name),
-        u
-      ])
+      userList.value.map(u => [normalizeText(u.real_name), u])
     );
     userList.value.forEach(u => {
       userMap.set(normalizeText(u.username), u);
@@ -1736,7 +1871,8 @@ const confirmImport = async () => {
 
     const importedMonths = [];
     const importedMonthSet = new Set();
-    const grouped = new Map();
+    const sourceRows = [];
+    const comboSet = new Set();
     const errors = [];
 
     dataRows.forEach((row, index) => {
@@ -1747,6 +1883,7 @@ const confirmImport = async () => {
         importedMonthSet.add(monthValue);
         importedMonths.push(monthValue);
       }
+
       const stationName = normalizeText(row[1]);
       const positionName = normalizeText(row[2]);
       const userText = normalizeText(row[3]);
@@ -1767,31 +1904,20 @@ const confirmImport = async () => {
         return;
       }
 
-      const schedules = {};
-      const maxDay = dayjs(monthValue).daysInMonth();
-      for (let day = 1; day <= 31; day++) {
-        if (day > maxDay) continue;
-        const cellValue = row[3 + day];
-        if (isWorkCell(cellValue)) {
-          const dateKey = formatDateKey(day, monthValue);
-          schedules[dateKey] = true;
-        }
-      }
+      const year = parseInt(monthValue.split('-')[0], 10);
+      const month = parseInt(monthValue.split('-')[1], 10);
+      const comboKey = `${station.id}__${year}__${month}`;
+      comboSet.add(comboKey);
 
-      const groupKey = `${station.id}-${monthValue}`;
-      if (!grouped.has(groupKey)) {
-        grouped.set(groupKey, {
-          stationId: station.id,
-          year: parseInt(monthValue.split('-')[0], 10),
-          month: parseInt(monthValue.split('-')[1], 10),
-          scheduleList: []
-        });
-      }
-      grouped.get(groupKey).scheduleList.push({
+      sourceRows.push({
+        rowNum: rowIndex,
+        monthValue,
+        stationId: station.id,
+        stationName,
+        positionName,
         userId: user.id,
         userName: user.real_name,
-        positionName,
-        schedules
+        excelRow: row
       });
     });
 
@@ -1800,31 +1926,161 @@ const confirmImport = async () => {
       return;
     }
 
-    for (const batch of grouped.values()) {
+    const existingScheduleMap = new Map();
+    for (const comboKey of comboSet) {
+      const [stationIdText, yearText, monthText] = comboKey.split('__');
+      const stationId = parseInt(stationIdText, 10);
+      const year = parseInt(yearText, 10);
+      const month = parseInt(monthText, 10);
+      const res = await request.get('/schedules', { params: { stationId, year, month } });
+      const schedules = Array.isArray(res?.schedules) ? res.schedules : [];
+      schedules.forEach((item) => {
+        const key = `${stationId}__${year}__${month}__${item.user_id}__${item.position_name}`;
+        existingScheduleMap.set(key, item);
+      });
+    }
+
+    const previewRows = [];
+    const grouped = new Map();
+
+    sourceRows.forEach((info) => {
+      const monthValue = info.monthValue;
+      const year = parseInt(monthValue.split('-')[0], 10);
+      const month = parseInt(monthValue.split('-')[1], 10);
+      const existingKey = `${info.stationId}__${year}__${month}__${info.userId}__${info.positionName}`;
+      const existing = existingScheduleMap.get(existingKey) ?? null;
+      const existingSchedules = existing?.schedules && typeof existing.schedules === 'object' ? existing.schedules : {};
+      const merged = { ...existingSchedules };
+      const diff = {};
+
+      const maxDay = dayjs(monthValue).daysInMonth();
+      for (let day = 1; day <= maxDay; day += 1) {
+        const cellValue = info.excelRow[3 + day];
+        const dateKey = formatDateKey(day, monthValue);
+        if (isWorkCell(cellValue)) {
+          if (!merged[dateKey]) {
+            merged[dateKey] = '班';
+          }
+        } else if (isRestCell(cellValue)) {
+          if (merged[dateKey]) {
+            delete merged[dateKey];
+          }
+        }
+
+        const fromText = formatScheduleDisplay(existingSchedules[dateKey]);
+        const toText = formatScheduleDisplay(merged[dateKey]);
+        if (fromText !== toText) {
+          diff[`d${day}`] = { from: fromText, to: toText };
+        }
+      }
+
+      const previewRow = {
+        rowNum: info.rowNum,
+        action: 'error',
+        message: '',
+        diff,
+        month: monthValue,
+        stationName: info.stationName,
+        positionName: info.positionName,
+        userName: info.userName
+      };
+
+      for (let day = 1; day <= 31; day += 1) {
+        if (day > maxDay) {
+          previewRow[`d${day}`] = '';
+          continue;
+        }
+        const dateKey = formatDateKey(day, monthValue);
+        previewRow[`d${day}`] = formatScheduleDisplay(merged[dateKey]);
+      }
+
+      const hasAnySchedule = Object.keys(merged).length > 0;
+      if (!existing) {
+        if (!hasAnySchedule) {
+          previewRow.action = 'skip';
+          previewRow.message = '无排班，跳过';
+        } else {
+          previewRow.action = 'create';
+          previewRow.message = '将新增';
+        }
+      } else if (Object.keys(diff).length === 0) {
+        previewRow.action = 'skip';
+        previewRow.message = '无变更，跳过';
+      } else {
+        previewRow.action = 'update';
+        previewRow.message = '将更新';
+      }
+
+      previewRows.push(previewRow);
+
+      if (previewRow.action !== 'create' && previewRow.action !== 'update') return;
+
+      const groupKey = `${info.stationId}__${year}__${month}`;
+      if (!grouped.has(groupKey)) {
+        grouped.set(groupKey, {
+          stationId: info.stationId,
+          year,
+          month,
+          scheduleList: []
+        });
+      }
+      grouped.get(groupKey).scheduleList.push({
+        userId: info.userId,
+        userName: info.userName,
+        positionName: info.positionName,
+        schedules: merged
+      });
+    });
+
+    importPayloadBatches.value = Array.from(grouped.values());
+    importPreviewRows.value = previewRows;
+    importPreviewSummary.value = {
+      total: previewRows.length,
+      create: previewRows.filter(r => r.action === 'create').length,
+      update: previewRows.filter(r => r.action === 'update').length,
+      skip: previewRows.filter(r => r.action === 'skip').length,
+      error: previewRows.filter(r => r.action === 'error').length
+    };
+
+    importPreviewVisible.value = true;
+  } finally {
+    importPreviewLoading.value = false;
+  }
+};
+
+const confirmImport = async () => {
+  const batches = Array.isArray(importPayloadBatches.value) ? importPayloadBatches.value : [];
+  if (batches.length === 0) {
+    ElMessage.warning('没有可导入的数据');
+    return;
+  }
+
+  importSubmitting.value = true;
+  try {
+    for (const batch of batches) {
       await request.post('/schedules/batch', batch);
     }
 
-    let message = `导入成功：${dataRows.length} 条`;
-    if (importedMonths.length > 1) {
-      message = `${message}（月份：${importedMonths.join('、')}）`;
+    const touchedRows = importPreviewRows.value.filter(r => r.action === 'create' || r.action === 'update').length;
+    let message = `导入完成：处理${touchedRows}条`;
+    const monthList = importPreviewRows.value.map(r => r.month).filter(Boolean);
+    const uniqueMonths = Array.from(new Set(monthList));
+    if (uniqueMonths.length > 1) {
+      message = `${message}（月份：${uniqueMonths.join('、')}）`;
     }
 
-    const hasCurrentMonth = importedMonthSet.has(currentMonth.value);
-    if (!hasCurrentMonth && importedMonths.length > 0) {
-      currentMonth.value = importedMonths[0];
-      message = `${message}，已切换到 ${importedMonths[0]}`;
+    if (uniqueMonths.length > 0 && !uniqueMonths.includes(currentMonth.value)) {
+      currentMonth.value = uniqueMonths[0];
+      message = `${message}，已切换到 ${uniqueMonths[0]}`;
     } else {
       loadSchedule();
     }
 
     ElMessage.success(message);
-    importDialogVisible.value = false;
-    importFile.value = null;
-  } catch (e) {
-    
-    ElMessage.error('导入失败');
+    importPreviewVisible.value = false;
+    importPayloadBatches.value = [];
   } finally {
-    importing.value = false;
+    importSubmitting.value = false;
   }
 };
 
@@ -2449,6 +2705,13 @@ watch(currentMonth, () => {
   loadMySchedule();
 });
 
+watch(isSimpleMode, (enabled) => {
+  if (enabled) return;
+  simpleShowTable.value = false;
+  simpleFilterExpanded.value = false;
+  simpleScheduleView.value = 'station';
+});
+
 onMounted(() => {
   loadSchedule();
   loadMySchedule();
@@ -2478,6 +2741,7 @@ onMounted(() => {
     .header-actions {
       display: flex;
       gap: 12px;
+      flex-wrap: wrap;
     }
   }
 
@@ -2489,6 +2753,55 @@ onMounted(() => {
 
   .filter-card {
     margin-bottom: 16px;
+  }
+
+  .simple-schedule-view {
+    margin-bottom: 12px;
+
+    .simple-view-toggle {
+      margin-bottom: 12px;
+    }
+  }
+
+  .simple-schedule-cards {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .simple-schedule-card {
+    border-left: 4px solid #409eff;
+
+    .card-title-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 6px;
+
+      .title {
+        font-size: 16px;
+        font-weight: 600;
+        color: #303133;
+      }
+    }
+
+    .card-subtitle {
+      color: #606266;
+      font-size: 14px;
+      margin-bottom: 6px;
+    }
+
+    .card-meta {
+      color: #909399;
+      font-size: 13px;
+    }
+
+    .card-actions {
+      margin-top: 6px;
+      display: flex;
+      justify-content: flex-end;
+    }
   }
 
   .filter-bar {

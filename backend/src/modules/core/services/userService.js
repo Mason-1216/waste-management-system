@@ -86,25 +86,16 @@ const getUserPermissionIds = async (userId) => {
  */
 const validateImportData = async (users) => {
   if (!Array.isArray(users) || users.length === 0) {
-    throw createError(400, 'Import data cannot be empty');
+    throw createError(400, '导入数据不能为空');
   }
   if (users.length > 100) {
-    throw createError(400, 'Import up to 100 records at a time');
+    throw createError(400, '一次最多导入 100 条数据');
   }
 
   const usernames = users.map(u => (u.username || '').trim()).filter(Boolean);
   const uniqueUsernames = new Set(usernames);
   if (uniqueUsernames.size !== usernames.length) {
-    throw createError(400, 'Duplicate usernames in import data');
-  }
-
-  const existing = await User.findAll({
-    where: { username: { [Op.in]: usernames } },
-    attributes: ['username']
-  });
-  if (existing.length > 0) {
-    const names = existing.map(u => u.username).join(', ');
-    throw createError(400, `Username already exists: ${names}`);
+    throw createError(400, '导入数据中存在重复的用户名');
   }
 
   return usernames;
@@ -123,18 +114,9 @@ const prepareImportMaps = async (users) => {
     throw createError(400, `Invalid role: ${missingRole}`);
   }
 
-  const clientUsers = users.filter(u => u.roleCode === 'client');
-  const missingClientStation = clientUsers.find(item => {
-    const stationName = item.stationName ? String(item.stationName).trim() : '';
-    return !stationName;
-  });
-  if (missingClientStation) {
-    const hint = missingClientStation.username ? `: ${missingClientStation.username}` : '';
-    throw createError(400, `Client station is required${hint}`);
-  }
-
   const stationNames = [...new Set(
-    clientUsers
+    users
+      .filter(u => u.roleCode === 'client')
       .map(item => (item.stationName ? String(item.stationName).trim() : ''))
       .filter(Boolean)
   )];
@@ -162,10 +144,10 @@ const validateSingleUser = (item) => {
   const roleCode = item.roleCode;
 
   if (!username || !realName || !roleCode) {
-    throw createError(400, 'Name, username, and role are required');
+    throw createError(400, '用户名、姓名、角色不能为空');
   }
   if (item.phone && !/^1[3-9]\d{9}$/.test(item.phone)) {
-    throw createError(400, `Invalid phone format: ${username}`);
+    throw createError(400, `手机号格式错误：${username}`);
   }
 
   return { username, realName, roleCode };
@@ -598,35 +580,84 @@ export const batchImportUsers = async (ctx) => {
   const transaction = await sequelize.transaction();
   try {
     const userStations = [];
+    const stationBindingsToReplace = new Set();
 
     for (const item of users) {
       const { username, realName, roleCode } = validateSingleUser(item);
 
       const roleId = roleMap.get(roleCode);
-      const password = item.password || '123456';
-      const hashedPassword = await bcrypt.hash(password, 10);
 
-      const user = await User.create({
-        username,
-        password: hashedPassword,
-        real_name: realName,
-        department_name: item.departmentName || null,
-        company_name: item.companyName || null,
-        phone: item.phone || null,
-        email: item.email || null,
-        role_id: roleId,
-        is_price_admin: item.isPriceAdmin ? 1 : 0,
-        status: 1
-      }, { transaction });
+      const existing = await User.findOne({ where: { username }, transaction });
+      let user = existing;
+
+      if (!existing) {
+        const password = item.password ? String(item.password) : '123456';
+        const hashedPassword = await bcrypt.hash(password, 10);
+
+        user = await User.create({
+          username,
+          password: hashedPassword,
+          real_name: realName,
+          department_name: item.departmentName ? String(item.departmentName).trim() : null,
+          company_name: item.companyName ? String(item.companyName).trim() : null,
+          phone: item.phone ? String(item.phone).trim() : null,
+          email: item.email ? String(item.email).trim() : null,
+          role_id: roleId,
+          is_price_admin: item.isPriceAdmin ? 1 : 0,
+          status: 1
+        }, { transaction });
+      } else {
+        const patch = {};
+        if (realName && realName !== existing.real_name) {
+          patch.real_name = realName;
+        }
+        if (item.departmentName && String(item.departmentName).trim() && String(item.departmentName).trim() !== (existing.department_name ?? '')) {
+          patch.department_name = String(item.departmentName).trim();
+        }
+        if (item.companyName && String(item.companyName).trim() && String(item.companyName).trim() !== (existing.company_name ?? '')) {
+          patch.company_name = String(item.companyName).trim();
+        }
+        if (item.phone && String(item.phone).trim() && String(item.phone).trim() !== (existing.phone ?? '')) {
+          patch.phone = String(item.phone).trim();
+        }
+        if (item.email && String(item.email).trim() && String(item.email).trim() !== (existing.email ?? '')) {
+          patch.email = String(item.email).trim();
+        }
+        if (roleId && roleId !== existing.role_id) {
+          patch.role_id = roleId;
+        }
+        if (item.isPriceAdmin !== undefined && item.isPriceAdmin !== null) {
+          const next = item.isPriceAdmin ? 1 : 0;
+          if (next !== existing.is_price_admin) {
+            patch.is_price_admin = next;
+          }
+        }
+        if (Object.keys(patch).length > 0) {
+          await existing.update(patch, { transaction });
+          user = existing;
+        }
+      }
 
       const isClientRole = roleCode === 'client';
       const stationName = isClientRole && item.stationName
         ? String(item.stationName).trim()
         : '';
       const stationId = stationName ? stationMap.get(stationName) : null;
+      if (isClientRole && !existing && !stationId) {
+        throw createError(400, `客户端用户必须填写所属场站：${username}`);
+      }
+
       if (stationId) {
         userStations.push({ user_id: user.id, station_id: stationId });
+        stationBindingsToReplace.add(user.id);
       }
+    }
+
+    if (stationBindingsToReplace.size > 0) {
+      await UserStation.destroy({
+        where: { user_id: { [Op.in]: Array.from(stationBindingsToReplace) } },
+        transaction
+      });
     }
 
     if (userStations.length > 0) {
@@ -643,6 +674,143 @@ export const batchImportUsers = async (ctx) => {
     code: 200,
     message: '导入成功',
     data: { count: users.length }
+  };
+};
+
+export const previewBatchImportUsers = async (ctx) => {
+  const { users } = ctx.request.body || {};
+  await validateImportData(users);
+  const { roleMap, stationMap } = await prepareImportMaps(users);
+
+  const usernames = users.map(u => (u.username || '').trim()).filter(Boolean);
+  const existingUsers = usernames.length > 0
+    ? await User.findAll({
+      where: { username: { [Op.in]: usernames } },
+      attributes: ['id', 'username', 'real_name', 'department_name', 'company_name', 'phone', 'email', 'role_id', 'is_price_admin', 'status']
+    })
+    : [];
+
+  const existingByUsername = new Map(existingUsers.map(u => [u.username, u]));
+
+  const stationBindings = existingUsers.length > 0
+    ? await UserStation.findAll({
+      where: { user_id: { [Op.in]: existingUsers.map(u => u.id) } },
+      attributes: ['user_id', 'station_id']
+    })
+    : [];
+  const stationIdByUserId = new Map(stationBindings.map(r => [r.user_id, r.station_id]));
+
+  const stations = await Station.findAll({ attributes: ['id', 'station_name'] });
+  const stationNameById = new Map(stations.map(s => [s.id, s.station_name]));
+
+  const summary = { total: users.length, create: 0, update: 0, skip: 0, error: 0 };
+  const rows = [];
+
+  users.forEach((item, idx) => {
+    const rowNum = idx + 2;
+    const username = (item.username || '').trim();
+    const realName = (item.realName || '').trim();
+    const roleCode = item.roleCode;
+
+    const previewRow = {
+      rowNum,
+      action: 'error',
+      message: '',
+      diff: {},
+      username,
+      realName,
+      companyName: item.companyName ? String(item.companyName).trim() : '',
+      departmentName: item.departmentName ? String(item.departmentName).trim() : '',
+      phone: item.phone ? String(item.phone).trim() : '',
+      email: item.email ? String(item.email).trim() : '',
+      roleCode: roleCode ? String(roleCode).trim() : '',
+      stationName: item.stationName ? String(item.stationName).trim() : ''
+    };
+
+    try {
+      validateSingleUser(item);
+    } catch (e) {
+      previewRow.message = e.message || '数据无效';
+      summary.error += 1;
+      rows.push(previewRow);
+      return;
+    }
+
+    const roleId = roleMap.get(roleCode);
+    if (!roleId) {
+      previewRow.message = '角色无效';
+      summary.error += 1;
+      rows.push(previewRow);
+      return;
+    }
+
+    const existing = existingByUsername.get(username) ?? null;
+    const isClientRole = roleCode === 'client';
+    const stationName = isClientRole && previewRow.stationName ? previewRow.stationName : '';
+    const stationId = stationName ? stationMap.get(stationName) : null;
+
+    if (!existing) {
+      if (isClientRole && !stationId) {
+        previewRow.message = '客户端用户必须填写所属场站';
+        summary.error += 1;
+        rows.push(previewRow);
+        return;
+      }
+      previewRow.action = 'create';
+      previewRow.message = '将新增（密码仅对新增生效）';
+      summary.create += 1;
+      rows.push(previewRow);
+      return;
+    }
+
+    const diff = {};
+    if (realName && realName !== existing.real_name) {
+      diff.realName = { from: existing.real_name, to: realName };
+    }
+    if (previewRow.departmentName && previewRow.departmentName !== (existing.department_name ?? '')) {
+      diff.departmentName = { from: existing.department_name ?? '', to: previewRow.departmentName };
+    }
+    if (previewRow.companyName && previewRow.companyName !== (existing.company_name ?? '')) {
+      diff.companyName = { from: existing.company_name ?? '', to: previewRow.companyName };
+    }
+    if (previewRow.phone && previewRow.phone !== (existing.phone ?? '')) {
+      diff.phone = { from: existing.phone ?? '', to: previewRow.phone };
+    }
+    if (previewRow.email && previewRow.email !== (existing.email ?? '')) {
+      diff.email = { from: existing.email ?? '', to: previewRow.email };
+    }
+    if (roleId && roleId !== existing.role_id) {
+      diff.roleCode = { from: existing.role_id, to: roleId };
+    }
+
+    if (isClientRole && stationId) {
+      const currentStationId = stationIdByUserId.get(existing.id) ?? null;
+      if (currentStationId !== stationId) {
+        diff.stationName = {
+          from: currentStationId ? (stationNameById.get(currentStationId) ?? '') : '',
+          to: stationName
+        };
+      }
+    }
+
+    previewRow.diff = diff;
+    if (Object.keys(diff).length === 0) {
+      previewRow.action = 'skip';
+      previewRow.message = '无变更，跳过（密码不覆盖）';
+      summary.skip += 1;
+    } else {
+      previewRow.action = 'update';
+      previewRow.message = '将更新（密码不覆盖）';
+      summary.update += 1;
+    }
+
+    rows.push(previewRow);
+  });
+
+  ctx.body = {
+    code: 200,
+    message: 'success',
+    data: { summary, rows }
   };
 };
 

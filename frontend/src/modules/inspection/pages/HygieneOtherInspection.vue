@@ -6,6 +6,9 @@
         <el-button type="primary" @click="isRecordsView ? goFormView() : goRecordsView()">
           {{ isRecordsView ? '他检表单' : '查询' }}
         </el-button>
+        <el-button v-if="isRecordsView && isSimpleMode" @click="simpleShowTable = !simpleShowTable">
+          {{ simpleShowTable ? '切换卡片' : '切换表格' }}
+        </el-button>
         <el-button v-if="isRecordsView" type="primary" :loading="exporting" @click="exportRecords">
           <el-icon><Upload /></el-icon>批量导出
         </el-button>
@@ -116,6 +119,11 @@
     </el-card>
 
     <template v-if="isRecordsView">
+      <SimpleFilterBar
+        :enabled="isSimpleMode"
+        v-model:expanded="simpleFilterExpanded"
+        :summary-text="simpleFilterSummary"
+      >
       <el-card class="filter-card">
         <FilterBar>
         <div class="filter-item">
@@ -248,10 +256,11 @@
         </div>
         </FilterBar>
       </el-card>
+      </SimpleFilterBar>
 
       <div class="history-section">
         <h3>记录列表</h3>
-        <el-table :data="inspectionList" stripe border v-loading="loading">
+        <el-table v-if="!isSimpleMode || simpleShowTable" :data="inspectionList" stripe border v-loading="loading">
         <el-table-column prop="inspection_date" label="检查日期" width="120" />
         <el-table-column label="检查性质" width="90">
           <template #default="{ row }">
@@ -296,6 +305,36 @@
           </template>
         </el-table-column>
       </el-table>
+      <div v-else class="simple-card-list" v-loading="loading">
+        <el-empty v-if="inspectionList.length === 0" description="暂无记录" />
+        <el-card v-for="row in inspectionList" :key="row.id || `${row.inspection_date}-${row.inspected_user_name}`" class="simple-record-card">
+          <template #header>
+            <div class="card-header">
+              <span class="card-title">{{ row.inspection_date || '-' }}</span>
+              <el-tag :type="getInspectionResult(row).type">{{ getInspectionResult(row).text }}</el-tag>
+            </div>
+          </template>
+          <div class="card-body">
+            <div class="card-line">
+              <span>检查性质：{{ getInspectionKindLabel(row) }}</span>
+              <span>场站：{{ row.station?.station_name || '-' }}</span>
+            </div>
+            <div class="card-line">
+              <span>被检查人：{{ row.inspected_user_name || '-' }}</span>
+              <span>检查人：{{ row.inspector?.real_name || row.inspector_name || '-' }}</span>
+            </div>
+            <div class="card-line">
+              <span>责任区：{{ getWorkTypeNames(row.work_type_ids) }}</span>
+            </div>
+            <div class="card-line">
+              <span>积分：{{ getInspectionPoints(row) }}</span>
+            </div>
+            <div class="card-actions">
+              <el-button link type="primary" @click="viewDetail(row)">查看</el-button>
+            </div>
+          </div>
+        </el-card>
+      </div>
       </div>
 
       <div class="pagination-wrapper">
@@ -389,6 +428,7 @@ import { ElMessage } from 'element-plus';
 import { Plus, InfoFilled } from '@element-plus/icons-vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useUserStore } from '@/store/modules/user';
+import { useUiModeStore } from '@/store/modules/uiMode';
 import { useUpload } from '@/composables/useUpload';
 import request from '@/api/request';
 import dayjs from 'dayjs';
@@ -397,8 +437,10 @@ import { buildExportFileName, exportRowsToXlsx, fetchAllPaged } from '@/utils/ta
 import { createListSuggestionFetcher } from '@/utils/filterAutocomplete';
 import SafetyCheckItemList from '@/modules/inspection/components/SafetyCheckItemList.vue';
 import FormDialog from '@/components/system/FormDialog.vue';
+import SimpleFilterBar from '@/components/common/SimpleFilterBar.vue';
 
 const userStore = useUserStore();
+const uiModeStore = useUiModeStore();
 const route = useRoute();
 const router = useRouter();
 
@@ -410,6 +452,10 @@ const goFormView = () => {
   router.push({ query });
 };
 const { uploadUrl, uploadHeaders, resolveUploadUrl } = useUpload();
+const canUseSimpleMode = computed(() => userStore.roleCode === 'dev_test' || userStore.baseRoleCode === 'dev_test');
+const isSimpleMode = computed(() => canUseSimpleMode.value && uiModeStore.isSimpleMode);
+const simpleShowTable = ref(false);
+const simpleFilterExpanded = ref(false);
 
 const showStationFilter = computed(() => {
   const user = userStore.userInfo;
@@ -486,6 +532,47 @@ const dateSortOptions = [
   { label: '升序', value: 'asc' },
   { label: '降序', value: 'desc' }
 ];
+
+const resolveOptionLabel = (options, value) => {
+  const hit = options.find(item => item.value === value);
+  return hit ? hit.label : '';
+};
+
+const simpleFilterSummary = computed(() => {
+  const parts = [];
+  if (filters.startDate || filters.endDate) {
+    const start = filters.startDate || '不限';
+    const end = filters.endDate || '不限';
+    parts.push(`日期=${start}~${end}`);
+  }
+  if (filters.sortOrder) {
+    const sortLabel = resolveOptionLabel(dateSortOptions, filters.sortOrder);
+    if (sortLabel) parts.push(`排序=${sortLabel}`);
+  }
+  if (filters.inspectionKind && filters.inspectionKind !== 'all') {
+    const kindLabel = resolveOptionLabel(inspectionKindOptions, filters.inspectionKind);
+    if (kindLabel) parts.push(`检查性质=${kindLabel}`);
+  }
+  if (showStationFilter.value && filters.stationId && filters.stationId !== 'all') {
+    const station = stationList.value.find(item => String(item.id) === String(filters.stationId));
+    if (station?.stationName) parts.push(`场站=${station.stationName}`);
+  }
+  if (filters.inspectedName) {
+    parts.push(`被检查人=${filters.inspectedName}`);
+  }
+  if (Array.isArray(filters.workTypeIds) && filters.workTypeIds.length > 0 && !filters.workTypeIds.includes('all')) {
+    const names = workTypes.value
+      .filter(item => filters.workTypeIds.includes(item.id))
+      .map(item => item.work_type_name)
+      .filter(Boolean);
+    if (names.length > 0) parts.push(`责任区=${names.join('、')}`);
+  }
+  if (filters.inspectionResult && filters.inspectionResult !== 'all') {
+    const resultLabel = resolveOptionLabel(inspectionResultOptions, filters.inspectionResult);
+    if (resultLabel) parts.push(`检查结果=${resultLabel}`);
+  }
+  return parts.length > 0 ? parts.join(' | ') : '当前筛选：全部';
+});
 
 const dialogVisible = ref(false);
 const submitting = ref(false);
@@ -1243,6 +1330,12 @@ watch(isRecordsView, async (value) => {
   if (!value) return;
   await loadInspectionList();
 });
+
+watch(isSimpleMode, (enabled) => {
+  if (enabled) return;
+  simpleShowTable.value = false;
+  simpleFilterExpanded.value = false;
+});
 </script>
 
 <style lang="scss" scoped>
@@ -1261,6 +1354,56 @@ watch(isRecordsView, async (value) => {
     .page-title-link {
       cursor: pointer;
       color: var(--el-color-primary);
+    }
+
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+  }
+
+  .simple-card-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .simple-record-card {
+    border-left: 4px solid #409eff;
+
+    .card-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .card-title {
+      font-size: 16px;
+      font-weight: 600;
+      color: #303133;
+    }
+
+    .card-body {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .card-line {
+      display: flex;
+      gap: 12px;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      color: #606266;
+      font-size: 14px;
+    }
+
+    .card-actions {
+      display: flex;
+      justify-content: flex-end;
     }
   }
 

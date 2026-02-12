@@ -6,6 +6,9 @@
         <el-button type="primary" @click="isRecordsView ? goFormView() : goRecordsView()">
           {{ isRecordsView ? '隐患表单' : '查询' }}
         </el-button>
+        <el-button v-if="isRecordsView && isSimpleMode" @click="simpleShowTable = !simpleShowTable">
+          {{ simpleShowTable ? '切换卡片' : '切换表格' }}
+        </el-button>
         <el-button v-if="isRecordsView" type="primary" :loading="exporting" @click="exportRecords">
           <el-icon><Upload /></el-icon>批量导出
         </el-button>
@@ -98,7 +101,12 @@
     <template v-if="isRecordsView">
       <!-- 筛选条件 -->
       <el-card class="filter-card">
-        <FilterBar>
+        <SimpleFilterBar
+          :enabled="isSimpleMode"
+          v-model:expanded="simpleFilterExpanded"
+          :summary-text="simpleFilterSummaryText"
+        >
+          <FilterBar>
           <div class="filter-item">
             <span class="filter-label">场站名称</span>
             <FilterAutocomplete
@@ -150,12 +158,21 @@
               @change="loadList"
             />
           </div>
-        </FilterBar>
+          </FilterBar>
+        </SimpleFilterBar>
       </el-card>
 
       <div class="history-section">
         <h3>记录列表</h3>
-        <el-table ref="tableRef" :data="list" v-loading="loading" stripe border style="width: 100%">
+        <el-table
+          v-if="!isSimpleMode || simpleShowTable"
+          ref="tableRef"
+          :data="list"
+          v-loading="loading"
+          stripe
+          border
+          style="width: 100%"
+        >
           <el-table-column prop="record_code" label="表单编号" width="140" />
           <el-table-column prop="station_name" label="场站" width="150" />
           <el-table-column prop="hazard_category" label="隐患类别" width="120" />
@@ -181,6 +198,24 @@
             </template>
           </el-table-column>
         </el-table>
+        <div v-else class="simple-card-list" v-loading="loading">
+          <el-empty v-if="list.length === 0" description="暂无数据" />
+          <div v-for="row in list" :key="row.id || row.record_code" class="simple-card-item">
+            <div class="card-title">{{ row.record_code || '-' }}</div>
+            <div class="card-meta">场站：{{ row.station_name || '-' }}</div>
+            <div class="card-meta">隐患类别：{{ row.hazard_category || '-' }}</div>
+            <div class="card-meta">发起日期：{{ formatDate(row.inspection_date) }} {{ formatTime(row.submit_time) }}</div>
+            <div class="card-meta">发起人：{{ row.inspector_name || '-' }}</div>
+            <div class="card-meta">状态：{{ getStatusText(row.status) }}</div>
+            <div class="card-meta">隐患描述：{{ row.hazard_description || '-' }}</div>
+            <div class="card-actions">
+              <el-button link type="primary" @click="viewDetail(row)">查看</el-button>
+              <el-button v-if="canEdit(row)" link type="warning" @click="showEditDialog(row)">编辑</el-button>
+              <el-button v-if="canReview(row)" link type="primary" @click="reviewRectification(row)">复核</el-button>
+              <el-button v-if="canDelete(row)" link type="danger" @click="deleteRecord(row)">删除</el-button>
+            </div>
+          </div>
+        </div>
       </div>
 
       <div class="pagination-wrapper">
@@ -501,10 +536,13 @@ import { buildExportFileName, exportElTableByPagedFetcher } from '@/utils/tableE
 
 import { createListSuggestionFetcher } from '@/utils/filterAutocomplete';
 import FormDialog from '@/components/system/FormDialog.vue';
+import SimpleFilterBar from '@/components/common/SimpleFilterBar.vue';
+import { useSimpleMode } from '@/composables/useSimpleMode';
 
 const userStore = useUserStore();
 const route = useRoute();
 const router = useRouter();
+const { isSimpleMode, simpleShowTable, simpleFilterExpanded } = useSimpleMode();
 
 const isRecordsView = computed(() => route.query.view === 'records');
 const goRecordsView = () => router.push({ query: { ...route.query, view: 'records' } });
@@ -561,6 +599,16 @@ const defaultFilters = {
   endDate: today
 };
 const filters = ref({ ...defaultFilters });
+const simpleFilterSummaryText = computed(() => {
+  const parts = [];
+  const stationName = String(filters.value.stationName || '').trim();
+  if (stationName) parts.push(`场站=${stationName}`);
+  if (filters.value.hazardCategory !== 'all') parts.push(`类别=${filters.value.hazardCategory}`);
+  if (filters.value.status !== 'all') parts.push(`状态=${getStatusText(filters.value.status)}`);
+  if (filters.value.startDate) parts.push(`开始=${filters.value.startDate}`);
+  if (filters.value.endDate) parts.push(`结束=${filters.value.endDate}`);
+  return parts.length ? `当前筛选：${parts.join('，')}` : '当前筛选：全部';
+});
 
 // 配置数据
 const stationList = ref([]);
@@ -628,13 +676,13 @@ const rectForm = ref({
 });
 
 const rectFormRules = {
-  rootCause: [{ required: true, message: '???????', trigger: 'change' }],
-  rectificationMeasures: [{ required: true, message: '???????', trigger: 'blur' }],
-  isCompleted: [{ required: true, message: '??????????', trigger: 'change' }],
+  rootCause: [{ required: true, message: '请选择根本原因', trigger: 'change' }],
+  rectificationMeasures: [{ required: true, message: '请填写整改措施', trigger: 'blur' }],
+  isCompleted: [{ required: true, message: '请选择是否完成整改', trigger: 'change' }],
   reviewConfirmed: [{
     validator: (_rule, value, callback) => {
       if (!canReviewRect.value) return callback();
-      if (value !== '?') return callback(new Error('?????????'));
+      if (value !== '是') return callback(new Error('请确认复核结果'));
       return callback();
     },
     trigger: 'change'
@@ -642,8 +690,8 @@ const rectFormRules = {
   completionScore: [{
     validator: (_rule, value, callback) => {
       if (!canReviewRect.value) return callback();
-      if (rectForm.value.reviewConfirmed !== '?') return callback();
-      if (!value || value <= 0) return callback(new Error('?????????'));
+      if (rectForm.value.reviewConfirmed !== '是') return callback();
+      if (!value || value <= 0) return callback(new Error('请填写完成度评分'));
       return callback();
     },
     trigger: 'change'
@@ -1165,19 +1213,19 @@ const submitReview = async () => {
 
   submitting.value = true;
   try {
-    if (rectForm.value.reviewConfirmed !== '?') {
-      ElMessage.warning('?????????');
+    if (rectForm.value.reviewConfirmed !== '是') {
+      ElMessage.warning('请先确认复核结果为“是”');
       return;
     }
     await request.put(`/safety-rectifications/${currentRectificationId.value}/review`, {
       reviewConfirmed: rectForm.value.reviewConfirmed,
       completionScore: rectForm.value.completionScore
     });
-    ElMessage.success('???????????"???"');
+    ElMessage.success('复核提交成功，状态已更新为“已复核”');
     rectDialogVisible.value = false;
     loadList();
   } catch (e) {
-    ElMessage.error(e.message || '????');
+    ElMessage.error(e.message || '复核提交失败');
   } finally {
     submitting.value = false;
   }
@@ -1331,6 +1379,37 @@ watch(isRecordsView, (next) => {
     display: flex;
     justify-content: flex-end;
     margin-top: 16px;
+  }
+
+  .simple-card-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .simple-card-item {
+    border: 1px solid #ebeef5;
+    border-radius: 8px;
+    background: #fff;
+    padding: 12px;
+  }
+
+  .card-title {
+    font-weight: 600;
+    margin-bottom: 8px;
+  }
+
+  .card-meta {
+    font-size: 13px;
+    color: #606266;
+    margin-bottom: 4px;
+  }
+
+  .card-actions {
+    margin-top: 8px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
   }
 
   .tip-text {

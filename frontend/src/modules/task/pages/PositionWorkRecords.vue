@@ -3,6 +3,9 @@
     <div class="page-header">
       <h2>岗位工作完成情况记录</h2>
       <div class="header-actions">
+        <el-button v-if="isSimpleMode" @click="simpleShowTable = !simpleShowTable">
+          {{ simpleShowTable ? '切换卡片' : '切换表格' }}
+        </el-button>
         <el-button type="primary" :loading="exporting" @click="handleExport">
           <el-icon><Upload /></el-icon>批量导出
         </el-button>
@@ -10,8 +13,13 @@
       </div>
     </div>
 
-    <el-card class="filter-card">
-      <FilterBar>
+    <SimpleFilterBar
+      :enabled="isSimpleMode"
+      v-model:expanded="simpleFilterExpanded"
+      :summary-text="simpleFilterSummary"
+    >
+      <el-card class="filter-card">
+        <FilterBar>
         <div class="filter-item">
           <span class="filter-label">用户名</span>
           <FilterAutocomplete
@@ -151,10 +159,12 @@
             @keyup.enter="loadRecords"
           />
         </div>
-      </FilterBar>
-    </el-card>
+        </FilterBar>
+      </el-card>
+    </SimpleFilterBar>
 
     <el-table
+      v-if="!isSimpleMode || simpleShowTable"
       v-loading="loading"
       :data="records"
       stripe
@@ -258,6 +268,58 @@
       </el-table-column>
     </el-table>
 
+    <div v-else class="simple-card-list" v-loading="loading">
+      <el-empty v-if="simpleRecords.length === 0" description="暂无数据" />
+      <el-card v-for="row in simpleRecords" :key="row.id" class="simple-record-card">
+        <template #header>
+          <div class="card-header">
+            <span class="work-name">{{ row.work_name || '-' }}</span>
+            <el-tag :type="reviewStatusType(row)">{{ reviewStatusText(row) }}</el-tag>
+          </div>
+        </template>
+        <div class="card-body">
+          <div class="card-line">
+            <span>用户名：{{ row.user_name || '-' }}</span>
+            <span>场站：{{ row.station_name || '-' }}</span>
+          </div>
+          <div class="card-line">
+            <span>岗位：{{ row.position_name || '-' }}</span>
+            <span>任务类别：{{ row.task_category || '-' }}</span>
+          </div>
+          <div class="card-line">
+            <span>单位积分：{{ row.unit_points ?? '-' }}</span>
+            <span>数量：{{ row.quantity ?? 1 }}</span>
+            <span>计算积分：{{ formatPoints(row.unit_points, row.quantity) }}</span>
+          </div>
+          <div class="card-line">
+            <span>任务来源：{{ taskSourceLabel(row.task_source) }}</span>
+            <span>完成情况：{{ Number(row.is_completed) === 1 ? '完成' : '未完成' }}</span>
+          </div>
+          <div class="card-line">
+            <span>提交时间：{{ formatTime(row.submit_time) }}</span>
+            <span>审核人：{{ row.approver_name ?? '-' }}</span>
+          </div>
+          <div class="card-line">
+            <span>审核时间：{{ formatTime(row.approve_time) }}</span>
+            <span>扣分值：{{ row.deduction_points ?? '-' }}</span>
+          </div>
+          <div class="card-line" v-if="row.deduction_reason">
+            <span>扣分原因：{{ row.deduction_reason }}</span>
+          </div>
+          <div class="card-actions">
+            <el-button
+              v-if="canReview(row)"
+              type="primary"
+              link
+              @click="openReviewDialog(row)"
+            >
+              审核
+            </el-button>
+          </div>
+        </div>
+      </el-card>
+    </div>
+
     <div class="pagination-wrapper">
       <el-pagination
         v-model:current-page="pagination.page"
@@ -324,21 +386,24 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted } from 'vue';
+import { ref, reactive, computed, onMounted, watch } from 'vue';
 import { ElMessage } from 'element-plus';
 import dayjs from 'dayjs';
 import { useRoute } from 'vue-router';
 import { Upload } from '@element-plus/icons-vue';
 
 import FilterBar from '@/components/common/FilterBar.vue';
+import SimpleFilterBar from '@/components/common/SimpleFilterBar.vue';
 import { createListSuggestionFetcher } from '@/utils/filterAutocomplete';
 import { getAllStations } from '@/api/station';
 import { useUserStore } from '@/store/modules/user';
+import { useUiModeStore } from '@/store/modules/uiMode';
 import * as positionWorkLogApi from '@/api/positionWorkLog';
 import FormDialog from '@/components/system/FormDialog.vue';
 import { buildExportFileName, exportRowsToXlsx, fetchAllPaged } from '@/utils/tableExport';
 
 const userStore = useUserStore();
+const uiModeStore = useUiModeStore();
 const route = useRoute();
 
 const managerRoles = ['station_manager', 'department_manager', 'deputy_manager', 'senior_management'];
@@ -368,6 +433,10 @@ const reviewStatusOptions = [
 ];
 
 const today = dayjs().format('YYYY-MM-DD');
+const canUseSimpleMode = computed(() => userStore.roleCode === 'dev_test' || userStore.baseRoleCode === 'dev_test');
+const isSimpleMode = computed(() => canUseSimpleMode.value && uiModeStore.isSimpleMode);
+const simpleShowTable = ref(false);
+const simpleFilterExpanded = ref(false);
 const filters = reactive({
   userName: '',
   stationId: null,
@@ -412,6 +481,57 @@ const fetchApproverNameSuggestions = createListSuggestionFetcher(
   () => recordSuggestionList.value,
   (row) => row.approver_name
 );
+
+const simpleRecords = computed(() => {
+  if (!isSimpleMode.value || simpleShowTable.value) return records.value;
+  return [...records.value].sort((a, b) => {
+    const aPending = a.review_status === 'pending' ? 1 : 0;
+    const bPending = b.review_status === 'pending' ? 1 : 0;
+    if (aPending !== bPending) {
+      return bPending - aPending;
+    }
+    const aTime = dayjs(a.submit_time).valueOf();
+    const bTime = dayjs(b.submit_time).valueOf();
+    return bTime - aTime;
+  });
+});
+
+const resolveSummaryLabel = (value, options) => {
+  const hit = options.find(item => String(item.value) === String(value));
+  return hit ? hit.label : '';
+};
+
+const simpleFilterSummary = computed(() => {
+  const parts = [];
+  if (filters.userName) parts.push(`用户名=${filters.userName}`);
+  if (filters.stationId) {
+    const station = stations.value.find(item => String(item.id) === String(filters.stationId));
+    if (station?.stationName) parts.push(`场站=${station.stationName}`);
+  }
+  if (filters.positionName) parts.push(`岗位=${filters.positionName}`);
+  if (filters.workName) parts.push(`任务=${filters.workName}`);
+  if (filters.taskCategory) parts.push(`任务类别=${filters.taskCategory}`);
+  if (filters.scoreMethod) parts.push(`给分方式=${filters.scoreMethod}`);
+  if (filters.taskSource) {
+    const label = resolveSummaryLabel(filters.taskSource, taskSourceOptions);
+    if (label) parts.push(`任务来源=${label}`);
+  }
+  if (filters.isCompleted !== '') {
+    const label = resolveSummaryLabel(filters.isCompleted, completionOptions);
+    if (label) parts.push(`完成情况=${label}`);
+  }
+  if (filters.submitStartDate || filters.submitEndDate) {
+    const start = filters.submitStartDate || '不限';
+    const end = filters.submitEndDate || '不限';
+    parts.push(`提交时间=${start}~${end}`);
+  }
+  if (filters.reviewStatus) {
+    const label = resolveSummaryLabel(filters.reviewStatus, reviewStatusOptions);
+    if (label) parts.push(`审核状态=${label}`);
+  }
+  if (filters.approverName) parts.push(`审核人=${filters.approverName}`);
+  return parts.length > 0 ? parts.join(' | ') : '当前筛选：全部';
+});
 
 const resolveTextValue = (value) => (typeof value === 'string' ? value.trim() : '');
 const hasValue = (value) => value !== undefined && value !== null && value !== '';
@@ -720,6 +840,12 @@ onMounted(() => {
   loadStations();
   loadRecords();
 });
+
+watch(isSimpleMode, (enabled) => {
+  if (enabled) return;
+  simpleShowTable.value = false;
+  simpleFilterExpanded.value = false;
+});
 </script>
 
 <style lang="scss" scoped>
@@ -743,6 +869,49 @@ onMounted(() => {
 
   .filter-card {
     margin-bottom: 20px;
+  }
+
+  .simple-card-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .simple-record-card {
+    border-left: 4px solid #409eff;
+
+    .card-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .work-name {
+      font-size: 16px;
+      font-weight: 600;
+      color: #303133;
+    }
+
+    .card-body {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .card-line {
+      display: flex;
+      gap: 12px;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      color: #606266;
+      font-size: 14px;
+    }
+
+    .card-actions {
+      display: flex;
+      justify-content: flex-end;
+    }
   }
 
   .pagination-wrapper {

@@ -4,6 +4,9 @@
           <div class="page-header">
             <h2>固定任务填报</h2>
             <div class="header-actions">
+              <el-button v-if="isSimpleMode" @click="simpleShowTable = !simpleShowTable">
+                {{ simpleShowTable ? '切换卡片' : '切换表格' }}
+              </el-button>
               <el-date-picker
                 v-model="currentDate"
                 type="date"
@@ -16,6 +19,7 @@
           </div>
 
           <el-table
+            v-if="!isSimpleMode || simpleShowTable"
             v-loading="taskLoading"
             :data="todayTasks"
             stripe
@@ -96,6 +100,76 @@
             </el-table-column>
           </el-table>
 
+          <div v-else class="simple-card-list" v-loading="taskLoading">
+            <el-empty v-if="todayTasks.length === 0" description="暂无任务" />
+            <el-card v-for="row in todayTasks" :key="row.id || row.jobId" class="simple-task-card">
+              <template #header>
+                <div class="card-header">
+                  <span class="task-name">{{ row.workName || '-' }}</span>
+                  <el-tag :type="reviewStatusType(row)">
+                    {{ reviewStatusText(row) }}
+                  </el-tag>
+                </div>
+              </template>
+              <div class="card-body">
+                <div class="card-line">
+                  <span>场站：{{ row.stationName || '-' }}</span>
+                  <span>岗位：{{ row.positionName || '-' }}</span>
+                </div>
+                <div class="card-line">
+                  <span>任务类别：{{ row.taskCategory || '-' }}</span>
+                  <span>给分方式：{{ row.scoreMethod || '-' }}</span>
+                </div>
+                <div class="card-line">
+                  <span>任务来源：{{ taskSourceLabel(row.taskSource) }}</span>
+                  <span>单位积分：{{ row.unitPoints ?? '-' }}</span>
+                </div>
+                <div class="card-line card-line-edit">
+                  <span class="label">数量</span>
+                  <el-input-number
+                    v-model="row.quantity"
+                    :min="1"
+                    :max="1000"
+                    :precision="0"
+                    :step="1"
+                    size="small"
+                    controls-position="right"
+                    :disabled="row.isSubmitted || !row.quantityEditable"
+                    class="table-input-number"
+                  />
+                </div>
+                <div class="card-line card-line-edit">
+                  <span class="label">完成状态</span>
+                  <el-radio-group v-model="row.isCompleted" size="small" :disabled="row.isSubmitted">
+                    <el-radio :label="1">完成</el-radio>
+                    <el-radio :label="0">未完成</el-radio>
+                  </el-radio-group>
+                </div>
+                <div class="card-line card-line-edit">
+                  <span class="label">备注</span>
+                  <el-input
+                    v-model="row.remark"
+                    placeholder="填写备注"
+                    size="small"
+                    maxlength="200"
+                    :disabled="row.isSubmitted"
+                  />
+                </div>
+                <div class="card-actions">
+                  <el-button
+                    type="primary"
+                    size="small"
+                    :loading="row.saving"
+                    :disabled="row.isSubmitted"
+                    @click="saveTask(row)"
+                  >
+                    提交
+                  </el-button>
+                </div>
+              </div>
+            </el-card>
+          </div>
+
           <div class="pagination-wrapper" v-if="fixedPagination.total > 0">
             <el-pagination
               v-model:current-page="fixedPagination.page"
@@ -112,36 +186,29 @@
 
 
 
-          <el-empty v-if="!taskLoading && todayTasks.length === 0" description="暂无任务" />
+          <el-empty
+            v-if="(!isSimpleMode || simpleShowTable) && !taskLoading && todayTasks.length === 0"
+            description="暂无任务"
+          />
     </div>
 
     <div v-if="showManagementView" class="tab-content">
           <div class="page-header">
             <h2>{{ managementTitle }}</h2>
-            <div class="header-actions" v-if="canManageLibrary">
-              <el-button type="primary" @click="openJobDialog()">
+            <div class="header-actions">
+              <el-button v-if="canManageLibrary" type="primary" @click="openJobDialog()">
                 <el-icon><Plus /></el-icon>
                 新增任务
               </el-button>
-              <el-upload
-                :action="`${apiBaseUrl}/position-jobs/import`"
-                :headers="uploadHeaders"
-                :on-success="handleImportSuccess"
-                :on-error="handleImportError"
-                :show-file-list="false"
-                accept=".xlsx,.xls"
-                :before-upload="beforeUpload"
-              >
-                <el-button type="success">
-                  <el-icon><Download /></el-icon>
-                  批量导入
-                </el-button>
-              </el-upload>
-              <el-button type="info" @click="downloadTemplate">
+              <el-button v-if="canManageLibrary" type="success" :loading="importPreviewLoading" @click="triggerImport">
+                <el-icon><Download /></el-icon>
+                批量导入
+              </el-button>
+              <el-button v-if="canManageLibrary" type="info" @click="downloadTemplate">
                 <el-icon><Download /></el-icon>
                 下载模板
               </el-button>
-              <el-button type="primary" :loading="exportingJobs" @click="exportPositionJobs">
+              <el-button v-if="canManageLibrary" type="primary" :loading="exportingJobs" @click="exportPositionJobs">
                 <el-icon><Upload /></el-icon>
                 批量导出
               </el-button>
@@ -149,11 +216,39 @@
                 <el-icon><Delete /></el-icon>
                 批量删除 ({{ selectedJobs.length }})
               </el-button>
+              <el-button v-if="isSimpleMode" @click="simpleShowTable = !simpleShowTable">
+                {{ simpleShowTable ? '切换卡片' : '切换表格' }}
+              </el-button>
             </div>
           </div>
 
-      <el-card class="filter-card">
-        <FilterBar>
+      <input
+        ref="importFileInputRef"
+        type="file"
+        accept=".xlsx,.xls"
+        style="display: none"
+        @change="handleImportFileSelected"
+      />
+
+      <ImportPreviewDialog
+        v-model="importPreviewVisible"
+        title="岗位工作任务库 - 导入预览"
+        :rows="importPreviewRows"
+        :summary="importPreviewSummary"
+        :truncated="importPreviewTruncated"
+        :max-rows="importPreviewMaxRows"
+        :confirm-loading="importSubmitting"
+        :columns="importPreviewColumns"
+        @confirm="confirmImport"
+      />
+
+      <SimpleFilterBar
+        :enabled="isSimpleMode"
+        v-model:expanded="simpleFilterExpanded"
+        :summary-text="simpleFilterSummary"
+      >
+        <el-card class="filter-card">
+          <FilterBar>
             <div class="filter-item" v-if="!hideStation">
               <span class="filter-label">场站</span>
               <FilterSelect
@@ -281,10 +376,12 @@
                 <el-option label="否" :value="0" />
               </FilterSelect>
             </div>
-        </FilterBar>
-      </el-card>
+          </FilterBar>
+        </el-card>
+      </SimpleFilterBar>
 
           <el-table
+            v-if="!isSimpleMode || simpleShowTable"
             v-loading="jobLoading"
             :data="positionJobs"
             stripe
@@ -394,6 +491,49 @@
               </template>
             </el-table-column>
           </el-table>
+
+          <div v-else class="simple-card-list" v-loading="jobLoading">
+            <el-empty v-if="positionJobs.length === 0" description="暂无任务" />
+            <el-card v-for="row in positionJobs" :key="row.id" class="simple-job-card">
+              <template #header>
+                <div class="card-header">
+                  <span class="task-name">{{ row.job_name || '-' }}</span>
+                  <el-tag :type="Number(row.is_active) === 1 ? 'success' : 'info'">
+                    {{ Number(row.is_active) === 1 ? '启用' : '停用' }}
+                  </el-tag>
+                </div>
+              </template>
+              <div class="card-body">
+                <div class="card-line" v-if="!hideStation">
+                  <span>场站：{{ row.station?.station_name ?? '-' }}</span>
+                  <span>岗位：{{ row.position_name || '-' }}</span>
+                </div>
+                <div class="card-line" v-else>
+                  <span>岗位：{{ row.position_name || '-' }}</span>
+                </div>
+                <div class="card-line">
+                  <span>任务类别：{{ row.task_category ?? '-' }}</span>
+                  <span>给分方式：{{ row.score_method ?? '-' }}</span>
+                </div>
+                <div class="card-line">
+                  <span>单位积分：{{ row.points ?? '-' }}</span>
+                  <span>数量：{{ row.quantity ?? 1 }}</span>
+                </div>
+                <div class="card-line">
+                  <span>积分可修改：{{ row.points_editable === 1 ? '是' : '否' }}</span>
+                  <span>数量可修改：{{ row.quantity_editable === 1 ? '是' : '否' }}</span>
+                </div>
+                <div class="card-line">
+                  <span>派发强制审核：{{ row.dispatch_review_required === 1 ? '是' : '否' }}</span>
+                </div>
+                <div class="card-actions" v-if="canManageLibrary">
+                  <el-button link type="primary" @click="openDispatchDialog(row)">派发任务</el-button>
+                  <el-button link type="primary" @click="openJobDialog(row)">编辑</el-button>
+                  <el-button link type="danger" @click="deleteJob(row)">删除</el-button>
+                </div>
+              </div>
+            </el-card>
+          </div>
 
           <div class="pagination-wrapper">
             <el-pagination
@@ -610,7 +750,10 @@ import * as positionJobApi from '@/api/positionJob';
 import * as stationApi from '@/api/station';
 import request from '@/api/request';
 import { useUserStore } from '@/store/modules/user';
+import { useUiModeStore } from '@/store/modules/uiMode';
 import FormDialog from '@/components/system/FormDialog.vue';
+import SimpleFilterBar from '@/components/common/SimpleFilterBar.vue';
+import ImportPreviewDialog from '@/components/common/ImportPreviewDialog.vue';
 
 const props = defineProps({
   defaultTab: {
@@ -636,8 +779,13 @@ const props = defineProps({
 });
 
 const userStore = useUserStore();
+const uiModeStore = useUiModeStore();
 
 const isDevTest = computed(() => userStore.roleCode === 'dev_test' || userStore.baseRoleCode === 'dev_test');
+const canUseSimpleMode = computed(() => isDevTest.value);
+const isSimpleMode = computed(() => canUseSimpleMode.value && uiModeStore.isSimpleMode);
+const simpleShowTable = ref(false);
+const simpleFilterExpanded = ref(false);
 const managerRoles = ['station_manager', 'department_manager', 'deputy_manager', 'senior_management'];
 const canManageLibrary = computed(() => userStore.hasRole(managerRoles));
 const allowManagement = computed(() => userStore.hasRole(managerRoles) || props.forceManagement);
@@ -828,6 +976,39 @@ const filters = reactive({
   pointsEditable: 'all',
   dispatchReviewRequired: 'all'
 });
+
+const simpleFilterSummary = computed(() => {
+  const parts = [];
+  if (!props.hideStation && hasFilterValue(filters.stationId)) {
+    const station = stations.value.find(item => String(item.id) === String(filters.stationId));
+    if (station?.station_name) {
+      parts.push(`场站=${station.station_name}`);
+    }
+  }
+  if (!props.hidePosition && filters.positionName) {
+    parts.push(`岗位=${filters.positionName}`);
+  }
+  if (filters.jobName) {
+    parts.push(`任务=${filters.jobName}`);
+  }
+  if (filters.taskCategory) {
+    parts.push(`任务类别=${filters.taskCategory}`);
+  }
+  if (filters.scoreMethod && filters.scoreMethod !== 'all') {
+    parts.push(`给分方式=${filters.scoreMethod}`);
+  }
+  if (hasFilterValue(filters.quantityEditable)) {
+    parts.push(`数量可修改=${Number(filters.quantityEditable) === 1 ? '是' : '否'}`);
+  }
+  if (hasFilterValue(filters.pointsEditable)) {
+    parts.push(`积分可修改=${Number(filters.pointsEditable) === 1 ? '是' : '否'}`);
+  }
+  if (hasFilterValue(filters.dispatchReviewRequired)) {
+    parts.push(`派发强审=${Number(filters.dispatchReviewRequired) === 1 ? '是' : '否'}`);
+  }
+  return parts.length > 0 ? parts.join(' | ') : '当前筛选：全部';
+});
+
 const pagination = reactive({
   page: 1,
   pageSize: 5,
@@ -1162,31 +1343,100 @@ const batchDeleteJobs = async () => {
   await loadPositionJobs();
 };
 
-const apiBaseUrl = computed(() => import.meta.env.VITE_API_BASE_URL ?? '/api');
-const uploadHeaders = computed(() => ({
-  Authorization: `Bearer ${userStore.token}`
-}));
+// ==================== 批量导入（预览 -> 确认导入） ====================
+const importFileInputRef = ref(null);
+const importPreviewLoading = ref(false);
+const importSubmitting = ref(false);
+const importFile = ref(null);
+const importPreviewVisible = ref(false);
+const importPreviewSummary = ref({});
+const importPreviewRows = ref([]);
+const importPreviewTruncated = ref(false);
+const importPreviewMaxRows = ref(0);
 
-const beforeUpload = (file) => {
-  const isExcel = file.type === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-    || file.type === 'application/vnd.ms-excel';
-  if (!isExcel) {
-    ElMessage.error('只能上传Excel文件');
-  }
-  return isExcel;
+const importPreviewColumns = computed(() => ([
+  { prop: 'stationName', label: '场站', minWidth: 120 },
+  { prop: 'positionName', label: '岗位', minWidth: 120 },
+  { prop: 'jobName', label: '任务名称', minWidth: 160 },
+  { prop: 'resultDefinition', label: '结果定义', minWidth: 180, diffKey: 'result_definition' },
+  { prop: 'taskCategory', label: '任务类别', width: 100, diffKey: 'task_category' },
+  { prop: 'scoreMethod', label: '给分方式', width: 100, diffKey: 'score_method' },
+  { prop: 'standardHours', label: '标准工时(h/d)', width: 130, diffKey: 'standard_hours' },
+  { prop: 'points', label: '单位积分', width: 110, diffKey: 'points' },
+  { prop: 'quantity', label: '数量', width: 90, diffKey: 'quantity' },
+  { prop: 'pointsRule', label: '积分规则', minWidth: 160, diffKey: 'points_rule' },
+  { prop: 'quantityEditable', label: '数量可修改', width: 110, diffKey: 'quantity_editable' },
+  { prop: 'pointsEditable', label: '积分可修改', width: 110, diffKey: 'points_editable' },
+  { prop: 'dispatchReviewRequired', label: '派发强审', width: 100, diffKey: 'dispatch_review_required' },
+  { prop: 'sortOrder', label: '排序', width: 90, diffKey: 'sort_order' }
+]));
+
+const triggerImport = () => {
+  if (importPreviewLoading.value) return;
+  if (!importFileInputRef.value) return;
+  importFileInputRef.value.click();
 };
 
-const handleImportSuccess = (response) => {
-  if (response.code === 200) {
-    ElMessage.success(response.message ?? '导入成功');
+const isExcelFile = (file) => {
+  const mime = file?.type;
+  return mime === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' || mime === 'application/vnd.ms-excel';
+};
+
+const handleImportFileSelected = async (event) => {
+  const file = event?.target?.files?.[0];
+  if (event?.target) event.target.value = '';
+  if (!file) return;
+
+  if (!isExcelFile(file)) {
+    ElMessage.error('只能上传 Excel 文件');
+    return;
+  }
+  if (file.size / 1024 / 1024 >= 5) {
+    ElMessage.error('文件大小不能超过 5MB');
+    return;
+  }
+
+  importFile.value = file;
+  importPreviewLoading.value = true;
+  try {
+    const res = await positionJobApi.previewImportPositionJobs(file);
+    importPreviewSummary.value = res?.summary ?? {};
+    importPreviewRows.value = Array.isArray(res?.rows) ? res.rows : [];
+    importPreviewTruncated.value = !!res?.truncated;
+    importPreviewMaxRows.value = typeof res?.maxRows === 'number' ? res.maxRows : 0;
+    importPreviewVisible.value = true;
+  } finally {
+    importPreviewLoading.value = false;
+  }
+};
+
+const confirmImport = async () => {
+  if (!importFile.value) {
+    ElMessage.warning('请选择文件');
+    return;
+  }
+
+  importSubmitting.value = true;
+  try {
+    const results = await positionJobApi.importPositionJobs(importFile.value);
+    const list = Array.isArray(results) ? results : [];
+    const created = list.filter(r => r?.status === 'success').length;
+    const updated = list.filter(r => r?.status === 'updated').length;
+    const skipped = list.filter(r => r?.status === 'skip' || r?.status === 'duplicate').length;
+    const failed = list.filter(r => r?.status === 'error').length;
+
+    if (failed > 0) {
+      ElMessage.warning(`导入完成：新增${created}条，更新${updated}条，跳过${skipped}条，失败${failed}条`);
+    } else {
+      ElMessage.success(`导入完成：新增${created}条，更新${updated}条，跳过${skipped}条`);
+    }
+
+    importPreviewVisible.value = false;
+    importFile.value = null;
     loadPositionJobs();
-  } else {
-    ElMessage.error(response.message ?? '导入失败');
+  } finally {
+    importSubmitting.value = false;
   }
-};
-
-const handleImportError = () => {
-  ElMessage.error('导入失败');
 };
 
 const downloadTemplate = async () => {
@@ -1333,6 +1583,12 @@ watch([() => props.defaultTab, () => allowManagement.value], () => {
   handleViewChange();
 });
 
+watch(isSimpleMode, (enabled) => {
+  if (enabled) return;
+  simpleShowTable.value = false;
+  simpleFilterExpanded.value = false;
+});
+
 onMounted(() => {
   handleViewChange();
 });
@@ -1367,6 +1623,60 @@ onMounted(() => {
 
     .filter-card {
       margin-bottom: 20px;
+    }
+
+    .simple-card-list {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .simple-task-card,
+    .simple-job-card {
+      border-left: 4px solid #409eff;
+
+      .card-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+      }
+
+      .task-name {
+        font-size: 16px;
+        font-weight: 600;
+        color: #303133;
+      }
+
+      .card-body {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+
+      .card-line {
+        display: flex;
+        gap: 12px;
+        justify-content: space-between;
+        flex-wrap: wrap;
+        color: #606266;
+        font-size: 14px;
+
+        &.card-line-edit {
+          align-items: center;
+
+          .label {
+            color: #909399;
+            white-space: nowrap;
+          }
+        }
+      }
+
+      .card-actions {
+        display: flex;
+        justify-content: flex-end;
+        gap: 8px;
+      }
     }
 
     .pagination-wrapper {

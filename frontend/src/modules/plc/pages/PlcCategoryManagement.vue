@@ -3,6 +3,9 @@
     <div class="page-header">
       <h2>分类管理</h2>
       <div class="header-actions">
+        <el-button v-if="isSimpleMode" @click="simpleShowTable = !simpleShowTable">
+          {{ simpleShowTable ? '切换卡片' : '切换表格' }}
+        </el-button>
         <el-button type="primary" :loading="exporting" @click="handleExport">
           <el-icon><Upload /></el-icon>批量导出
         </el-button>
@@ -11,78 +14,84 @@
     </div>
 
     <el-card class="filter-card">
-      <FilterBar>
-        <div class="filter-item">
-          <span class="filter-label">分类名称</span>
-          <el-input
-            v-model="filters.categoryName"
-            placeholder="全部"
-            clearable
-            style="width: 200px"
-            @input="handleFilterChange"
-            @clear="handleFilterChange"
-            @keyup.enter="handleFilterChange"
-          />
-        </div>
-        <div class="filter-item">
-          <span class="filter-label">数据类型</span>
-          <FilterSelect
-            v-model="filters.dataType"
-            placeholder="全部"
-            clearable
-            filterable
-            style="width: 160px"
-            @change="handleFilterChange"
-            @clear="handleFilterChange"
-          >
-            <el-option label="全部" value="all" />
-            <el-option v-for="option in dataTypeOptions" :key="option" :label="option" :value="option" />
-          </FilterSelect>
-        </div>
-        <div class="filter-item">
-          <span class="filter-label">取值类型</span>
-          <FilterSelect
-            v-model="filters.valueType"
-            placeholder="全部"
-            clearable
-            filterable
-            style="width: 180px"
-            @change="handleFilterChange"
-            @clear="handleFilterChange"
-          >
-            <el-option label="全部" value="all" />
-            <el-option
-              v-for="option in valueTypeOptions"
-              :key="option.value"
-              :label="option.label"
-              :value="option.value"
+      <SimpleFilterBar
+        :enabled="isSimpleMode"
+        v-model:expanded="simpleFilterExpanded"
+        :summary-text="simpleFilterSummary"
+      >
+        <FilterBar>
+          <div class="filter-item">
+            <span class="filter-label">分类名称</span>
+            <el-input
+              v-model="filters.categoryName"
+              placeholder="全部"
+              clearable
+              style="width: 200px"
+              @input="handleFilterChange"
+              @clear="handleFilterChange"
+              @keyup.enter="handleFilterChange"
             />
-          </FilterSelect>
-        </div>
-        <div class="filter-item">
-          <span class="filter-label">采集方式</span>
-          <FilterSelect
-            v-model="filters.scheduleType"
-            placeholder="全部"
-            clearable
-            filterable
-            style="width: 160px"
-            @change="handleFilterChange"
-            @clear="handleFilterChange"
-          >
-            <el-option label="全部" value="all" />
-            <el-option
-              v-for="option in scheduleTypeOptions"
-              :key="option.value"
-              :label="option.label"
-              :value="option.value"
-            />
-          </FilterSelect>
-        </div>
-      </FilterBar>
+          </div>
+          <div class="filter-item">
+            <span class="filter-label">数据类型</span>
+            <FilterSelect
+              v-model="filters.dataType"
+              placeholder="全部"
+              clearable
+              filterable
+              style="width: 160px"
+              @change="handleFilterChange"
+              @clear="handleFilterChange"
+            >
+              <el-option label="全部" value="all" />
+              <el-option v-for="option in dataTypeOptions" :key="option" :label="option" :value="option" />
+            </FilterSelect>
+          </div>
+          <div class="filter-item">
+            <span class="filter-label">取值类型</span>
+            <FilterSelect
+              v-model="filters.valueType"
+              placeholder="全部"
+              clearable
+              filterable
+              style="width: 180px"
+              @change="handleFilterChange"
+              @clear="handleFilterChange"
+            >
+              <el-option label="全部" value="all" />
+              <el-option
+                v-for="option in valueTypeOptions"
+                :key="option.value"
+                :label="option.label"
+                :value="option.value"
+              />
+            </FilterSelect>
+          </div>
+          <div class="filter-item">
+            <span class="filter-label">采集方式</span>
+            <FilterSelect
+              v-model="filters.scheduleType"
+              placeholder="全部"
+              clearable
+              filterable
+              style="width: 160px"
+              @change="handleFilterChange"
+              @clear="handleFilterChange"
+            >
+              <el-option label="全部" value="all" />
+              <el-option
+                v-for="option in scheduleTypeOptions"
+                :key="option.value"
+                :label="option.label"
+                :value="option.value"
+              />
+            </FilterSelect>
+          </div>
+        </FilterBar>
+      </SimpleFilterBar>
     </el-card>
 
-    <TableWrapper>
+    <TableWrapper v-if="!isSimpleMode || simpleShowTable">
       <el-table
         v-loading="loading"
         :data="tableRows"
@@ -129,6 +138,23 @@
         </el-table-column>
       </el-table>
     </TableWrapper>
+    <div v-else class="simple-card-list" v-loading="loading">
+      <el-empty v-if="tableRows.length === 0" description="暂无数据" />
+      <div v-for="row in tableRows" :key="row.id || row.category_key" class="simple-card-item">
+        <div class="card-title">{{ row.category_name || '-' }} ({{ row.category_key || '-' }})</div>
+        <div class="card-meta">数据类型：{{ row.data_type || '-' }}</div>
+        <div class="card-meta">取值类型：{{ valueTypeLabel(row.value_type) }}</div>
+        <div class="card-meta">采集方式：{{ scheduleLabel(row.schedule_type) }}</div>
+        <div class="card-meta">采集间隔：{{ row.schedule_type === 'interval' ? `${row.interval_hours || 0}小时${row.interval_minutes || 0}分钟` : '-' }}</div>
+        <div class="card-meta">固定时间：{{ row.schedule_type === 'fixed' ? row.fixed_time : '-' }}</div>
+        <div class="card-meta">状态：{{ row.is_enabled ? '启用' : '禁用' }}</div>
+        <div class="card-meta">排序：{{ row.sort_order ?? 0 }}</div>
+        <div class="card-actions">
+          <el-button type="primary" link @click="handleEdit(row)">编辑</el-button>
+          <el-button type="danger" link @click="handleDelete(row)">删除</el-button>
+        </div>
+      </div>
+    </div>
 
     <div class="pagination-wrapper">
       <el-pagination
@@ -214,7 +240,9 @@ import { Upload } from '@element-plus/icons-vue';
 
 import FilterBar from '@/components/common/FilterBar.vue';
 import FilterSelect from '@/components/common/FilterSelect.vue';
+import SimpleFilterBar from '@/components/common/SimpleFilterBar.vue';
 import TableWrapper from '@/components/common/TableWrapper.vue';
+import { useSimpleMode } from '@/composables/useSimpleMode';
 import { getCategories, createCategory, updateCategory, deleteCategory } from '@/api/plcMonitor';
 import { buildExportFileName, exportRowsToXlsx } from '@/utils/tableExport';
 
@@ -226,6 +254,7 @@ const isEdit = ref(false);
 const tableData = ref([]);
 const pagination = ref({ page: 1, pageSize: 5, total: 0 });
 const formRef = ref(null);
+const { isSimpleMode, simpleShowTable, simpleFilterExpanded } = useSimpleMode();
 
 const dataTypeOptions = ['REAL', 'DINT', 'INT', 'BOOL'];
 const valueTypeOptions = [
@@ -244,6 +273,13 @@ const filters = reactive({
   dataType: 'all',
   valueType: 'all',
   scheduleType: 'all'
+});
+const simpleFilterSummary = computed(() => {
+  const categoryName = (filters.categoryName || '').trim() || '全部';
+  const dataType = filters.dataType === 'all' ? '全部' : filters.dataType;
+  const valueType = filters.valueType === 'all' ? '全部' : valueTypeLabel(filters.valueType);
+  const scheduleType = filters.scheduleType === 'all' ? '全部' : scheduleLabel(filters.scheduleType);
+  return `当前筛选：分类=${categoryName} | 数据类型=${dataType} | 取值类型=${valueType} | 采集方式=${scheduleType}`;
 });
 
 const route = useRoute();
@@ -523,6 +559,35 @@ const scheduleLabel = (val) => {
   .el-table {
     border-radius: 8px;
     overflow: hidden;
+  }
+
+  .simple-card-list {
+    display: grid;
+    gap: 12px;
+  }
+
+  .simple-card-item {
+    background: #fff;
+    border: 1px solid #ebeef5;
+    border-radius: 8px;
+    padding: 12px;
+  }
+
+  .card-title {
+    font-weight: 600;
+    margin-bottom: 8px;
+  }
+
+  .card-meta {
+    color: #606266;
+    font-size: 14px;
+    margin-bottom: 6px;
+  }
+
+  .card-actions {
+    margin-top: 8px;
+    display: flex;
+    gap: 8px;
   }
 }
 </style>

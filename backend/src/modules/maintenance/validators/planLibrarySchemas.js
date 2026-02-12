@@ -2,7 +2,8 @@ import { Joi } from '../../core/validators/validate.js';
 
 const intOrEmpty = Joi.alternatives().try(
   Joi.number().integer(),
-  Joi.string().allow('')
+  Joi.string().allow(''),
+  Joi.valid(null)
 );
 
 const jsonArrayOrText = Joi.alternatives().try(
@@ -133,4 +134,3 @@ export default {
   completeMaintenanceAssignmentBodySchema,
   verifyMaintenanceAssignmentBodySchema
 };
-

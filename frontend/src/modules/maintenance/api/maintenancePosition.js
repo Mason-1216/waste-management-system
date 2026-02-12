@@ -9,6 +9,14 @@ export function createMaintenancePositionPlan(data) {
   return request.post('/maintenance-position-plans', data);
 }
 
+export function batchImportMaintenancePositionPlans(data) {
+  return request.post('/maintenance-position-plans/batch-import', data);
+}
+
+export function previewBatchImportMaintenancePositionPlans(data) {
+  return request.post('/maintenance-position-plans/batch-import-preview', data);
+}
+
 export function deleteMaintenancePositionPlan(id) {
   return request.delete(`/maintenance-position-plans/${id}`);
 }

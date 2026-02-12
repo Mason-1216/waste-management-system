@@ -835,16 +835,46 @@ export const importCheckItems = async (ctx) => {
           });
 
           if (existingItem) {
-            results.push({
-              row: row.rowNumber,
-              workTypeName,
-              itemName: row.itemName,
-              status: 'duplicate',
-              message: '该工作性质下已存在同名检查项目'
-            });
-            if (childCountByParent[row.itemName] && existingItem.enable_children !== 1) {
-              await existingItem.update({ enable_children: 1 }, { transaction: t });
+            const parsedEnable = parseBooleanFlag(row.enableChildrenStr);
+            let enableChildrenValue = parsedEnable === null ? 0 : parsedEnable;
+            if (childCountByParent[row.itemName] && enableChildrenValue !== 1) {
+              enableChildrenValue = 1;
             }
+
+            const patch = {};
+            if (row.itemStandard && row.itemStandard !== existingItem.item_standard) {
+              patch.item_standard = row.itemStandard;
+            }
+            const nextSortOrder = row.sortOrder ?? row.rowNumber;
+            if (nextSortOrder !== existingItem.sort_order) {
+              patch.sort_order = nextSortOrder;
+            }
+            if (enableChildrenValue !== existingItem.enable_children) {
+              patch.enable_children = enableChildrenValue;
+            }
+            if (existingItem.status !== 'active') {
+              patch.status = 'active';
+            }
+
+            if (Object.keys(patch).length > 0) {
+              await existingItem.update(patch, { transaction: t });
+              results.push({
+                row: row.rowNumber,
+                workTypeName,
+                itemName: row.itemName,
+                status: 'updated',
+                message: '已更新'
+              });
+            } else {
+              results.push({
+                row: row.rowNumber,
+                workTypeName,
+                itemName: row.itemName,
+                status: 'skip',
+                message: '无变更，已跳过'
+              });
+            }
+
             parentMap.set(existingItem.item_name, existingItem);
             continue;
           }
@@ -902,13 +932,43 @@ export const importCheckItems = async (ctx) => {
           });
 
           if (existingItem) {
-            results.push({
-              row: row.rowNumber,
-              workTypeName,
-              itemName: row.itemName,
-              status: 'duplicate',
-              message: '该工作性质下已存在同名检查项目'
-            });
+            const parsedTrigger = parseTriggerValue(row.triggerValueStr);
+            const triggerValueValue = parsedTrigger === null ? 1 : parsedTrigger;
+
+            const patch = {};
+            if (row.itemStandard && row.itemStandard !== existingItem.item_standard) {
+              patch.item_standard = row.itemStandard;
+            }
+            const nextSortOrder = row.sortOrder ?? row.rowNumber;
+            if (nextSortOrder !== existingItem.sort_order) {
+              patch.sort_order = nextSortOrder;
+            }
+            if (triggerValueValue !== existingItem.trigger_value) {
+              patch.trigger_value = triggerValueValue;
+            }
+            if (existingItem.status !== 'active') {
+              patch.status = 'active';
+            }
+
+            if (Object.keys(patch).length > 0) {
+              await existingItem.update(patch, { transaction: t });
+              results.push({
+                row: row.rowNumber,
+                workTypeName,
+                itemName: row.itemName,
+                status: 'updated',
+                message: '已更新'
+              });
+            } else {
+              results.push({
+                row: row.rowNumber,
+                workTypeName,
+                itemName: row.itemName,
+                status: 'skip',
+                message: '无变更，已跳过'
+              });
+            }
+
             continue;
           }
 
@@ -939,16 +999,18 @@ export const importCheckItems = async (ctx) => {
       await t.commit();
 
       const successCount = results.filter(r => r.status === 'success').length;
-      const duplicateCount = results.filter(r => r.status === 'duplicate').length;
+      const updatedCount = results.filter(r => r.status === 'updated').length;
+      const skipCount = results.filter(r => r.status === 'skip').length;
       const missingParentCount = results.filter(r => r.status === 'missing_parent').length;
-      const skippedCount = duplicateCount + missingParentCount;
+      const skippedCount = skipCount + missingParentCount;
 
       ctx.body = {
         code: 200,
-        message: `导入完成：成功${successCount}条，跳过${skippedCount}条`,
+        message: `导入完成：新增${successCount}条，更新${updatedCount}条，跳过${skippedCount}条`,
         data: {
           success: successCount,
-          duplicate: duplicateCount,
+          updated: updatedCount,
+          skipped: skipCount,
           missingParent: missingParentCount,
           details: results
         }
@@ -966,6 +1028,255 @@ export const importCheckItems = async (ctx) => {
   }
 };
 
+export const previewImportCheckItems = async (ctx) => {
+  const file = ctx.file || ctx.request.file || ctx.request.files?.file;
+  if (!file) {
+    throw createError(400, '请上传文件');
+  }
+
+  const workbook = new ExcelJS.Workbook();
+  if (file.buffer) {
+    await workbook.xlsx.load(file.buffer);
+  } else {
+    const filePath = file.path || file.filepath;
+    if (!filePath) {
+      throw createError(400, '读取文件失败');
+    }
+    await workbook.xlsx.readFile(filePath);
+  }
+
+  const worksheet = workbook.getWorksheet('安全检查项目') || workbook.worksheets[0];
+  if (!worksheet) {
+    throw createError(400, '无法读取工作表');
+  }
+
+  const rawRows = [];
+  for (let rowNumber = 2; rowNumber <= worksheet.rowCount; rowNumber++) {
+    const row = worksheet.getRow(rowNumber);
+    const workTypeCell = row.getCell(1).value;
+    const itemCell = row.getCell(2).value;
+    const standardCell = row.getCell(3).value;
+    const isDefaultCell = row.getCell(4).value;
+    const parentCell = row.getCell(5).value;
+    const enableChildrenCell = row.getCell(6).value;
+    const triggerValueCell = row.getCell(7).value;
+    const sortOrderCell = row.getCell(8).value;
+
+    const workTypeName = workTypeCell ? workTypeCell.toString().trim() : '';
+    const itemName = itemCell ? itemCell.toString().trim() : '';
+    const itemStandard = standardCell ? standardCell.toString().trim() : null;
+    const isDefaultStr = isDefaultCell ? isDefaultCell.toString().trim() : '';
+    const parentItemName = parentCell ? parentCell.toString().trim() : '';
+    const enableChildrenStr = enableChildrenCell ? enableChildrenCell.toString().trim() : '';
+    const triggerValueStr = triggerValueCell ? triggerValueCell.toString().trim() : '';
+    const sortOrder = parseSortOrder(sortOrderCell);
+
+    if (!workTypeName || !itemName) {
+      continue;
+    }
+
+    rawRows.push({
+      rowNumber,
+      workTypeName,
+      itemName,
+      itemStandard,
+      isDefaultStr,
+      parentItemName,
+      enableChildrenStr,
+      triggerValueStr,
+      sortOrder
+    });
+  }
+
+  const rowsByWorkType = rawRows.reduce((acc, row) => {
+    if (!acc[row.workTypeName]) {
+      acc[row.workTypeName] = [];
+    }
+    acc[row.workTypeName].push(row);
+    return acc;
+  }, {});
+
+  const summary = { total: rawRows.length, create: 0, update: 0, skip: 0, error: 0 };
+  const rows = [];
+
+  const workTypes = await SafetyWorkType.findAll({
+    attributes: ['id', 'work_type_name', 'is_default']
+  });
+  const workTypeByName = new Map(workTypes.map(w => [w.work_type_name, w]));
+
+  for (const [workTypeName, groupRows] of Object.entries(rowsByWorkType)) {
+    const workType = workTypeByName.get(workTypeName) ?? null;
+    const workTypeId = workType?.id ?? null;
+
+    const parentRows = groupRows.filter(r => !r.parentItemName);
+    const childRows = groupRows.filter(r => r.parentItemName);
+    const childCountByParent = childRows.reduce((acc, r) => {
+      acc[r.parentItemName] = (acc[r.parentItemName] || 0) + 1;
+      return acc;
+    }, {});
+
+    const existingParents = workTypeId
+      ? await SafetyCheckItem.findAll({ where: { work_type_id: workTypeId, parent_id: null } })
+      : [];
+    const parentMap = new Map(existingParents.map(item => [item.item_name, item]));
+
+    // 父级预览
+    for (const item of parentRows) {
+      const previewRow = {
+        rowNum: item.rowNumber,
+        action: 'error',
+        message: '',
+        diff: {},
+        workTypeName,
+        itemName: item.itemName,
+        parentItemName: '',
+        itemStandard: item.itemStandard ?? '',
+        enableChildren: item.enableChildrenStr ?? '',
+        triggerValue: '',
+        sortOrder: item.sortOrder ?? ''
+      };
+
+      if (!workType) {
+        previewRow.action = 'create';
+        previewRow.message = '将新增（含工作性质）';
+        summary.create += 1;
+        rows.push(previewRow);
+        continue;
+      }
+
+      const existing = parentMap.get(item.itemName) ?? null;
+      const parsedEnable = parseBooleanFlag(item.enableChildrenStr);
+      let enableChildrenValue = parsedEnable === null ? 0 : parsedEnable;
+      if (childCountByParent[item.itemName] && enableChildrenValue !== 1) {
+        enableChildrenValue = 1;
+      }
+      const nextSortOrder = item.sortOrder ?? item.rowNumber;
+
+      if (!existing) {
+        previewRow.action = 'create';
+        previewRow.message = '将新增';
+        summary.create += 1;
+        rows.push(previewRow);
+        continue;
+      }
+
+      const diff = {};
+      if (item.itemStandard && item.itemStandard !== existing.item_standard) {
+        diff.itemStandard = { from: existing.item_standard, to: item.itemStandard };
+      }
+      if (nextSortOrder !== existing.sort_order) {
+        diff.sortOrder = { from: existing.sort_order, to: nextSortOrder };
+      }
+      if (enableChildrenValue !== existing.enable_children) {
+        diff.enableChildren = { from: existing.enable_children, to: enableChildrenValue };
+      }
+      if (existing.status !== 'active') {
+        diff.status = { from: existing.status, to: 'active' };
+      }
+
+      previewRow.diff = diff;
+      if (Object.keys(diff).length === 0) {
+        previewRow.action = 'skip';
+        previewRow.message = '无变更，跳过';
+        summary.skip += 1;
+      } else {
+        previewRow.action = 'update';
+        previewRow.message = '将更新';
+        summary.update += 1;
+      }
+      rows.push(previewRow);
+
+      parentMap.set(existing.item_name, existing);
+    }
+
+    // 子级预览
+    for (const item of childRows) {
+      const previewRow = {
+        rowNum: item.rowNumber,
+        action: 'error',
+        message: '',
+        diff: {},
+        workTypeName,
+        itemName: item.itemName,
+        parentItemName: item.parentItemName,
+        itemStandard: item.itemStandard ?? '',
+        enableChildren: '',
+        triggerValue: item.triggerValueStr ?? '',
+        sortOrder: item.sortOrder ?? ''
+      };
+
+      if (!workType) {
+        previewRow.action = 'create';
+        previewRow.message = '将新增（含工作性质）';
+        summary.create += 1;
+        rows.push(previewRow);
+        continue;
+      }
+
+      const parentItem = parentMap.get(item.parentItemName) ?? null;
+      if (!parentItem) {
+        previewRow.action = 'error';
+        previewRow.message = '父级检查项目不存在，将跳过';
+        summary.error += 1;
+        rows.push(previewRow);
+        continue;
+      }
+
+      const existing = await SafetyCheckItem.findOne({
+        where: {
+          work_type_id: workTypeId,
+          item_name: item.itemName,
+          parent_id: parentItem.id
+        }
+      });
+
+      const parsedTrigger = parseTriggerValue(item.triggerValueStr);
+      const triggerValueValue = parsedTrigger === null ? 1 : parsedTrigger;
+      const nextSortOrder = item.sortOrder ?? item.rowNumber;
+
+      if (!existing) {
+        previewRow.action = 'create';
+        previewRow.message = '将新增';
+        summary.create += 1;
+        rows.push(previewRow);
+        continue;
+      }
+
+      const diff = {};
+      if (item.itemStandard && item.itemStandard !== existing.item_standard) {
+        diff.itemStandard = { from: existing.item_standard, to: item.itemStandard };
+      }
+      if (nextSortOrder !== existing.sort_order) {
+        diff.sortOrder = { from: existing.sort_order, to: nextSortOrder };
+      }
+      if (triggerValueValue !== existing.trigger_value) {
+        diff.triggerValue = { from: existing.trigger_value, to: triggerValueValue };
+      }
+      if (existing.status !== 'active') {
+        diff.status = { from: existing.status, to: 'active' };
+      }
+
+      previewRow.diff = diff;
+      if (Object.keys(diff).length === 0) {
+        previewRow.action = 'skip';
+        previewRow.message = '无变更，跳过';
+        summary.skip += 1;
+      } else {
+        previewRow.action = 'update';
+        previewRow.message = '将更新';
+        summary.update += 1;
+      }
+      rows.push(previewRow);
+    }
+  }
+
+  ctx.body = {
+    code: 200,
+    message: 'success',
+    data: { summary, rows }
+  };
+};
+
 export default {
   getWorkTypes,
   createWorkType,
@@ -978,5 +1289,6 @@ export default {
   deleteCheckItem,
   getCheckItemsByWorkTypes,
   getCheckItemsTemplate,
-  importCheckItems
+  importCheckItems,
+  previewImportCheckItems
 };

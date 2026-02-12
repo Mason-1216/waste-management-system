@@ -2,17 +2,19 @@
 import { Op } from 'sequelize';
 import { createError } from '../../../middlewares/error.js';
 import { getPagination, formatPaginationResponse } from '../../../utils/helpers.js';
+import sequelize from '../../../config/database.js';
 	import dayjs from 'dayjs';
-	import { validateBody, validateParams, validateQuery } from '../../core/validators/validate.js';
-	import {
-	  createMaintenancePositionPlanBodySchema,
-	  getMaintenancePositionPlansQuerySchema,
-	  getMaintenanceWorkRecordsQuerySchema,
-	  getTodayMaintenanceTasksQuerySchema,
-	  idParamSchema,
-	  submitMaintenanceWorkRecordBodySchema,
+	import { validateBody, validateParams, validateQuery } from '../../core/validators/validate.js'; 
+	import { 
+	  createMaintenancePositionPlanBodySchema, 
+	  batchImportMaintenancePositionPlansBodySchema,
+	  getMaintenancePositionPlansQuerySchema, 
+	  getMaintenanceWorkRecordsQuerySchema, 
+	  getTodayMaintenanceTasksQuerySchema, 
+	  idParamSchema, 
+	  submitMaintenanceWorkRecordBodySchema, 
 	  verifyMaintenanceWorkRecordBodySchema
-	} from '../validators/positionSchemas.js';
+	} from '../validators/positionSchemas.js'; 
 
 const resolveScopedStationId = (user, headerStationId) => {
   if (!user) return null;
@@ -35,6 +37,97 @@ const resolveScopedStationId = (user, headerStationId) => {
     return null;
   }
   return null;
+};
+
+const normalizeImportText = (value) => String(value ?? '').replace(/\uFEFF/g, '').trim();
+const normalizeStationKey = (value) => normalizeImportText(value).replace(/\s+/g, '').replace(/\u3000/g, '');
+const parseOptionalInt = (value) => {
+  if (value === undefined || value === null || value === '') return null;
+  const parsed = Number.parseInt(String(value).trim(), 10);
+  return Number.isNaN(parsed) ? null : parsed;
+};
+
+const buildStationLookup = async () => {
+  const stations = await Station.findAll({ attributes: ['id', 'station_name'] });
+  const stationNameToId = new Map();
+  const stationNormalizedNameToId = new Map();
+  const stationIdToName = new Map();
+
+  stations.forEach((station) => {
+    const name = normalizeImportText(station.station_name);
+    if (!name) return;
+    stationNameToId.set(name, station.id);
+    stationNormalizedNameToId.set(normalizeStationKey(name), station.id);
+    stationIdToName.set(station.id, station.station_name);
+  });
+
+  return { stationNameToId, stationNormalizedNameToId, stationIdToName };
+};
+
+const resolveImportStationId = ({ row, scopedStationId, stationNameToId, stationNormalizedNameToId }) => {
+  const stationId = parseOptionalInt(row.stationId);
+  if (stationId) return stationId;
+
+  const stationName = normalizeImportText(row.stationName);
+  if (stationName) {
+    return stationNameToId.get(stationName) ?? stationNormalizedNameToId.get(normalizeStationKey(stationName)) ?? null;
+  }
+  return scopedStationId ?? null;
+};
+
+const loadPlanIdsByEquipment = async ({ stationId, equipmentCode }) => {
+  const plans = await MaintenancePlanLibrary.findAll({
+    where: {
+      equipment_code: equipmentCode,
+      is_deleted: false,
+      [Op.or]: [
+        { station_id: stationId },
+        { station_id: null }
+      ]
+    },
+    attributes: ['id']
+  });
+  return plans.map((plan) => plan.id).filter(Boolean);
+};
+
+const inspectPositionAssignmentState = async ({ stationId, planIds, positionName }) => {
+  const existingAssignments = await MaintenancePositionPlan.findAll({
+    where: {
+      station_id: stationId,
+      plan_id: { [Op.in]: planIds }
+    },
+    attributes: ['plan_id', 'position_name']
+  });
+
+  if (existingAssignments.length === 0) {
+    return {
+      action: 'create',
+      existingPositions: []
+    };
+  }
+
+  const existingPositions = Array.from(
+    new Set(existingAssignments.map((item) => normalizeImportText(item.position_name)).filter(Boolean))
+  );
+  const targetPlanIdSet = new Set(
+    existingAssignments
+      .filter((item) => normalizeImportText(item.position_name) === positionName)
+      .map((item) => item.plan_id)
+  );
+  const allPlanIdsAssignedToTarget = planIds.every((planId) => targetPlanIdSet.has(planId));
+  const onlyTargetPosition = existingPositions.length === 1 && existingPositions[0] === positionName;
+
+  if (onlyTargetPosition && allPlanIdsAssignedToTarget) {
+    return {
+      action: 'skip',
+      existingPositions
+    };
+  }
+
+  return {
+    action: 'update',
+    existingPositions
+  };
 };
 
 const normalizePointsValue = (value) => {
@@ -215,86 +308,156 @@ const shouldExecuteToday = (plan) => {
  * 鑾峰彇宀椾綅-淇濆吇璁″垝鍒嗛厤鍒楄〃
  * GET /api/maintenance-position-plans
  */
-export const getMaintenancePositionPlans = async (ctx) => {
-  await validateQuery(ctx, getMaintenancePositionPlansQuerySchema);
-  const { stationId, positionName, equipmentCode, equipmentName, installLocation, cycleType } = ctx.query;
-  const user = ctx.state.user;
-  const scopedStationId = resolveScopedStationId(user, ctx.headers['x-station-id']);
-  const { page, pageSize, offset, limit } = getPagination(ctx.query);
-
-  const where = {};
-  if (scopedStationId) {
-    where.station_id = scopedStationId;
-  } else if (stationId) {
-    where.station_id = parseInt(stationId);
-  }
-  if (positionName) {
-    where.position_name = positionName;
-  }
-
-  const planWhere = { is_deleted: false };
-  if (equipmentCode) {
-    planWhere.equipment_code = { [Op.like]: `%${equipmentCode}%` };
-  }
-  if (equipmentName) {
-    planWhere.equipment_name = { [Op.like]: `%${equipmentName}%` };
-  }
-  if (installLocation) {
-    planWhere.install_location = { [Op.like]: `%${installLocation}%` };
-  }
-  if (cycleType) {
-    planWhere.cycle_type = cycleType;
-  }
-
-  const planInclude = {
-    model: MaintenancePlanLibrary,
-    as: 'plan',
-    attributes: ['id', 'equipment_code', 'equipment_name', 'install_location', 'cycle_type',
-                 'daily_enabled', 'weekly_enabled', 'monthly_enabled', 'yearly_enabled',
-                 'weekly_day', 'monthly_day', 'yearly_month', 'yearly_day', 'maintenance_standards']
-  };
-  if (Object.keys(planWhere).length > 0) {
-    planInclude.where = planWhere;
-    planInclude.required = true;
-  }
-
-  const result = await MaintenancePositionPlan.findAndCountAll({
-    where,
-    include: [
-      { model: Station, as: 'station', attributes: ['id', 'station_name'] },
-      planInclude
-    ],
-    offset,
-    limit,
-    order: [['created_at', 'DESC']],
-    distinct: true
-  });
-
-  ctx.body = {
-    code: 200,
-    message: 'success',
-    data: formatPaginationResponse(result, page, pageSize)
-  };
-};
+export const getMaintenancePositionPlans = async (ctx) => { 
+  await validateQuery(ctx, getMaintenancePositionPlansQuerySchema); 
+  const { stationId, positionName, equipmentCode, equipmentName, installLocation, cycleType } = ctx.query; 
+  const user = ctx.state.user; 
+  const scopedStationId = resolveScopedStationId(user, ctx.headers['x-station-id']); 
+  const { page, pageSize, offset, limit } = getPagination(ctx.query); 
+ 
+  const clauses = []; 
+  const replacements = []; 
+ 
+  if (scopedStationId) { 
+    clauses.push('mpp.station_id = ?'); 
+    replacements.push(scopedStationId); 
+  } else if (stationId) { 
+    clauses.push('mpp.station_id = ?'); 
+    replacements.push(Number.parseInt(stationId, 10)); 
+  } 
+  if (positionName) { 
+    clauses.push('mpp.position_name = ?'); 
+    replacements.push(positionName); 
+  } 
+ 
+  clauses.push('mpl.is_deleted = 0'); 
+ 
+  if (equipmentCode) { 
+    clauses.push('mpl.equipment_code LIKE ?'); 
+    replacements.push(`%${equipmentCode}%`); 
+  } 
+  if (equipmentName) { 
+    clauses.push('mpl.equipment_name LIKE ?'); 
+    replacements.push(`%${equipmentName}%`); 
+  } 
+  if (installLocation) { 
+    clauses.push('mpl.install_location LIKE ?'); 
+    replacements.push(`%${installLocation}%`); 
+  } 
+  // 兼容旧客户端：保留 cycleType 过滤，但岗位分配维度不再按周期拆分展示 
+  if (cycleType) { 
+    clauses.push('mpl.cycle_type = ?'); 
+    replacements.push(cycleType); 
+  } 
+ 
+  const whereSql = clauses.length > 0 ? `WHERE ${clauses.join(' AND ')}` : ''; 
+ 
+  const countSql = ` 
+    SELECT COUNT(1) AS count 
+    FROM ( 
+      SELECT mpp.station_id, mpp.position_name, mpl.equipment_code 
+      FROM maintenance_position_plans mpp 
+      INNER JOIN maintenance_plan_library mpl ON mpl.id = mpp.plan_id 
+      ${whereSql} 
+      GROUP BY mpp.station_id, mpp.position_name, mpl.equipment_code 
+    ) t 
+  `; 
+ 
+  const listSql = ` 
+    SELECT 
+      MIN(mpp.id) AS id, 
+      mpp.station_id, 
+      st.station_name, 
+      mpp.position_name, 
+      mpl.equipment_code, 
+      MIN(mpl.equipment_name) AS equipment_name, 
+      MIN(mpl.install_location) AS install_location, 
+      MAX(mpp.created_at) AS last_created_at 
+    FROM maintenance_position_plans mpp 
+    INNER JOIN maintenance_plan_library mpl ON mpl.id = mpp.plan_id 
+    LEFT JOIN stations st ON st.id = mpp.station_id 
+    ${whereSql} 
+    GROUP BY mpp.station_id, st.station_name, mpp.position_name, mpl.equipment_code 
+    ORDER BY last_created_at DESC 
+    LIMIT ? OFFSET ? 
+  `; 
+ 
+  const [countRows] = await sequelize.query(countSql, { replacements }); 
+  const total = Number.parseInt(countRows?.[0]?.count, 10); 
+  const resolvedTotal = Number.isNaN(total) ? 0 : total; 
+ 
+  const [groupRows] = await sequelize.query(listSql, { replacements: [...replacements, limit, offset] }); 
+  const rows = (Array.isArray(groupRows) ? groupRows : []).map((row) => ({ 
+    id: row.id, 
+    station_id: row.station_id, 
+    position_name: row.position_name, 
+    station: { station_name: row.station_name }, 
+    plan: { 
+      equipment_code: row.equipment_code, 
+      equipment_name: row.equipment_name, 
+      install_location: row.install_location 
+    } 
+  })); 
+ 
+  ctx.body = { 
+    code: 200, 
+    message: 'success', 
+    data: formatPaginationResponse({ rows, count: resolvedTotal }, page, pageSize) 
+  }; 
+}; 
 
 /**
  * 鍒涘缓宀椾綅-淇濆吇璁″垝鍒嗛厤
  * POST /api/maintenance-position-plans
  */
-export const createMaintenancePositionPlan = async (ctx) => {
-  const { stationId, positionName, planIds } = await validateBody(ctx, createMaintenancePositionPlanBodySchema);
-
-  if (!stationId || !positionName || !planIds || !planIds.length) {
-    throw createError(400, '鍦虹珯銆佸矖浣嶅拰淇濆吇璁″垝涓嶈兘涓虹┖');
+export const createMaintenancePositionPlan = async (ctx) => { 
+  const { stationId, positionName, planIds } = await validateBody(ctx, createMaintenancePositionPlanBodySchema); 
+ 
+  if (!stationId || !positionName || !planIds || !planIds.length) { 
+    throw createError(400, '鍦虹珯銆佸矖浣嶅拰淇濆吇璁″垝涓嶈兘涓虹┖'); 
   }
 
-  // 鎵归噺鍒涘缓鍒嗛厤璁板綍
-  const results = [];
-  for (const planId of planIds) {
-    // 妫€鏌ユ槸鍚﹀凡瀛樺湪
-    const existing = await MaintenancePositionPlan.findOne({
-      where: { station_id: stationId, position_name: positionName, plan_id: planId }
-    });
+  const selectedPlans = await MaintenancePlanLibrary.findAll({ 
+    where: { 
+      id: { [Op.in]: planIds }, 
+      is_deleted: false 
+    }, 
+    attributes: ['id', 'equipment_code'] 
+  }); 
+
+  const equipmentCodeSet = new Set(); 
+  selectedPlans.forEach((plan) => { 
+    if (plan?.equipment_code) equipmentCodeSet.add(plan.equipment_code); 
+  }); 
+  const equipmentCodes = Array.from(equipmentCodeSet); 
+
+  let expandedPlanIds = planIds; 
+  if (equipmentCodes.length > 0) { 
+    const allPlans = await MaintenancePlanLibrary.findAll({ 
+      where: { 
+        equipment_code: { [Op.in]: equipmentCodes }, 
+        is_deleted: false, 
+        [Op.or]: [ 
+          { station_id: stationId }, 
+          { station_id: null } 
+        ] 
+      }, 
+      attributes: ['id'] 
+    }); 
+    const allPlanIds = allPlans.map((plan) => plan.id).filter(Boolean); 
+    if (allPlanIds.length > 0) { 
+      expandedPlanIds = allPlanIds; 
+    } 
+  } 
+ 
+  // 鎵归噺鍒涘缓鍒嗛厤璁板綍 
+  const results = []; 
+  const uniquePlanIds = Array.from(new Set(expandedPlanIds)); 
+  for (const planId of uniquePlanIds) { 
+    // 妫€鏌ユ槸鍚﹀凡瀛樺湪 
+    const existing = await MaintenancePositionPlan.findOne({ 
+      where: { station_id: stationId, position_name: positionName, plan_id: planId } 
+    }); 
     if (!existing) {
       const record = await MaintenancePositionPlan.create({
         station_id: stationId,
@@ -309,28 +472,295 @@ export const createMaintenancePositionPlan = async (ctx) => {
     code: 200,
     message: `Saved ${results.length} records`,
     data: results
+  }; 
+}; 
+
+export const batchImportMaintenancePositionPlans = async (ctx) => {
+  const { rows } = await validateBody(ctx, batchImportMaintenancePositionPlansBodySchema);
+  const user = ctx.state.user;
+  const scopedStationId = resolveScopedStationId(user, ctx.headers['x-station-id']);
+  const { stationNameToId, stationNormalizedNameToId } = await buildStationLookup();
+
+  const results = {
+    success: 0,
+    updated: 0,
+    skipped: 0,
+    failed: 0,
+    errors: []
   };
-};
+  const seen = new Set();
 
-/**
- * 鍒犻櫎宀椾綅-淇濆吇璁″垝鍒嗛厤
- * DELETE /api/maintenance-position-plans/:id
- */
-export const deleteMaintenancePositionPlan = async (ctx) => {
-  const { id } = await validateParams(ctx, idParamSchema);
+  for (let i = 0; i < rows.length; i += 1) {
+    const row = rows[i] ?? {};
+    const rowNum = parseOptionalInt(row.rowNum) ?? (i + 2);
 
-  const record = await MaintenancePositionPlan.findByPk(id);
-  if (!record) {
-    throw createError(404, 'Not found');
+    try {
+      const positionName = normalizeImportText(row.positionName);
+      const equipmentCode = normalizeImportText(row.equipmentCode);
+
+      if (!positionName) {
+        results.failed += 1;
+        results.errors.push(`第${rowNum}行 岗位不能为空`);
+        continue;
+      }
+      if (!equipmentCode) {
+        results.failed += 1;
+        results.errors.push(`第${rowNum}行 设备编号不能为空`);
+        continue;
+      }
+
+      const resolvedStationId = resolveImportStationId({
+        row,
+        scopedStationId,
+        stationNameToId,
+        stationNormalizedNameToId
+      });
+      if (!resolvedStationId) {
+        results.failed += 1;
+        results.errors.push(`第${rowNum}行 场站不能为空或无法识别`);
+        continue;
+      }
+
+      const rowKey = `${resolvedStationId}::${equipmentCode}`;
+      if (seen.has(rowKey)) {
+        results.skipped += 1;
+        continue;
+      }
+      seen.add(rowKey);
+
+      const planIds = await loadPlanIdsByEquipment({ stationId: resolvedStationId, equipmentCode });
+      if (planIds.length === 0) {
+        results.failed += 1;
+        results.errors.push(`第${rowNum}行 设备编号不存在或未配置保养计划（${equipmentCode}）`);
+        continue;
+      }
+
+      const assignmentState = await inspectPositionAssignmentState({
+        stationId: resolvedStationId,
+        planIds,
+        positionName
+      });
+
+      if (assignmentState.action === 'create') {
+        await MaintenancePositionPlan.bulkCreate(
+          planIds.map((planId) => ({
+            station_id: resolvedStationId,
+            position_name: positionName,
+            plan_id: planId
+          })),
+          { ignoreDuplicates: true }
+        );
+        results.success += 1;
+        continue;
+      }
+
+      if (assignmentState.action === 'skip') {
+        results.skipped += 1;
+        continue;
+      }
+
+      await sequelize.transaction(async (transaction) => {
+        await MaintenancePositionPlan.destroy({
+          where: {
+            station_id: resolvedStationId,
+            plan_id: { [Op.in]: planIds },
+            position_name: { [Op.ne]: positionName }
+          },
+          transaction
+        });
+
+        await MaintenancePositionPlan.bulkCreate(
+          planIds.map((planId) => ({
+            station_id: resolvedStationId,
+            position_name: positionName,
+            plan_id: planId
+          })),
+          { ignoreDuplicates: true, transaction }
+        );
+      });
+      results.updated += 1;
+    } catch (err) {
+      results.failed += 1;
+      results.errors.push(`第${rowNum}行 ${err.message}`);
+    }
   }
-
-  await record.destroy();
 
   ctx.body = {
     code: 200,
-    message: '鍒犻櫎鎴愬姛'
+    message: `导入完成：新增${results.success}行，更新${results.updated}行，跳过${results.skipped}行，失败${results.failed}行`,
+    data: results
   };
 };
+
+export const previewBatchImportMaintenancePositionPlans = async (ctx) => {
+  const { rows } = await validateBody(ctx, batchImportMaintenancePositionPlansBodySchema);
+  const user = ctx.state.user;
+  const scopedStationId = resolveScopedStationId(user, ctx.headers['x-station-id']);
+  const { stationNameToId, stationNormalizedNameToId, stationIdToName } = await buildStationLookup();
+
+  const summary = { total: 0, create: 0, update: 0, skip: 0, error: 0 };
+  const previewRows = [];
+  const seen = new Set();
+
+  for (let i = 0; i < rows.length; i += 1) {
+    const row = rows[i] ?? {};
+    const rowNum = parseOptionalInt(row.rowNum) ?? (i + 2);
+    const positionName = normalizeImportText(row.positionName);
+    const equipmentCode = normalizeImportText(row.equipmentCode);
+    const resolvedStationId = resolveImportStationId({
+      row,
+      scopedStationId,
+      stationNameToId,
+      stationNormalizedNameToId
+    });
+    const resolvedStationName = resolvedStationId ? (stationIdToName.get(resolvedStationId) ?? '') : normalizeImportText(row.stationName);
+
+    const previewRow = {
+      rowNum,
+      action: 'error',
+      message: '',
+      diff: {},
+      stationName: resolvedStationName,
+      equipmentCode,
+      positionName
+    };
+    summary.total += 1;
+
+    if (!positionName) {
+      previewRow.message = '岗位不能为空';
+      summary.error += 1;
+      previewRows.push(previewRow);
+      continue;
+    }
+    if (!equipmentCode) {
+      previewRow.message = '设备编号不能为空';
+      summary.error += 1;
+      previewRows.push(previewRow);
+      continue;
+    }
+    if (!resolvedStationId) {
+      previewRow.message = '场站不能为空或无法识别';
+      summary.error += 1;
+      previewRows.push(previewRow);
+      continue;
+    }
+
+    const rowKey = `${resolvedStationId}::${equipmentCode}`;
+    if (seen.has(rowKey)) {
+      previewRow.action = 'skip';
+      previewRow.message = '重复行，跳过';
+      summary.skip += 1;
+      previewRows.push(previewRow);
+      continue;
+    }
+    seen.add(rowKey);
+
+    const planIds = await loadPlanIdsByEquipment({ stationId: resolvedStationId, equipmentCode });
+    if (planIds.length === 0) {
+      previewRow.message = `设备编号不存在或未配置保养计划（${equipmentCode}）`;
+      summary.error += 1;
+      previewRows.push(previewRow);
+      continue;
+    }
+
+    const assignmentState = await inspectPositionAssignmentState({
+      stationId: resolvedStationId,
+      planIds,
+      positionName
+    });
+
+    if (assignmentState.action === 'create') {
+      previewRow.action = 'create';
+      previewRow.message = '将新增';
+      summary.create += 1;
+      previewRows.push(previewRow);
+      continue;
+    }
+
+    if (assignmentState.action === 'skip') {
+      previewRow.action = 'skip';
+      previewRow.message = '无变更，跳过';
+      summary.skip += 1;
+      previewRows.push(previewRow);
+      continue;
+    }
+
+    const beforePositions = assignmentState.existingPositions.filter((value) => value && value !== positionName);
+    if (beforePositions.length > 0) {
+      previewRow.diff.position_name = {
+        from: beforePositions.join(' / '),
+        to: positionName
+      };
+    }
+    previewRow.action = 'update';
+    previewRow.message = beforePositions.length > 0 ? '将更新' : '将更新（补齐计划关联）';
+    summary.update += 1;
+    previewRows.push(previewRow);
+  }
+
+  ctx.body = {
+    code: 200,
+    message: 'success',
+    data: {
+      summary,
+      rows: previewRows
+    }
+  };
+};
+
+/** 
+ * 鍒犻櫎宀椾綅-淇濆吇璁″垝鍒嗛厤 
+ * DELETE /api/maintenance-position-plans/:id 
+ */ 
+export const deleteMaintenancePositionPlan = async (ctx) => { 
+  const { id } = await validateParams(ctx, idParamSchema); 
+ 
+  const record = await MaintenancePositionPlan.findByPk(id, { 
+    include: [ 
+      { model: MaintenancePlanLibrary, as: 'plan', attributes: ['id', 'equipment_code'] } 
+    ] 
+  }); 
+  if (!record) { 
+    throw createError(404, 'Not found'); 
+  } 
+ 
+  const equipmentCode = record.plan?.equipment_code; 
+  if (!equipmentCode) { 
+    await record.destroy(); 
+    ctx.body = { 
+      code: 200, 
+      message: '删除成功' 
+    }; 
+    return; 
+  } 
+ 
+  const planIdRows = await MaintenancePlanLibrary.findAll({ 
+    where: { 
+      equipment_code: equipmentCode, 
+      [Op.or]: [ 
+        { station_id: record.station_id }, 
+        { station_id: null } 
+      ] 
+    }, 
+    attributes: ['id'] 
+  }); 
+ 
+  const planIds = planIdRows.map((item) => item.id).filter(Boolean); 
+  const resolvedPlanIds = planIds.length > 0 ? planIds : [record.plan_id]; 
+ 
+  await MaintenancePositionPlan.destroy({ 
+    where: { 
+      station_id: record.station_id, 
+      position_name: record.position_name, 
+      plan_id: { [Op.in]: resolvedPlanIds } 
+    } 
+  }); 
+ 
+  ctx.body = { 
+    code: 200, 
+    message: '删除成功' 
+  }; 
+}; 
 
 /**
  * 鑾峰彇鍛樺伐浠婃棩淇濆吇浠诲姟
@@ -974,6 +1404,8 @@ export const verifyMaintenanceWorkRecord = async (ctx) => {
 export default {
   getMaintenancePositionPlans,
   createMaintenancePositionPlan,
+  batchImportMaintenancePositionPlans,
+  previewBatchImportMaintenancePositionPlans,
   deleteMaintenancePositionPlan,
   getTodayMaintenanceTasks,
   submitMaintenanceWorkRecord,

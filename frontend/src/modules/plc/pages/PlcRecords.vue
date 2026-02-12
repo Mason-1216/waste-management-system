@@ -1,6 +1,6 @@
 ﻿<template>
   <div class="plc-records-page">
-    <el-tabs v-model="activeTab" type="border-card">
+    <el-tabs v-model="activeTab" type="card">
       <el-tab-pane label="实时监控" name="realtime">
         <PlcRealtimeMonitor />
       </el-tab-pane>

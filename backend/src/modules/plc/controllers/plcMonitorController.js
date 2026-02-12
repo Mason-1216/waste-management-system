@@ -469,15 +469,51 @@ export const importConfigs = async (ctx) => {
       return;
     }
 
-    const result = await PlcMonitorConfig.bulkCreate(records, {
-      ignoreDuplicates: true
-    });
+    const seenKeys = new Set();
+    let created = 0;
+    let updated = 0;
+    let skipped = 0;
+
+    for (const record of records) {
+      const identityKey = buildPlcConfigIdentityKey(record);
+      if (seenKeys.has(identityKey)) {
+        skipped += 1;
+        continue;
+      }
+      seenKeys.add(identityKey);
+
+      const existing = await PlcMonitorConfig.findOne({
+        where: {
+          station_id: record.station_id,
+          plc_ip: record.plc_ip,
+          db_number: record.db_number,
+          offset_address: record.offset_address
+        }
+      });
+
+      if (!existing) {
+        await PlcMonitorConfig.create(record);
+        created += 1;
+        continue;
+      }
+
+      const patch = buildPlcConfigUpdatePatch({ existing, payload: record });
+      if (Object.keys(patch).length === 0) {
+        skipped += 1;
+        continue;
+      }
+
+      await existing.update(patch);
+      updated += 1;
+    }
 
     ctx.body = {
       code: 200,
-      message: `成功导入 ${result.length} 条配置`,
+      message: `导入完成：新增${created}条，更新${updated}条，跳过${skipped}条`,
       data: {
-        count: result.length,
+        created,
+        updated,
+        skipped,
         errors: errors.length ? errors : undefined
       }
     };
@@ -486,6 +522,356 @@ export const importConfigs = async (ctx) => {
     ctx.status = 500;
     ctx.body = { code: 500, message: error.message };
   }
+};
+
+export const previewImportConfigs = async (ctx) => {
+  try {
+    const file = ctx.file;
+    let configs = ctx.request.body?.configs;
+    const errors = [];
+    const records = [];
+
+    const normalizeCellValue = (cellValue) => {
+      if (cellValue === null || cellValue === undefined) return null;
+      if (cellValue instanceof Date) return cellValue;
+      if (typeof cellValue === 'number' || typeof cellValue === 'boolean') return cellValue;
+      if (typeof cellValue === 'string') return cellValue.trim();
+      if (typeof cellValue === 'object') {
+        if (cellValue.text) return String(cellValue.text).trim();
+        if (Array.isArray(cellValue.richText)) {
+          return cellValue.richText.map(item => item.text || '').join('').trim();
+        }
+        if (cellValue.result !== undefined && cellValue.result !== null) return cellValue.result;
+      }
+      return String(cellValue).trim();
+    };
+
+    const parseBoolean = (value, defaultValue = true) => {
+      if (value === null || value === undefined || value === '') return defaultValue;
+      if (typeof value === 'boolean') return value;
+      if (typeof value === 'number') return value !== 0;
+      const normalized = String(value).trim().toLowerCase();
+      if (['0', 'false', 'no', 'n'].includes(normalized)) return false;
+      if (['1', 'true', 'yes', 'y'].includes(normalized)) return true;
+      return defaultValue;
+    };
+
+    if (file) {
+      const workbook = new ExcelJS.Workbook();
+      await workbook.xlsx.load(file.buffer);
+      const worksheet = workbook.getWorksheet(1);
+
+      if (!worksheet) {
+        ctx.status = 400;
+        ctx.body = { code: 400, message: 'Excel文件格式错误' };
+        return;
+      }
+
+      for (let i = 2; i <= worksheet.rowCount; i += 1) {
+        const row = worksheet.getRow(i);
+        const name = normalizeCellValue(row.getCell(1).value);
+        const stationValue = normalizeCellValue(row.getCell(2).value);
+        const plcIp = normalizeCellValue(row.getCell(3).value);
+        const dbNumberValue = normalizeCellValue(row.getCell(4).value);
+        const offsetAddressValue = normalizeCellValue(row.getCell(5).value);
+        const dataType = normalizeCellValue(row.getCell(6).value) || 'REAL';
+        const categoryValue = normalizeCellValue(row.getCell(7).value);
+        const unit = normalizeCellValue(row.getCell(8).value);
+        const description = normalizeCellValue(row.getCell(9).value);
+        const isActiveValue = normalizeCellValue(row.getCell(10).value);
+        const sortOrderValue = normalizeCellValue(row.getCell(11).value);
+
+        if (!name && !stationValue && !plcIp && !dbNumberValue && !offsetAddressValue) continue;
+
+        if (!name || !stationValue || !plcIp || dbNumberValue === null || offsetAddressValue === null || !categoryValue) {
+          records.push({
+            rowNum: i,
+            action: 'error',
+            message: '缺少必填字段',
+            diff: {},
+            name: name ? String(name).trim() : '',
+            station: stationValue ? String(stationValue).trim() : '',
+            plcIp: plcIp ? String(plcIp).trim() : '',
+            dbNumber: dbNumberValue,
+            offsetAddress: offsetAddressValue,
+            dataType,
+            category: categoryValue ? String(categoryValue).trim() : '',
+            unit: unit ? String(unit).trim() : '',
+            description: description ? String(description).trim() : '',
+            isActive: parseBoolean(isActiveValue, true),
+            sortOrder: sortOrderValue ?? 0
+          });
+          continue;
+        }
+
+        const stationIdCandidate = /^[0-9]+$/.test(String(stationValue)) ? parseInt(String(stationValue), 10) : null;
+        const station = stationIdCandidate
+          ? await Station.findByPk(stationIdCandidate)
+          : await Station.findOne({ where: { station_name: String(stationValue).trim() } });
+        if (!station) {
+          records.push({
+            rowNum: i,
+            action: 'error',
+            message: `场站"${stationValue}"不存在`,
+            diff: {},
+            name: String(name).trim(),
+            station: String(stationValue).trim(),
+            plcIp: String(plcIp).trim(),
+            dbNumber: dbNumberValue,
+            offsetAddress: offsetAddressValue,
+            dataType,
+            category: String(categoryValue).trim(),
+            unit: unit ? String(unit).trim() : '',
+            description: description ? String(description).trim() : '',
+            isActive: parseBoolean(isActiveValue, true),
+            sortOrder: sortOrderValue ?? 0
+          });
+          continue;
+        }
+
+        const categoryIdCandidate = /^[0-9]+$/.test(String(categoryValue)) ? parseInt(String(categoryValue), 10) : null;
+        let category = categoryIdCandidate
+          ? await PlcCategory.findByPk(categoryIdCandidate)
+          : await PlcCategory.findOne({ where: { category_key: String(categoryValue).trim() } });
+        if (!category && !categoryIdCandidate) {
+          category = await PlcCategory.findOne({ where: { category_name: String(categoryValue).trim() } });
+        }
+        if (!category) {
+          records.push({
+            rowNum: i,
+            action: 'error',
+            message: `分类"${categoryValue}"不存在`,
+            diff: {},
+            name: String(name).trim(),
+            station: String(stationValue).trim(),
+            plcIp: String(plcIp).trim(),
+            dbNumber: dbNumberValue,
+            offsetAddress: offsetAddressValue,
+            dataType,
+            category: String(categoryValue).trim(),
+            unit: unit ? String(unit).trim() : '',
+            description: description ? String(description).trim() : '',
+            isActive: parseBoolean(isActiveValue, true),
+            sortOrder: sortOrderValue ?? 0
+          });
+          continue;
+        }
+
+        const dbNumber = typeof dbNumberValue === 'number' ? dbNumberValue : parseInt(String(dbNumberValue), 10);
+        const offsetAddress = typeof offsetAddressValue === 'number'
+          ? offsetAddressValue
+          : parseFloat(String(offsetAddressValue));
+        if (Number.isNaN(dbNumber) || Number.isNaN(offsetAddress)) {
+          records.push({
+            rowNum: i,
+            action: 'error',
+            message: 'DB地址格式错误',
+            diff: {},
+            name: String(name).trim(),
+            station: String(stationValue).trim(),
+            plcIp: String(plcIp).trim(),
+            dbNumber: dbNumberValue,
+            offsetAddress: offsetAddressValue,
+            dataType,
+            category: String(categoryValue).trim(),
+            unit: unit ? String(unit).trim() : '',
+            description: description ? String(description).trim() : '',
+            isActive: parseBoolean(isActiveValue, true),
+            sortOrder: sortOrderValue ?? 0
+          });
+          continue;
+        }
+
+        const sortOrder = sortOrderValue === null || sortOrderValue === undefined || sortOrderValue === ''
+          ? 0
+          : (typeof sortOrderValue === 'number' ? sortOrderValue : parseInt(String(sortOrderValue), 10));
+
+        records.push({
+          rowNum: i,
+          action: 'unknown',
+          message: '',
+          diff: {},
+          name: String(name).trim(),
+          station: station.station_name,
+          plcIp: String(plcIp).trim(),
+          dbNumber,
+          offsetAddress,
+          dataType: String(dataType).trim() || 'REAL',
+          category: category.category_name ?? category.category_key ?? '',
+          unit: unit ? String(unit).trim() : '',
+          description: description ? String(description).trim() : '',
+          isActive: parseBoolean(isActiveValue, true),
+          sortOrder: Number.isNaN(sortOrder) ? 0 : sortOrder,
+          __payload: {
+            name: String(name).trim(),
+            station_id: station.id,
+            plc_ip: String(plcIp).trim(),
+            db_number: dbNumber,
+            offset_address: offsetAddress,
+            data_type: String(dataType).trim() || 'REAL',
+            category_id: category.id,
+            unit: unit ? String(unit).trim() : null,
+            description: description ? String(description).trim() : null,
+            is_active: parseBoolean(isActiveValue, true),
+            sort_order: Number.isNaN(sortOrder) ? 0 : sortOrder
+          }
+        });
+      }
+    } else {
+      if (typeof configs === 'string') {
+        configs = JSON.parse(configs);
+      }
+
+      if (!Array.isArray(configs) || configs.length === 0) {
+        ctx.status = 400;
+        ctx.body = { code: 400, message: '请提供配置数据' };
+        return;
+      }
+
+      configs.forEach((item, index) => {
+        records.push({
+          rowNum: index + 1,
+          action: 'unknown',
+          message: '',
+          diff: {},
+          name: item.name ?? '',
+          station: item.stationId ?? '',
+          plcIp: item.plcIp ?? '',
+          dbNumber: item.dbNumber ?? '',
+          offsetAddress: item.offsetAddress ?? '',
+          dataType: item.dataType ?? 'REAL',
+          category: item.categoryId ?? '',
+          unit: item.unit ?? '',
+          description: item.description ?? '',
+          isActive: item.isActive !== false,
+          sortOrder: item.sortOrder ?? 0,
+          __payload: {
+            name: item.name,
+            station_id: item.stationId,
+            plc_ip: item.plcIp,
+            db_number: item.dbNumber,
+            offset_address: item.offsetAddress,
+            data_type: item.dataType || 'REAL',
+            category_id: item.categoryId,
+            unit: item.unit ?? null,
+            description: item.description ?? null,
+            is_active: item.isActive !== false,
+            sort_order: item.sortOrder || 0
+          }
+        });
+      });
+    }
+
+    const summary = { total: records.length, create: 0, update: 0, skip: 0, error: 0 };
+    const seenKeys = new Set();
+
+    for (const item of records) {
+      if (item.action === 'error') {
+        summary.error += 1;
+        continue;
+      }
+      const payload = item.__payload;
+      if (!payload) {
+        item.action = 'error';
+        item.message = '解析失败';
+        summary.error += 1;
+        continue;
+      }
+
+      const identityKey = buildPlcConfigIdentityKey(payload);
+      if (seenKeys.has(identityKey)) {
+        item.action = 'skip';
+        item.message = '重复行（文件内重复），跳过';
+        summary.skip += 1;
+        continue;
+      }
+      seenKeys.add(identityKey);
+
+      const existing = await PlcMonitorConfig.findOne({
+        where: {
+          station_id: payload.station_id,
+          plc_ip: payload.plc_ip,
+          db_number: payload.db_number,
+          offset_address: payload.offset_address
+        }
+      });
+
+      if (!existing) {
+        item.action = 'create';
+        item.message = '将新增';
+        summary.create += 1;
+        continue;
+      }
+
+      const patch = buildPlcConfigUpdatePatch({ existing, payload });
+      item.diff = buildDiffFromPatch(existing, patch);
+      if (Object.keys(patch).length === 0) {
+        item.action = 'skip';
+        item.message = '无变更，跳过';
+        summary.skip += 1;
+        continue;
+      }
+
+      item.action = 'update';
+      item.message = '将更新';
+      summary.update += 1;
+    }
+
+    // 移除内部字段
+    const rows = records.map(({ __payload, ...rest }) => rest);
+
+    ctx.body = {
+      code: 200,
+      message: 'success',
+      data: { summary, rows }
+    };
+  } catch (error) {
+    logger.error('previewImportConfigs error:', error);
+    ctx.status = 500;
+    ctx.body = { code: 500, message: error.message };
+  }
+};
+
+const buildPlcConfigIdentityKey = (payload) => {
+  const stationId = payload?.station_id ?? '';
+  const plcIp = payload?.plc_ip ?? '';
+  const dbNumber = payload?.db_number ?? '';
+  const offsetAddress = payload?.offset_address ?? '';
+  return `${stationId}__${plcIp}__${dbNumber}__${offsetAddress}`;
+};
+
+const buildPlcConfigUpdatePatch = ({ existing, payload }) => {
+  const patch = {};
+
+  const setIfProvidedAndChanged = (key, nextValue) => {
+    if (nextValue === undefined || nextValue === null) return;
+    if (typeof nextValue === 'string' && !nextValue.trim()) return;
+    if (existing[key] === nextValue) return;
+    patch[key] = nextValue;
+  };
+
+  setIfProvidedAndChanged('name', payload.name);
+  setIfProvidedAndChanged('data_type', payload.data_type);
+  setIfProvidedAndChanged('category_id', payload.category_id);
+  setIfProvidedAndChanged('unit', payload.unit);
+  setIfProvidedAndChanged('description', payload.description);
+
+  if (typeof payload.is_active === 'boolean' && payload.is_active !== existing.is_active) {
+    patch.is_active = payload.is_active;
+  }
+  if (payload.sort_order !== undefined && payload.sort_order !== null && payload.sort_order !== existing.sort_order) {
+    patch.sort_order = payload.sort_order;
+  }
+
+  return patch;
+};
+
+const buildDiffFromPatch = (existing, patch) => {
+  const diff = {};
+  Object.keys(patch).forEach((key) => {
+    diff[key] = { from: existing[key], to: patch[key] };
+  });
+  return diff;
 };
 
 /**
@@ -1509,6 +1895,301 @@ export const importHistoryData = async (ctx) => {
   }
 };
 
+export const previewImportHistoryData = async (ctx) => {
+  try {
+    const file = ctx.file;
+    if (!file) {
+      ctx.status = 400;
+      ctx.body = { code: 400, message: '请上传文件' };
+      return;
+    }
+
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.load(file.buffer);
+    const worksheet = workbook.getWorksheet(1);
+
+    if (!worksheet) {
+      ctx.status = 400;
+      ctx.body = { code: 400, message: 'Invalid Excel format' };
+      return;
+    }
+
+    const MAX_PREVIEW_ROWS = 1000;
+
+    const normalizeCellValue = (cellValue) => {
+      if (cellValue === null || cellValue === undefined) return null;
+      if (cellValue instanceof Date) return cellValue;
+      if (typeof cellValue === 'number' || typeof cellValue === 'boolean') return cellValue;
+      if (typeof cellValue === 'string') return cellValue.trim();
+      if (typeof cellValue === 'object') {
+        if (cellValue.text) return String(cellValue.text).trim();
+        if (Array.isArray(cellValue.richText)) {
+          return cellValue.richText.map(item => item.text || '').join('').trim();
+        }
+        if (cellValue.result !== undefined && cellValue.result !== null) return cellValue.result;
+      }
+      return String(cellValue).trim();
+    };
+
+    const parseExcelTimestamp = (cellValue) => {
+      const normalized = normalizeCellValue(cellValue);
+      if (normalized === null || normalized === undefined || normalized === '') return null;
+      if (normalized instanceof Date) return normalized;
+      if (typeof normalized === 'number') {
+        const excelEpoch = 25569;
+        const secondsInDay = 86400;
+        const utcSeconds = Math.round((normalized - excelEpoch) * secondsInDay);
+        return new Date(utcSeconds * 1000);
+      }
+      const parsed = new Date(String(normalized));
+      if (Number.isNaN(parsed.getTime())) return null;
+      return parsed;
+    };
+
+    const parseAddress = (value) => {
+      if (!value) return null;
+      const text = String(value).replace(/\\s+/g, '').toUpperCase();
+      const dbMatch = text.match(/DB(\\d+)/);
+      const offsetMatch = text.match(/(\\d+(?:\\.\\d+)?)$/);
+      if (!dbMatch || !offsetMatch) return null;
+      const dbNumber = parseInt(dbMatch[1], 10);
+      const offsetAddress = parseFloat(offsetMatch[1]);
+      if (Number.isNaN(dbNumber) || Number.isNaN(offsetAddress)) return null;
+      return { dbNumber, offsetAddress };
+    };
+
+    const parsedRows = [];
+    for (let i = 2; i <= worksheet.rowCount; i += 1) {
+      const row = worksheet.getRow(i);
+      const stationRaw = normalizeCellValue(row.getCell(1).value);
+      const categoryRaw = normalizeCellValue(row.getCell(2).value);
+      const configRaw = normalizeCellValue(row.getCell(3).value);
+      const addressRaw = normalizeCellValue(row.getCell(4).value);
+      const valueRaw = normalizeCellValue(row.getCell(5).value);
+      const timestampRaw = row.getCell(6).value;
+      const qualityRaw = normalizeCellValue(row.getCell(7).value);
+
+      const stationName = stationRaw !== null && stationRaw !== undefined ? String(stationRaw).trim() : '';
+      const categoryName = categoryRaw !== null && categoryRaw !== undefined ? String(categoryRaw).trim() : '';
+      const configName = configRaw !== null && configRaw !== undefined ? String(configRaw).trim() : '';
+      const address = addressRaw !== null && addressRaw !== undefined ? String(addressRaw).trim() : '';
+
+      if (!stationName && !categoryName && !configName) continue;
+
+      const previewRow = {
+        rowNum: i,
+        action: 'error',
+        message: '',
+        diff: {},
+        stationName,
+        categoryName,
+        configName,
+        address,
+        value: valueRaw,
+        timestamp: '',
+        quality: qualityRaw ?? ''
+      };
+
+      if (!stationName || !categoryName || !configName || !address || valueRaw === null || valueRaw === undefined || !timestampRaw) {
+        previewRow.message = '必填字段缺失(场站/分类/监控点/地址/数值/时间)';
+        parsedRows.push(previewRow);
+        continue;
+      }
+
+      const stationIdCandidate = /^[0-9]+$/.test(stationName) ? parseInt(stationName, 10) : null;
+      const station = stationIdCandidate
+        ? await Station.findByPk(stationIdCandidate)
+        : await Station.findOne({ where: { station_name: stationName } });
+      if (!station) {
+        previewRow.message = `场站\"${stationName}\"不存在`;
+        parsedRows.push(previewRow);
+        continue;
+      }
+
+      const categoryIdCandidate = /^[0-9]+$/.test(categoryName) ? parseInt(categoryName, 10) : null;
+      let category = categoryIdCandidate
+        ? await PlcCategory.findByPk(categoryIdCandidate)
+        : await PlcCategory.findOne({ where: { category_name: categoryName } });
+      if (!category && !categoryIdCandidate) {
+        category = await PlcCategory.findOne({ where: { category_key: categoryName } });
+      }
+      if (!category) {
+        previewRow.message = `分类\"${categoryName}\"不存在`;
+        parsedRows.push(previewRow);
+        continue;
+      }
+
+      const configIdCandidate = /^[0-9]+$/.test(configName) ? parseInt(configName, 10) : null;
+      let config = configIdCandidate
+        ? await PlcMonitorConfig.findByPk(configIdCandidate)
+        : await PlcMonitorConfig.findOne({
+          where: {
+            name: configName,
+            station_id: station.id,
+            category_id: category.id
+          }
+        });
+      if (!config) {
+        const parsedAddress = parseAddress(address);
+        if (parsedAddress) {
+          config = await PlcMonitorConfig.findOne({
+            where: {
+              station_id: station.id,
+              category_id: category.id,
+              db_number: parsedAddress.dbNumber,
+              offset_address: parsedAddress.offsetAddress
+            }
+          });
+        }
+      }
+      if (!config) {
+        const parsedAddress = parseAddress(address);
+        if (parsedAddress) {
+          config = await PlcMonitorConfig.findOne({
+            where: {
+              station_id: station.id,
+              db_number: parsedAddress.dbNumber,
+              offset_address: parsedAddress.offsetAddress
+            }
+          });
+          if (config && config.category_id && category.id !== config.category_id) {
+            const mappedCategory = await PlcCategory.findByPk(config.category_id);
+            if (mappedCategory) category = mappedCategory;
+          }
+        }
+      }
+      if (!config) {
+        previewRow.message = `监控点\"${configName}\"不存在或地址不匹配`;
+        parsedRows.push(previewRow);
+        continue;
+      }
+
+      const parsedTimestamp = parseExcelTimestamp(timestampRaw);
+      if (!parsedTimestamp) {
+        previewRow.message = '时间戳格式错误';
+        parsedRows.push(previewRow);
+        continue;
+      }
+
+      const normalizedTimestamp = new Date(parsedTimestamp);
+      normalizedTimestamp.setMilliseconds(0);
+      previewRow.timestamp = normalizedTimestamp.toISOString();
+
+      const numericValue = typeof valueRaw === 'number' ? valueRaw : parseFloat(String(valueRaw));
+      if (Number.isNaN(numericValue)) {
+        previewRow.message = '数值格式错误';
+        parsedRows.push(previewRow);
+        continue;
+      }
+
+      let qualityValue = 1;
+      if (qualityRaw !== null && qualityRaw !== undefined && qualityRaw !== '') {
+        const parsedQuality = typeof qualityRaw === 'number' ? qualityRaw : parseInt(String(qualityRaw), 10);
+        if (!Number.isNaN(parsedQuality)) qualityValue = parsedQuality;
+      }
+
+      previewRow.value = numericValue;
+      previewRow.quality = qualityValue;
+      previewRow.action = 'unknown';
+      previewRow.message = '';
+
+      parsedRows.push({
+        ...previewRow,
+        __key: `${config.id}_${normalizedTimestamp.getTime()}`,
+        __configId: config.id,
+        __timestamp: normalizedTimestamp
+      });
+    }
+
+    const summary = { total: parsedRows.length, create: 0, update: 0, skip: 0, error: 0 };
+
+    const seenKeys = new Set();
+    const uniquePairs = [];
+    const uniqueKeySet = new Set();
+
+    for (const row of parsedRows) {
+      if (!row.__key) continue;
+      if (seenKeys.has(row.__key)) continue;
+      seenKeys.add(row.__key);
+      if (!uniqueKeySet.has(row.__key)) {
+        uniqueKeySet.add(row.__key);
+        uniquePairs.push([row.__configId, row.__timestamp]);
+      }
+    }
+
+    let existingKeys = new Set();
+    if (uniquePairs.length > 0) {
+      const placeholders = uniquePairs.map(() => '(?, ?)').join(',');
+      const flatValues = uniquePairs.flatMap(item => item);
+      const existingRows = await sequelize.query(
+        `SELECT config_id, timestamp FROM plc_readings WHERE (config_id, timestamp) IN (${placeholders})`,
+        { replacements: flatValues, type: QueryTypes.SELECT }
+      );
+      existingKeys = new Set(
+        existingRows.map(r => `${r.config_id}_${new Date(r.timestamp).getTime()}`)
+      );
+    }
+
+    const processedRows = [];
+    const fileDupSeen = new Set();
+
+    for (const row of parsedRows) {
+      if (row.action === 'error') {
+        summary.error += 1;
+        processedRows.push(row);
+        continue;
+      }
+      if (!row.__key) {
+        row.action = 'error';
+        row.message = row.message || '解析失败';
+        summary.error += 1;
+        processedRows.push(row);
+        continue;
+      }
+
+      if (fileDupSeen.has(row.__key)) {
+        row.action = 'skip';
+        row.message = '重复行（文件内重复），跳过';
+        summary.skip += 1;
+        processedRows.push(row);
+        continue;
+      }
+      fileDupSeen.add(row.__key);
+
+      if (existingKeys.has(row.__key)) {
+        row.action = 'skip';
+        row.message = '重复记录（数据库已存在），跳过';
+        summary.skip += 1;
+        processedRows.push(row);
+        continue;
+      }
+
+      row.action = 'create';
+      row.message = '将新增';
+      summary.create += 1;
+      processedRows.push(row);
+    }
+
+    const trimmed = processedRows.map(({ __key, __configId, __timestamp, ...rest }) => rest);
+    const truncated = trimmed.length > MAX_PREVIEW_ROWS;
+
+    ctx.body = {
+      code: 200,
+      message: 'success',
+      data: {
+        summary,
+        rows: truncated ? trimmed.slice(0, MAX_PREVIEW_ROWS) : trimmed,
+        truncated,
+        maxRows: MAX_PREVIEW_ROWS
+      }
+    };
+  } catch (error) {
+    logger.error('previewImportHistoryData error:', error);
+    ctx.status = 500;
+    ctx.body = { code: 500, message: error.message };
+  }
+};
+
 /**
  * 计量型数据报表（用电量/用水量）
  */
@@ -1796,6 +2477,7 @@ export default {
   updateConfig,
   deleteConfig,
   importConfigs,
+  previewImportConfigs,
   getCategories,
   createCategory,
   updateCategory,
@@ -1809,6 +2491,7 @@ export default {
   checkPlcServiceStatus,
   downloadHistoryTemplate,
   importHistoryData,
+  previewImportHistoryData,
   getCumulativeReport,
   getFluctuatingReport
 };

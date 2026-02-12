@@ -3,6 +3,9 @@
     <div class="page-header">
       <h2>卫生工作安排</h2>
       <div class="header-actions" v-if="activeTab === 'areas'">
+        <el-button v-if="isSimpleMode" @click="simpleShowTable = !simpleShowTable">
+          {{ simpleShowTable ? '切换卡片' : '切换表格' }}
+        </el-button>
         <el-button type="info" @click="downloadTemplate">
           <el-icon><Download /></el-icon>下载模板
         </el-button>
@@ -18,14 +21,22 @@
         </el-button>
       </div>
       <div class="header-actions" v-else-if="activeTab === 'assignments'">
+        <el-button v-if="isSimpleMode" @click="simpleShowTable = !simpleShowTable">
+          {{ simpleShowTable ? '切换卡片' : '切换表格' }}
+        </el-button>
         <el-button type="primary" @click="handleAddAssignment">新增分配</el-button>
       </div>
     </div>
 
-    <el-tabs v-model="activeTab">
+    <el-tabs v-model="activeTab" type="card">
       <el-tab-pane label="卫生区域划分" name="areas">
         <el-card class="filter-card">
-          <FilterBar>
+          <SimpleFilterBar
+            :enabled="isSimpleMode"
+            v-model:expanded="simpleFilterExpanded"
+            :summary-text="areaFilterSummaryText"
+          >
+            <FilterBar>
             <div class="filter-item">
               <span class="filter-label">场站</span>
               <FilterSelect v-model="areaFilters.station" placeholder="全部" clearable style="width: 200px;" @change="handleAreaSearch" @clear="handleAreaSearch">
@@ -37,10 +48,18 @@
               <span class="filter-label">责任区</span>
               <el-input v-model="areaFilters.areaName" placeholder="全部" clearable style="width: 200px;" @input="handleAreaSearch" @clear="handleAreaSearch" />
             </div>
-          </FilterBar>
+            </FilterBar>
+          </SimpleFilterBar>
         </el-card>
         <div class="table-section">
-          <el-table ref="areaTableRef" :data="areaTableRows" :span-method="areaSpanMethod" border @selection-change="handleAreaSelectionChange">
+          <el-table
+            v-if="!isSimpleMode || simpleShowTable"
+            ref="areaTableRef"
+            :data="areaTableRows"
+            :span-method="areaSpanMethod"
+            border
+            @selection-change="handleAreaSelectionChange"
+          >
           <el-table-column type="selection" width="55" />
           <el-table-column prop="stationName" label="场站" />
           <el-table-column prop="areaName" label="责任区" />
@@ -54,6 +73,24 @@
             </template>
           </el-table-column>
           </el-table>
+          <div v-else class="simple-card-list">
+            <el-empty v-if="areaTableRows.length === 0" description="暂无数据" />
+            <div
+              v-for="row in areaTableRows"
+              :key="row.id || `${row.areaId}-${row.pointName}`"
+              class="simple-card-item"
+            >
+              <div class="card-title">{{ row.areaName || '-' }}</div>
+              <div class="card-meta">场站：{{ row.stationName || '-' }}</div>
+              <div class="card-meta">卫生点：{{ row.pointName || '-' }}</div>
+              <div class="card-meta">标准：{{ row.workRequirements || '-' }}</div>
+              <div class="card-meta">积分：{{ row.areaPoints ?? 0 }}</div>
+              <div class="card-actions">
+                <el-button link type="primary" @click="handleEditArea(row.area)">编辑</el-button>
+                <el-button link type="danger" @click="handleDeleteArea(row.area?.id ?? row.areaId)">删除</el-button>
+              </div>
+            </div>
+          </div>
         </div>
         <div class="pagination-wrapper">
           <el-pagination
@@ -70,7 +107,12 @@
 
       <el-tab-pane label="卫生任务分配" name="assignments">
         <el-card class="filter-card">
-          <FilterBar>
+          <SimpleFilterBar
+            :enabled="isSimpleMode"
+            v-model:expanded="simpleFilterExpanded"
+            :summary-text="assignmentFilterSummaryText"
+          >
+            <FilterBar>
             <div class="filter-item">
               <span class="filter-label">场站</span>
               <FilterSelect v-model="assignmentFilters.station" placeholder="全部" clearable style="width: 200px;" @change="loadAssignments" @clear="loadAssignments">
@@ -92,10 +134,11 @@
                 <el-option v-for="area in assignmentFilterAreas" :key="area.id" :label="area.areaName" :value="area.id" />
               </FilterSelect>
             </div>
-          </FilterBar>
+            </FilterBar>
+          </SimpleFilterBar>
         </el-card>
         <div class="table-section">
-          <el-table :data="assignmentTableRows" border>
+          <el-table v-if="!isSimpleMode || simpleShowTable" :data="assignmentTableRows" border>
           <el-table-column prop="stationName" label="场站" />
           <el-table-column prop="positionName" label="岗位" />
           <el-table-column prop="areaName" label="责任区" />
@@ -105,6 +148,17 @@
             </template>
           </el-table-column>
           </el-table>
+          <div v-else class="simple-card-list">
+            <el-empty v-if="assignmentTableRows.length === 0" description="暂无数据" />
+            <div v-for="row in assignmentTableRows" :key="row.id" class="simple-card-item">
+              <div class="card-title">{{ row.areaName || '-' }}</div>
+              <div class="card-meta">场站：{{ row.stationName || '-' }}</div>
+              <div class="card-meta">岗位：{{ row.positionName || '-' }}</div>
+              <div class="card-actions">
+                <el-button link type="danger" @click="handleDeleteAssignment(row.id)">删除</el-button>
+              </div>
+            </div>
+          </div>
         </div>
         <div class="pagination-wrapper">
           <el-pagination
@@ -252,6 +306,16 @@
     </FormDialog>
 
     <input ref="fileInput" type="file" accept=".xlsx,.xls" style="display: none;" @change="handleFileChange" />
+
+    <ImportPreviewDialog
+      v-model="importPreviewVisible"
+      title="卫生区域划分 - 导入预览"
+      :rows="importPreviewRows"
+      :summary="importPreviewSummary"
+      :confirm-loading="importSubmitting"
+      :columns="importPreviewColumns"
+      @confirm="confirmImport"
+    />
   </div>
 </template>
 
@@ -264,7 +328,10 @@ import { useRoute } from 'vue-router'
 import { addTemplateInstructionSheet, applyTemplateHeaderStyle } from '@/utils/excelTemplate'
 import { buildExportFileName } from '@/utils/tableExport'
 import FilterBar from '@/components/common/FilterBar.vue'
+import SimpleFilterBar from '@/components/common/SimpleFilterBar.vue'
 import FormDialog from '@/components/system/FormDialog.vue'
+import ImportPreviewDialog from '@/components/common/ImportPreviewDialog.vue'
+import { useSimpleMode } from '@/composables/useSimpleMode'
 import {
   getHygieneAreas,
   createHygieneArea,
@@ -283,6 +350,7 @@ import { getAllStations } from '@/api/station'
 
 const activeTab = ref('areas')
 const route = useRoute()
+const { isSimpleMode, simpleShowTable, simpleFilterExpanded } = useSimpleMode()
 const areas = ref([])
 const assignments = ref([])
 const stations = ref([])
@@ -291,6 +359,22 @@ const assignmentFormPositions = ref([])
 const assignmentFilterAreas = ref([])
 const assignmentFormAreas = ref([])
 const fileInput = ref(null)
+
+// ==================== 批量导入（预览 -> 确认导入） ====================
+const importPreviewVisible = ref(false)
+const importPreviewLoading = ref(false)
+const importSubmitting = ref(false)
+const importPreviewSummary = ref({})
+const importPreviewRows = ref([])
+const importPayloadGroups = ref([])
+
+const importPreviewColumns = computed(() => ([
+  { prop: 'stationName', label: '场站', width: 140 },
+  { prop: 'areaName', label: '责任区', minWidth: 160 },
+  { prop: 'areaPoints', label: '积分', width: 90, diffKey: 'areaPoints' },
+  { prop: 'pointName', label: '卫生点', minWidth: 160 },
+  { prop: 'workRequirements', label: '工作要求及标准', minWidth: 220, diffKey: 'workRequirements' }
+]))
 const areaTableRef = ref(null)
 const selectedAreaItems = ref([])
 const exportDialogVisible = ref(false)
@@ -316,6 +400,22 @@ const assignmentFilters = reactive({
   position: 'all',
   area: 'all'
 })
+const areaFilterSummaryText = computed(() => {
+  const station = stations.value.find(item => String(item.id) === String(areaFilters.station));
+  const parts = [];
+  if (areaFilters.station !== 'all') parts.push(`场站=${station?.name || areaFilters.station}`);
+  if (String(areaFilters.areaName || '').trim()) parts.push(`责任区=${String(areaFilters.areaName).trim()}`);
+  return parts.length ? `当前筛选：${parts.join('，')}` : '当前筛选：全部';
+});
+const assignmentFilterSummaryText = computed(() => {
+  const station = stations.value.find(item => String(item.id) === String(assignmentFilters.station));
+  const area = assignmentFilterAreas.value.find(item => String(item.id) === String(assignmentFilters.area));
+  const parts = [];
+  if (assignmentFilters.station !== 'all') parts.push(`场站=${station?.name || assignmentFilters.station}`);
+  if (assignmentFilters.position !== 'all') parts.push(`岗位=${assignmentFilters.position}`);
+  if (assignmentFilters.area !== 'all') parts.push(`责任区=${area?.areaName || assignmentFilters.area}`);
+  return parts.length ? `当前筛选：${parts.join('，')}` : '当前筛选：全部';
+});
 
 const areaDialogVisible = ref(false)
 const areaForm = reactive({
@@ -746,6 +846,7 @@ const downloadTemplate = () => {
 }
 
 const handleImport = () => {
+  if (importPreviewLoading.value) return
   fileInput.value.click()
 }
 
@@ -753,130 +854,284 @@ const handleFileChange = async (event) => {
   const file = event.target.files[0]
   if (!file) return
 
-  const reader = new FileReader()
-  reader.onload = async (e) => {
-    try {
-      const data = new Uint8Array(e.target.result)
-      const workbook = XLSX.read(data, { type: 'array' })
-      const worksheet = workbook.Sheets[workbook.SheetNames[0]]
-      const jsonData = XLSX.utils.sheet_to_json(worksheet)
+  importPreviewLoading.value = true
+  try {
+    const data = await file.arrayBuffer()
+    const workbook = XLSX.read(data, { type: 'array' })
+    const worksheet = workbook.Sheets[workbook.SheetNames[0]]
+    const aoa = XLSX.utils.sheet_to_json(worksheet, { header: 1 })
 
-      if (jsonData.length === 0) {
-        ElMessage.warning('Excel文件为空')
+    const headerRow = Array.isArray(aoa[0]) ? aoa[0] : []
+    const headerMap = new Map()
+    headerRow.forEach((value, idx) => {
+      const key = value !== undefined && value !== null ? String(value).trim() : ''
+      if (key) headerMap.set(key, idx)
+    })
+
+    const stationCol = headerMap.get(importHeaders.station) ?? 0
+    const areaCol = headerMap.get(importHeaders.area) ?? 1
+    const pointCol = headerMap.get(importHeaders.point) ?? 2
+    const requirementsCol = headerMap.get(importHeaders.requirements) ?? 3
+    const pointsCol = headerMap.get(importHeaders.points) ?? 4
+
+    const bodyRows = aoa.slice(1)
+    if (bodyRows.length === 0) {
+      ElMessage.warning('Excel文件为空')
+      return
+    }
+
+    const groupedData = {}
+    let lastStationName = ''
+    let lastAreaName = ''
+    let lastAreaPoints = null
+
+    bodyRows.forEach((row, idx) => {
+      const rowNum = idx + 2
+      const list = Array.isArray(row) ? row : []
+
+      const stationNameRaw = list[stationCol] !== undefined && list[stationCol] !== null ? String(list[stationCol]).trim() : ''
+      const areaNameRaw = list[areaCol] !== undefined && list[areaCol] !== null ? String(list[areaCol]).trim() : ''
+      const pointName = list[pointCol] !== undefined && list[pointCol] !== null ? String(list[pointCol]).trim() : ''
+      const workRequirementsRaw = list[requirementsCol] !== undefined && list[requirementsCol] !== null ? String(list[requirementsCol]).trim() : ''
+      const pointsValue = list[pointsCol]
+      const pointsText = pointsValue !== undefined && pointsValue !== null ? String(pointsValue).trim() : ''
+      const hasPointsValue = pointsText !== ''
+      const parsedPoints = hasPointsValue ? Number.parseFloat(pointsText) : null
+      const hasPoints = Number.isFinite(parsedPoints)
+
+      if (stationNameRaw) {
+        if (stationNameRaw !== lastStationName) {
+          lastAreaName = ''
+          lastAreaPoints = null
+        }
+        lastStationName = stationNameRaw
+      }
+
+      if (areaNameRaw) {
+        lastAreaName = areaNameRaw
+        lastAreaPoints = null
+      }
+
+      if (hasPoints) {
+        lastAreaPoints = parsedPoints
+      }
+
+      const stationName = stationNameRaw ? stationNameRaw : lastStationName
+      const areaName = areaNameRaw ? areaNameRaw : lastAreaName
+      const areaPoints = hasPoints ? parsedPoints : lastAreaPoints
+
+      if (!stationName || !areaName || !pointName) {
         return
       }
 
-      // 按场站和责任区分组
-      const groupedData = {}
-      // 处理合并单元格：继承上一行场站/责任区/积分
-      let lastStationName = ''
-      let lastAreaName = ''
-      let lastAreaPoints = null
-      for (const row of jsonData) {
-        const normalizedRow = {}
-        for (const [key, value] of Object.entries(row)) {
-          normalizedRow[String(key).trim()] = value
+      const key = `${stationName}__${areaName}`
+      if (!groupedData[key]) {
+        groupedData[key] = {
+          stationName,
+          areaName,
+          areaPoints,
+          hasAreaPoints: hasPoints,
+          points: []
         }
-
-        const stationNameRaw = normalizedRow[importHeaders.station]?.toString().trim()
-        const areaNameRaw = normalizedRow[importHeaders.area]?.toString().trim()
-        const pointName = normalizedRow[importHeaders.point]?.toString().trim()
-        const workRequirements = normalizedRow[importHeaders.requirements]?.toString().trim()
-        const pointsValue = normalizedRow[importHeaders.points]
-        const pointsText = pointsValue !== undefined && pointsValue !== null ? String(pointsValue).trim() : ''
-        const hasPointsValue = pointsText !== ''
-        const parsedPoints = hasPointsValue ? Number.parseFloat(pointsText) : null
-        const hasPoints = Number.isFinite(parsedPoints)
-
-        if (stationNameRaw) {
-          if (stationNameRaw !== lastStationName) {
-            lastAreaName = ''
-            lastAreaPoints = null
-          }
-          lastStationName = stationNameRaw
-        }
-
-        if (areaNameRaw) {
-          lastAreaName = areaNameRaw
-          lastAreaPoints = null
-        }
-
-        if (hasPoints) {
-          lastAreaPoints = parsedPoints
-        }
-
-        const stationName = stationNameRaw ? stationNameRaw : lastStationName
-        const areaName = areaNameRaw ? areaNameRaw : lastAreaName
-        const areaPoints = hasPoints ? parsedPoints : lastAreaPoints
-
-        if (!stationName || !areaName || !pointName) {
-          continue
-        }
-
-        const key = `${stationName}__${areaName}`
-        if (!groupedData[key]) {
-          groupedData[key] = {
-            stationName,
-            areaName,
-            areaPoints,
-            hasAreaPoints: hasPoints,
-            points: []
-          }
-        } else if (hasPoints) {
-          groupedData[key].areaPoints = parsedPoints
-          groupedData[key].hasAreaPoints = true
-        }
-
-        groupedData[key].points.push({
-          pointName,
-          workRequirements: workRequirements ?? ''
-        })
+      } else if (hasPoints) {
+        groupedData[key].areaPoints = parsedPoints
+        groupedData[key].hasAreaPoints = true
       }
 
-      // 查找场站ID并创建责任区
-      let successCount = 0
-      let failCount = 0
-      const errors = []
+      groupedData[key].points.push({
+        rowNum,
+        pointName,
+        workRequirements: workRequirementsRaw ?? ''
+      })
+    })
 
-      for (const key in groupedData) {
-        const group = groupedData[key]
-
-        // 查找场站ID
-        const station = stations.value.find((s) => s.name === group.stationName || s.station_name === group.stationName)
-        if (!station) {
-          errors.push(`场站"${group.stationName}"不存在`)
-          failCount++
-          continue
-        }
-
-        try {
-          await createHygieneArea({
-            stationId: station.id,
-            areaName: group.areaName,
-            areaPoints: group.hasAreaPoints ? group.areaPoints : null,
-            points: group.points,
-            mergeMode: 'merge'
-          })
-          successCount++
-        } catch (error) {
-          errors.push(`创建"${group.areaName}"失败: ${error.message}`)
-          failCount++
-        }
-      }
-
-      if (errors.length > 0) {
-        ElMessage.warning(`导入完成：成功 ${successCount} 个，失败 ${failCount} 个。${errors.slice(0, 3).join('；')}`)
-      } else {
-        ElMessage.success(`导入成功：共导入 ${successCount} 个责任区`)
-      }
-
-      loadAreas(true)
-    } catch (error) {
-      ElMessage.error(`导入失败: ${error.message}`)
+    const keys = Object.keys(groupedData)
+    if (keys.length === 0) {
+      ElMessage.warning('没有找到有效数据')
+      return
     }
+
+    // 预览需要拿到已存在的责任区/点位
+    const stationIdByName = new Map()
+    stations.value.forEach((s) => {
+      const name = s.name ?? s.station_name ?? ''
+      if (!name) return
+      stationIdByName.set(String(name).trim(), s.id)
+    })
+
+    const stationIdSet = new Set()
+    keys.forEach((k) => {
+      const group = groupedData[k]
+      const stationId = stationIdByName.get(group.stationName) ?? null
+      if (stationId) stationIdSet.add(stationId)
+    })
+
+    const existingAreaMap = new Map()
+    for (const stationId of stationIdSet) {
+      const res = await getHygieneAreas({ stationId })
+      const list = Array.isArray(res?.data) ? res.data : (Array.isArray(res) ? res : [])
+      list.forEach((area) => {
+        const key = `${stationId}__${String(area.areaName ?? '').trim()}`
+        existingAreaMap.set(key, area)
+      })
+    }
+
+    const previewRows = []
+    const payloadGroups = []
+
+    keys.forEach((k) => {
+      const group = groupedData[k]
+      const stationId = stationIdByName.get(group.stationName) ?? null
+      if (!stationId) {
+        group.points.forEach((p) => {
+          previewRows.push({
+            rowNum: p.rowNum,
+            action: 'error',
+            message: `场站"${group.stationName}"不存在`,
+            diff: {},
+            stationName: group.stationName,
+            areaName: group.areaName,
+            areaPoints: group.areaPoints ?? '',
+            pointName: p.pointName,
+            workRequirements: p.workRequirements ?? ''
+          })
+        })
+        return
+      }
+
+      const areaKey = `${stationId}__${String(group.areaName ?? '').trim()}`
+      const existingArea = existingAreaMap.get(areaKey) ?? null
+      const existingAreaPoints = existingArea ? (existingArea.areaPoints ?? existingArea.points ?? 0) : null
+      const hasAreaPoints = !!group.hasAreaPoints
+      const areaPointsDiff = existingArea && hasAreaPoints && Number.isFinite(group.areaPoints) && Number(group.areaPoints) !== Number(existingAreaPoints)
+
+      const existingPoints = Array.isArray(existingArea?.points) ? existingArea.points : []
+      const existingPointMap = new Map()
+      existingPoints.forEach((p) => {
+        const name = String(p.pointName ?? p.point_name ?? '').trim()
+        if (!name) return
+        existingPointMap.set(name, p)
+      })
+
+      const orderedPoints = Array.isArray(group.points) ? group.points : []
+      orderedPoints.forEach((p, index) => {
+        const isFirst = index === 0
+        const existingPoint = existingArea ? (existingPointMap.get(p.pointName) ?? null) : null
+        const existingRequirements = existingPoint ? String(existingPoint.workRequirements ?? existingPoint.work_requirements ?? '') : ''
+        const inputRequirements = p.workRequirements ? String(p.workRequirements).trim() : ''
+        const nextRequirements = inputRequirements ? inputRequirements : existingRequirements
+
+        const diff = {}
+        if (areaPointsDiff && isFirst) {
+          diff.areaPoints = { from: existingAreaPoints, to: group.areaPoints }
+        }
+        if (existingPoint && inputRequirements && inputRequirements !== existingRequirements) {
+          diff.workRequirements = { from: existingRequirements, to: inputRequirements }
+        }
+
+        const baseRow = {
+          rowNum: p.rowNum,
+          action: 'skip',
+          message: '无变更，跳过',
+          diff,
+          stationName: group.stationName,
+          areaName: group.areaName,
+          areaPoints: hasAreaPoints ? group.areaPoints : existingAreaPoints,
+          pointName: p.pointName,
+          workRequirements: nextRequirements
+        }
+
+        if (!existingArea) {
+          baseRow.action = 'create'
+          baseRow.message = '将新增（责任区/点位）'
+          baseRow.diff = {}
+          previewRows.push(baseRow)
+          return
+        }
+
+        if (!existingPoint) {
+          baseRow.action = 'create'
+          baseRow.message = areaPointsDiff && isFirst ? '将新增点位并更新积分' : '将新增点位'
+          baseRow.diff = areaPointsDiff && isFirst ? diff : {}
+          previewRows.push(baseRow)
+          return
+        }
+
+        if (Object.keys(diff).length > 0) {
+          baseRow.action = 'update'
+          baseRow.message = '将更新'
+        }
+
+        previewRows.push(baseRow)
+      })
+
+      payloadGroups.push({
+        stationId,
+        areaName: group.areaName,
+        areaPoints: hasAreaPoints ? group.areaPoints : null,
+        points: orderedPoints.map(p => ({
+          pointName: p.pointName,
+          workRequirements: p.workRequirements ?? ''
+        })),
+        mergeMode: 'merge'
+      })
+    })
+
+    previewRows.sort((a, b) => (a.rowNum ?? 0) - (b.rowNum ?? 0))
+
+    importPayloadGroups.value = payloadGroups
+    importPreviewRows.value = previewRows
+    importPreviewSummary.value = {
+      total: previewRows.length,
+      create: previewRows.filter(r => r.action === 'create').length,
+      update: previewRows.filter(r => r.action === 'update').length,
+      skip: previewRows.filter(r => r.action === 'skip').length,
+      error: previewRows.filter(r => r.action === 'error').length
+    }
+    importPreviewVisible.value = true
+  } catch (error) {
+    ElMessage.error(`导入失败: ${error.message}`)
+  } finally {
+    importPreviewLoading.value = false
+    event.target.value = ''
   }
-  reader.readAsArrayBuffer(file)
-  event.target.value = ''
+}
+
+const confirmImport = async () => {
+  const payloadGroups = Array.isArray(importPayloadGroups.value) ? importPayloadGroups.value : []
+  if (payloadGroups.length === 0) {
+    ElMessage.warning('没有可导入的数据')
+    return
+  }
+
+  importSubmitting.value = true
+  try {
+    let successCount = 0
+    let failCount = 0
+    const errors = []
+
+    for (const group of payloadGroups) {
+      try {
+        await createHygieneArea(group)
+        successCount += 1
+      } catch (e) {
+        failCount += 1
+        errors.push(`${group.areaName}: ${e.message}`)
+      }
+    }
+
+    if (errors.length > 0) {
+      ElMessage.warning(`导入完成：成功${successCount}个，失败${failCount}个（例如：${errors[0]}）`)
+    } else {
+      ElMessage.success(`导入完成：成功导入${successCount}个责任区`)
+    }
+
+    importPreviewVisible.value = false
+    importPayloadGroups.value = []
+    await loadAreas(true)
+  } finally {
+    importSubmitting.value = false
+  }
 }
 
 const handleAddArea = () => {
@@ -1141,6 +1396,14 @@ watch(
 )
 
 watch(
+  () => activeTab.value,
+  () => {
+    simpleShowTable.value = false
+    simpleFilterExpanded.value = false
+  }
+)
+
+watch(
   () => exportDialogVisible.value,
   (visible) => {
     if (!visible) {
@@ -1164,6 +1427,36 @@ watch(
 
   .table-section {
     margin-top: 16px;
+  }
+
+  .simple-card-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .simple-card-item {
+    border: 1px solid #ebeef5;
+    border-radius: 8px;
+    background: #fff;
+    padding: 12px;
+  }
+
+  .card-title {
+    font-weight: 600;
+    margin-bottom: 8px;
+  }
+
+  .card-meta {
+    font-size: 13px;
+    color: #606266;
+    margin-bottom: 4px;
+  }
+
+  .card-actions {
+    margin-top: 8px;
+    display: flex;
+    gap: 8px;
   }
 
   .export-dialog {

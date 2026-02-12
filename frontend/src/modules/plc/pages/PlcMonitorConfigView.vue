@@ -3,6 +3,9 @@
     <div class="page-header">
       <h2>监控点配置</h2>
       <div class="header-actions">
+        <el-button v-if="isSimpleMode" @click="simpleShowTable = !simpleShowTable">
+          {{ simpleShowTable ? '切换卡片' : '切换表格' }}
+        </el-button>
         <el-button type="primary" :loading="exporting" @click="handleExport">
           <el-icon><Upload /></el-icon>批量导出
         </el-button>
@@ -17,43 +20,49 @@
     </div>
 
     <el-card class="filter-card">
-      <FilterBar>
-      <div class="filter-item">
-        <span class="filter-label">场站</span>
-        <FilterSelect v-model="filterForm.stationId" placeholder="全部" filterable clearable style="width: 180px" @change="handleSearch" @clear="handleSearch">
-          <el-option label="全部" value="all" />
-          <el-option
-            v-for="station in stations"
-            :key="station.id"
-            :label="station.station_name"
-            :value="station.id"
-          />
-        </FilterSelect>
-      </div>
-      <div class="filter-item">
-        <span class="filter-label">分类</span>
-        <FilterSelect v-model="filterForm.categoryId" placeholder="全部" filterable clearable style="width: 180px" @change="handleSearch" @clear="handleSearch">
-          <el-option label="全部" value="all" />
-          <el-option
-            v-for="cat in categories"
-            :key="cat.id"
-            :label="cat.category_name"
-            :value="cat.id"
-          />
-        </FilterSelect>
-      </div>
-      <div class="filter-item">
-        <span class="filter-label">状态</span>
-        <FilterSelect v-model="filterForm.isActive" placeholder="全部" filterable clearable style="width: 180px" @change="handleSearch" @clear="handleSearch">
-          <el-option label="全部" value="all" />
-          <el-option label="启用" value="true" />
-          <el-option label="禁用" value="false" />
-        </FilterSelect>
-      </div>
-      </FilterBar>
+      <SimpleFilterBar
+        :enabled="isSimpleMode"
+        v-model:expanded="simpleFilterExpanded"
+        :summary-text="simpleFilterSummary"
+      >
+        <FilterBar>
+          <div class="filter-item">
+            <span class="filter-label">场站</span>
+            <FilterSelect v-model="filterForm.stationId" placeholder="全部" filterable clearable style="width: 180px" @change="handleSearch" @clear="handleSearch">
+              <el-option label="全部" value="all" />
+              <el-option
+                v-for="station in stations"
+                :key="station.id"
+                :label="station.station_name"
+                :value="station.id"
+              />
+            </FilterSelect>
+          </div>
+          <div class="filter-item">
+            <span class="filter-label">分类</span>
+            <FilterSelect v-model="filterForm.categoryId" placeholder="全部" filterable clearable style="width: 180px" @change="handleSearch" @clear="handleSearch">
+              <el-option label="全部" value="all" />
+              <el-option
+                v-for="cat in categories"
+                :key="cat.id"
+                :label="cat.category_name"
+                :value="cat.id"
+              />
+            </FilterSelect>
+          </div>
+          <div class="filter-item">
+            <span class="filter-label">状态</span>
+            <FilterSelect v-model="filterForm.isActive" placeholder="全部" filterable clearable style="width: 180px" @change="handleSearch" @clear="handleSearch">
+              <el-option label="全部" value="all" />
+              <el-option label="启用" value="true" />
+              <el-option label="禁用" value="false" />
+            </FilterSelect>
+          </div>
+        </FilterBar>
+      </SimpleFilterBar>
     </el-card>
 
-    <TableWrapper>
+    <TableWrapper v-if="!isSimpleMode || simpleShowTable">
       <el-table
         v-loading="loading"
         :data="tableData"
@@ -95,6 +104,23 @@
         </el-table-column>
       </el-table>
     </TableWrapper>
+    <div v-else class="simple-card-list" v-loading="loading">
+      <el-empty v-if="tableData.length === 0" description="暂无数据" />
+      <div v-for="row in tableData" :key="row.id" class="simple-card-item">
+        <div class="card-title">{{ row.name || '-' }}</div>
+        <div class="card-meta">场站：{{ row.station?.station_name || '-' }}</div>
+        <div class="card-meta">分类：{{ row.category?.category_name || '-' }}</div>
+        <div class="card-meta">PLC IP：{{ row.plc_ip || '-' }}</div>
+        <div class="card-meta">地址：DB{{ row.db_number }}.{{ row.offset_address }}</div>
+        <div class="card-meta">数据类型：{{ row.data_type || '-' }}</div>
+        <div class="card-meta">单位：{{ row.unit || '-' }}</div>
+        <div class="card-meta">状态：{{ row.is_active ? '启用' : '禁用' }}</div>
+        <div class="card-actions">
+          <el-button type="primary" link @click="handleEdit(row)">编辑</el-button>
+          <el-button type="danger" link @click="handleDelete(row)">删除</el-button>
+        </div>
+      </div>
+    </div>
 
     <div class="pagination-wrapper">
       <el-pagination
@@ -197,71 +223,103 @@
       </template>
     </el-dialog>
 
-    <!-- 导入对话框 -->
-    <el-dialog v-model="importDialogVisible" title="批量导入配置" width="600px">
-      <el-alert
-        title="导入说明"
-        type="info"
-        description="请按模板格式准备数据，使用Excel文件导入。"
-        show-icon
-        :closable="false"
-        style="margin-bottom: 16px;"
-      />
-      <BaseUpload
-        ref="uploadRef"
-        :auto-upload="false"
-        :limit="1"
-        :on-change="handleFileChange"
-        :on-exceed="handleExceed"
-        accept=".xlsx,.xls"
-        drag
-      >
-        <el-icon class="el-icon--upload"><upload-filled /></el-icon>
-        <div class="el-upload__text">拖拽文件到此处或<em>点击上传</em></div>
-        <template #tip>
-          <div class="el-upload__tip">仅支持 .xlsx 或 .xls 格式</div>
-        </template>
-      </BaseUpload>
-      <template #footer>
-        <el-button @click="importDialogVisible = false">取消</el-button>
-        <el-button type="primary" @click="handleImportSubmit" :loading="importing">导入</el-button>
-      </template>
-    </el-dialog>
+    <input
+      ref="importFileInputRef"
+      type="file"
+      accept=".xlsx,.xls"
+      style="display: none"
+      @change="handleImportFileSelected"
+    />
+
+    <ImportPreviewDialog
+      v-model="importPreviewVisible"
+      title="监控点配置 - 导入预览"
+      :rows="importPreviewRows"
+      :summary="importPreviewSummary"
+      :truncated="importPreviewTruncated"
+      :max-rows="importPreviewMaxRows"
+      :confirm-loading="importSubmitting"
+      :columns="importPreviewColumns"
+      @confirm="confirmImport"
+    />
   </div>
 </template>
 
 <script setup>
-import { ref, reactive, onMounted } from 'vue';
+import { ref, reactive, computed, onMounted } from 'vue';
 import { UploadFilled, Upload } from '@element-plus/icons-vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { useRoute } from 'vue-router';
+import SimpleFilterBar from '@/components/common/SimpleFilterBar.vue';
+import { useSimpleMode } from '@/composables/useSimpleMode';
 import {
   getConfigs, createConfig, updateConfig, deleteConfig,
-  importConfigFile, getCategories, downloadConfigTemplate
+  importConfigFile, previewImportConfigFile, getCategories, downloadConfigTemplate
 } from '@/api/plcMonitor';
 import TableWrapper from '@/components/common/TableWrapper.vue';
+import ImportPreviewDialog from '@/components/common/ImportPreviewDialog.vue';
 import request from '@/utils/request';
 import { buildExportFileName, exportRowsToXlsx, fetchAllPaged } from '@/utils/tableExport';
 
 const loading = ref(false);
 const exporting = ref(false);
 const submitting = ref(false);
-const importing = ref(false);
 const dialogVisible = ref(false);
-const importDialogVisible = ref(false);
 const isEdit = ref(false);
 const tableData = ref([]);
 const stations = ref([]);
 const categories = ref([]);
 const formRef = ref(null);
-const uploadRef = ref(null);
-const uploadFile = ref(null);
 const route = useRoute();
+const { isSimpleMode, simpleShowTable, simpleFilterExpanded } = useSimpleMode();
+
+// ==================== 批量导入（预览 -> 确认导入） ====================
+const importFileInputRef = ref(null);
+const importPreviewLoading = ref(false);
+const importSubmitting = ref(false);
+const importFile = ref(null);
+const importPreviewVisible = ref(false);
+const importPreviewSummary = ref({});
+const importPreviewRows = ref([]);
+const importPreviewTruncated = ref(false);
+const importPreviewMaxRows = ref(0);
+
+const importPreviewColumns = computed(() => ([
+  { prop: 'name', label: '监控点名称', minWidth: 160, diffKey: 'name' },
+  { prop: 'station', label: '场站', width: 140 },
+  { prop: 'plcIp', label: 'PLC IP', width: 130 },
+  { prop: 'dbNumber', label: 'DB', width: 90 },
+  { prop: 'offsetAddress', label: '偏移地址', width: 110 },
+  { prop: 'dataType', label: '数据类型', width: 100, diffKey: 'data_type' },
+  { prop: 'category', label: '分类', width: 120, diffKey: 'category_id' },
+  { prop: 'unit', label: '单位', width: 90, diffKey: 'unit' },
+  { prop: 'description', label: '描述', minWidth: 160, diffKey: 'description' },
+  { prop: 'isActive', label: '启用', width: 80, diffKey: 'is_active' },
+  { prop: 'sortOrder', label: '排序', width: 80, diffKey: 'sort_order' }
+]));
 
 const filterForm = reactive({
   stationId: 'all',
   categoryId: 'all',
   isActive: 'all'
+});
+const resolveStationLabel = (id) => {
+  if (id === 'all') return '全部';
+  const matched = stations.value.find(item => item.id === id);
+  return matched?.station_name || String(id);
+};
+const resolveCategoryLabel = (id) => {
+  if (id === 'all') return '全部';
+  const matched = categories.value.find(item => item.id === id);
+  return matched?.category_name || String(id);
+};
+const resolveStatusLabel = (value) => {
+  if (value === 'true') return '启用';
+  if (value === 'false') return '禁用';
+  return '全部';
+};
+const simpleFilterSummary = computed(() => {
+  return `当前筛选：场站=${resolveStationLabel(filterForm.stationId)} | 分类=${resolveCategoryLabel(filterForm.categoryId)} | 状态=${resolveStatusLabel(filterForm.isActive)}`;
 });
 
 const pagination = reactive({
@@ -500,9 +558,9 @@ const handleSubmit = async () => {
 };
 
 const handleImport = () => {
-  uploadFile.value = null;
-  uploadRef.value?.clearFiles();
-  importDialogVisible.value = true;
+  if (importPreviewLoading.value) return;
+  if (!importFileInputRef.value) return;
+  importFileInputRef.value.click();
 };
 
 const handleDownloadTemplate = async () => {
@@ -520,35 +578,70 @@ const handleDownloadTemplate = async () => {
   }
 };
 
-const handleImportSubmit = async () => {
-  try {
-    if (!uploadFile.value) {
-      ElMessage.error('请选择要上传的文件');
-      return;
-    }
+const isExcelFile = (file) => {
+  const mime = file?.type;
+  return mime === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' || mime === 'application/vnd.ms-excel';
+};
 
-    importing.value = true;
+const handleImportFileSelected = async (event) => {
+  const file = event?.target?.files?.[0];
+  if (event?.target) event.target.value = '';
+  if (!file) return;
+
+  if (!isExcelFile(file)) {
+    ElMessage.error('只能上传 Excel 文件');
+    return;
+  }
+  if (file.size / 1024 / 1024 >= 5) {
+    ElMessage.error('文件大小不能超过 5MB');
+    return;
+  }
+
+  importFile.value = file;
+  importPreviewLoading.value = true;
+  try {
     const formData = new FormData();
-    formData.append('file', uploadFile.value);
-    const res = await importConfigFile(formData);
-    ElMessage.success(res.message || '导入成功');
-    importDialogVisible.value = false;
-    uploadFile.value = null;
-    uploadRef.value?.clearFiles();
-    fetchData();
-  } catch (error) {
-    ElMessage.error(error.message || '导入失败');
+    formData.append('file', file);
+    const res = await previewImportConfigFile(formData);
+    importPreviewSummary.value = res?.summary ?? {};
+    importPreviewRows.value = Array.isArray(res?.rows) ? res.rows : [];
+    importPreviewTruncated.value = !!res?.truncated;
+    importPreviewMaxRows.value = typeof res?.maxRows === 'number' ? res.maxRows : 0;
+    importPreviewVisible.value = true;
   } finally {
-    importing.value = false;
+    importPreviewLoading.value = false;
   }
 };
 
-const handleFileChange = (file) => {
-  uploadFile.value = file.raw;
-};
+const confirmImport = async () => {
+  if (!importFile.value) {
+    ElMessage.warning('请选择文件');
+    return;
+  }
 
-const handleExceed = () => {
-  ElMessage.warning('只能上传一个文件');
+  importSubmitting.value = true;
+  try {
+    const formData = new FormData();
+    formData.append('file', importFile.value);
+    const res = await importConfigFile(formData);
+
+    const created = typeof res?.created === 'number' ? res.created : 0;
+    const updated = typeof res?.updated === 'number' ? res.updated : 0;
+    const skipped = typeof res?.skipped === 'number' ? res.skipped : 0;
+    const errors = Array.isArray(res?.errors) ? res.errors : [];
+
+    if (errors.length > 0) {
+      ElMessage.warning(`导入完成：新增${created}条，更新${updated}条，跳过${skipped}条（例如：${errors[0]}）`);
+    } else {
+      ElMessage.success(`导入完成：新增${created}条，更新${updated}条，跳过${skipped}条`);
+    }
+
+    importPreviewVisible.value = false;
+    importFile.value = null;
+    fetchData();
+  } finally {
+    importSubmitting.value = false;
+  }
 };
 
 onMounted(() => {
@@ -590,6 +683,35 @@ onMounted(() => {
   .el-table {
     border-radius: 8px;
     overflow: hidden;
+  }
+
+  .simple-card-list {
+    display: grid;
+    gap: 12px;
+  }
+
+  .simple-card-item {
+    background: #fff;
+    border: 1px solid #ebeef5;
+    border-radius: 8px;
+    padding: 12px;
+  }
+
+  .card-title {
+    font-weight: 600;
+    margin-bottom: 8px;
+  }
+
+  .card-meta {
+    color: #606266;
+    font-size: 14px;
+    margin-bottom: 6px;
+  }
+
+  .card-actions {
+    margin-top: 8px;
+    display: flex;
+    gap: 8px;
   }
 
   .pagination-wrapper {

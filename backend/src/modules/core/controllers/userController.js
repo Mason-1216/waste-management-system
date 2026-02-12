@@ -8,6 +8,7 @@ export const createUser = userService.createUser;
 export const updateUser = userService.updateUser;
 export const deleteUser = userService.deleteUser;
 export const batchImportUsers = userService.batchImportUsers;
+export const previewBatchImportUsers = userService.previewBatchImportUsers;
 export const resetPassword = userService.resetPassword;
 export const bindUserStations = userService.bindUserStations;
 
@@ -20,6 +21,7 @@ export default {
   updateUser,
   deleteUser,
   batchImportUsers,
+  previewBatchImportUsers,
   resetPassword,
   bindUserStations
 };

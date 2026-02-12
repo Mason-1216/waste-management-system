@@ -3,62 +3,71 @@
     <div class="page-header">
       <h2>PLC 数据报表</h2>
       <div class="header-actions">
+        <el-button v-if="isSimpleMode" @click="simpleShowTable = !simpleShowTable">
+          {{ simpleShowTable ? '切换卡片' : '切换表格' }}
+        </el-button>
         <el-button type="primary" :loading="exporting" @click="handleExport">
           <el-icon><Upload /></el-icon>批量导出
         </el-button>
       </div>
     </div>
     <el-card class="filter-card">
-      <FilterBar>
-        <div class="filter-item">
-          <span class="filter-label">开始日期</span>
-          <el-date-picker
-            v-model="startDate"
-            type="date"
-            placeholder="全部"
-            value-format="YYYY-MM-DD"
-            @change="handleQuery"
-          />
-        </div>
-        <div class="filter-item">
-          <span class="filter-label">结束日期</span>
-          <el-date-picker
-            v-model="endDate"
-            type="date"
-            placeholder="全部"
-            value-format="YYYY-MM-DD"
-            @change="handleQuery"
-          />
-        </div>
-        <div class="filter-item">
-          <span class="filter-label">场站</span>
-          <FilterSelect v-model="filters.stationId" placeholder="全部" filterable clearable @change="handleQuery" @clear="handleQuery">
-            <el-option label="全部" value="all" />
-            <el-option
-              v-for="station in stations"
-              :key="station.id"
-              :label="station.station_name"
-              :value="station.id"
+      <SimpleFilterBar
+        :enabled="isSimpleMode"
+        v-model:expanded="simpleFilterExpanded"
+        :summary-text="simpleFilterSummary"
+      >
+        <FilterBar>
+          <div class="filter-item">
+            <span class="filter-label">开始日期</span>
+            <el-date-picker
+              v-model="startDate"
+              type="date"
+              placeholder="全部"
+              value-format="YYYY-MM-DD"
+              @change="handleQuery"
             />
-          </FilterSelect>
-        </div>
-        <div class="filter-item">
-          <span class="filter-label">分类</span>
-          <FilterSelect v-model="filters.categoryId" placeholder="全部" filterable clearable @change="handleQuery" @clear="handleQuery">
-            <el-option label="全部" value="all" />
-            <el-option
-              v-for="category in categories"
-              :key="category.id"
-              :label="category.category_name"
-              :value="category.id"
+          </div>
+          <div class="filter-item">
+            <span class="filter-label">结束日期</span>
+            <el-date-picker
+              v-model="endDate"
+              type="date"
+              placeholder="全部"
+              value-format="YYYY-MM-DD"
+              @change="handleQuery"
             />
-          </FilterSelect>
-        </div>
-      </FilterBar>
+          </div>
+          <div class="filter-item">
+            <span class="filter-label">场站</span>
+            <FilterSelect v-model="filters.stationId" placeholder="全部" filterable clearable @change="handleQuery" @clear="handleQuery">
+              <el-option label="全部" value="all" />
+              <el-option
+                v-for="station in stations"
+                :key="station.id"
+                :label="station.station_name"
+                :value="station.id"
+              />
+            </FilterSelect>
+          </div>
+          <div class="filter-item">
+            <span class="filter-label">分类</span>
+            <FilterSelect v-model="filters.categoryId" placeholder="全部" filterable clearable @change="handleQuery" @clear="handleQuery">
+              <el-option label="全部" value="all" />
+              <el-option
+                v-for="category in categories"
+                :key="category.id"
+                :label="category.category_name"
+                :value="category.id"
+              />
+            </FilterSelect>
+          </div>
+        </FilterBar>
+      </SimpleFilterBar>
     </el-card>
 
     <div class="content-section">
-      <el-tabs v-model="activeTab" @tab-change="handleTabChange">
+      <el-tabs v-model="activeTab" type="card" @tab-change="handleTabChange">
         <el-tab-pane label="计量型报表" name="cumulative">
           <div class="table-header">
             <div class="title-row">
@@ -88,7 +97,7 @@
             </el-row>
           </div>
 
-          <TableWrapper>
+          <TableWrapper v-if="!isSimpleMode || simpleShowTable">
             <el-table :data="cumulativeData.data" border stripe>
               <el-table-column prop="date" label="日期" width="120" />
               <el-table-column prop="station_name" label="场站" width="150" />
@@ -112,6 +121,18 @@
               <el-table-column prop="unit" label="单位" width="80" />
             </el-table>
           </TableWrapper>
+          <div v-else class="simple-card-list">
+            <el-empty v-if="cumulativeData.data.length === 0" description="暂无数据" />
+            <div v-for="row in cumulativeData.data" :key="`${row.date}-${row.config_name}-${row.address}`" class="simple-card-item">
+              <div class="card-title">{{ row.config_name || '-' }}</div>
+              <div class="card-meta">日期：{{ row.date || '-' }}</div>
+              <div class="card-meta">场站：{{ row.station_name || '-' }}</div>
+              <div class="card-meta">地址：{{ row.address || '-' }}</div>
+              <div class="card-meta">起始值：{{ formatNumber(row.start_value) }}</div>
+              <div class="card-meta">结束值：{{ formatNumber(row.end_value) }}</div>
+              <div class="card-meta emphasis">用量：{{ formatNumber(row.usage) }} {{ row.unit || '' }}</div>
+            </div>
+          </div>
 
           <div class="pagination-wrapper">
             <el-pagination
@@ -127,7 +148,7 @@
 
           <div v-if="cumulativeData.topRankings?.list?.length" class="ranking-section">
             <h3>用量排名 Top 10</h3>
-            <TableWrapper>
+            <TableWrapper v-if="!isSimpleMode || simpleShowTable">
               <el-table :data="cumulativeData.topRankings.list" border>
                 <el-table-column type="index" label="排名" width="80" />
                 <el-table-column prop="date" label="日期" width="120" />
@@ -140,6 +161,17 @@
                 <el-table-column prop="unit" label="单位" width="80" />
               </el-table>
             </TableWrapper>
+            <div v-else class="simple-card-list">
+              <div
+                v-for="(row, index) in cumulativeData.topRankings.list"
+                :key="`${row.date}-${row.config_name}-${index}`"
+                class="simple-card-item"
+              >
+                <div class="card-title">第{{ index + 1 }}名 - {{ row.config_name || '-' }}</div>
+                <div class="card-meta">日期：{{ row.date || '-' }}</div>
+                <div class="card-meta emphasis">用量：{{ formatNumber(row.usage) }} {{ row.unit || '' }}</div>
+              </div>
+            </div>
           </div>
         </el-tab-pane>
 
@@ -158,7 +190,7 @@
             </div>
           </div>
 
-          <TableWrapper>
+          <TableWrapper v-if="!isSimpleMode || simpleShowTable">
             <el-table :data="fluctuatingData.data" border stripe>
               <el-table-column prop="date" label="日期" width="120" />
               <el-table-column prop="station_name" label="场站" width="150" />
@@ -183,6 +215,20 @@
               <el-table-column prop="unit" label="单位" width="80" />
             </el-table>
           </TableWrapper>
+          <div v-else class="simple-card-list">
+            <el-empty v-if="fluctuatingData.data.length === 0" description="暂无数据" />
+            <div v-for="row in fluctuatingData.data" :key="`${row.date}-${row.config_name}-${row.address}`" class="simple-card-item">
+              <div class="card-title">{{ row.config_name || '-' }}</div>
+              <div class="card-meta">日期：{{ row.date || '-' }}</div>
+              <div class="card-meta">场站：{{ row.station_name || '-' }}</div>
+              <div class="card-meta">地址：{{ row.address || '-' }}</div>
+              <div class="card-meta">最小值：{{ formatNumber(row.min_value) }}</div>
+              <div class="card-meta emphasis">平均值：{{ formatNumber(row.avg_value) }}</div>
+              <div class="card-meta">最大值：{{ formatNumber(row.max_value) }}</div>
+              <div class="card-meta">样本数：{{ row.sample_count ?? '-' }}</div>
+              <div class="card-meta">单位：{{ row.unit || '-' }}</div>
+            </div>
+          </div>
 
           <div class="pagination-wrapper">
             <el-pagination
@@ -202,10 +248,12 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted } from 'vue'
+import { computed, ref, reactive, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import dayjs from 'dayjs'
 import { useRoute } from 'vue-router'
+import SimpleFilterBar from '@/components/common/SimpleFilterBar.vue'
+import { useSimpleMode } from '@/composables/useSimpleMode'
 import { getCumulativeReport, getFluctuatingReport, getCategories } from '@/api/plcMonitor'
 import { getAllStations } from '@/api/station'
 import { buildExportFileName, exportSheetsToXlsx, fetchAllPaged } from '@/utils/tableExport'
@@ -217,10 +265,26 @@ const stations = ref([])
 const categories = ref([])
 const exporting = ref(false)
 const route = useRoute()
+const { isSimpleMode, simpleShowTable, simpleFilterExpanded } = useSimpleMode()
 
 const filters = reactive({
   stationId: 'all',
   categoryId: 'all'
+})
+const resolveStationLabel = (id) => {
+  if (id === 'all') return '全部'
+  const matched = stations.value.find(item => item.id === id)
+  return matched?.station_name || String(id)
+}
+const resolveCategoryLabel = (id) => {
+  if (id === 'all') return '全部'
+  const matched = categories.value.find(item => item.id === id)
+  return matched?.category_name || String(id)
+}
+const simpleFilterSummary = computed(() => {
+  const station = resolveStationLabel(filters.stationId)
+  const category = resolveCategoryLabel(filters.categoryId)
+  return `当前筛选：开始=${startDate.value} | 结束=${endDate.value} | 场站=${station} | 分类=${category}`
 })
 
 const cumulativeData = reactive({
@@ -542,6 +606,35 @@ const handleExport = async () => {
   }
 
   .content-section {
+    .simple-card-list {
+      display: grid;
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+
+    .simple-card-item {
+      background: #fff;
+      border: 1px solid #ebeef5;
+      border-radius: 8px;
+      padding: 12px;
+    }
+
+    .card-title {
+      font-weight: 600;
+      margin-bottom: 8px;
+    }
+
+    .card-meta {
+      font-size: 14px;
+      color: #606266;
+      margin-bottom: 6px;
+    }
+
+    .card-meta.emphasis {
+      color: #303133;
+      font-weight: 600;
+    }
+
     .summary-cards {
       margin-bottom: 20px;
       padding: 20px;

@@ -12,6 +12,7 @@ export const deleteCheckItem = safetyCheckService.deleteCheckItem;
 export const getCheckItemsByWorkTypes = safetyCheckService.getCheckItemsByWorkTypes;
 export const getCheckItemsTemplate = safetyCheckService.getCheckItemsTemplate;
 export const importCheckItems = safetyCheckService.importCheckItems;
+export const previewImportCheckItems = safetyCheckService.previewImportCheckItems;
 
 export default {
   getWorkTypes,
@@ -25,5 +26,6 @@ export default {
   deleteCheckItem,
   getCheckItemsByWorkTypes,
   getCheckItemsTemplate,
-  importCheckItems
+  importCheckItems,
+  previewImportCheckItems
 };

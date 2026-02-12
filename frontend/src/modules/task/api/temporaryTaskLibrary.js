@@ -16,9 +16,19 @@ export const deleteTemporaryTaskLibrary = (id) => {
   return request.delete(`/temporary-task-library/${id}`);
 };
 
+export const batchImportTemporaryTaskLibrary = (tasks) => {
+  return request.post('/temporary-task-library/batch-import', { tasks });
+};
+
+export const previewBatchImportTemporaryTaskLibrary = (tasks) => {
+  return request.post('/temporary-task-library/batch-import-preview', { tasks });
+};
+
 export default {
   getTemporaryTaskLibrary,
   createTemporaryTaskLibrary,
   updateTemporaryTaskLibrary,
-  deleteTemporaryTaskLibrary
+  deleteTemporaryTaskLibrary,
+  batchImportTemporaryTaskLibrary,
+  previewBatchImportTemporaryTaskLibrary
 };

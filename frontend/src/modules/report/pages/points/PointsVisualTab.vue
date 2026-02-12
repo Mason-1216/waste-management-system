@@ -1,60 +1,55 @@
 <template>
   <div class="points-visual-tab">
     <el-card class="filter-card">
-      <FilterBar>
-        <div class="filter-item">
-          <span class="filter-label">可视化维度</span>
-          <el-select v-model="filters.viewMode" style="width: 140px" @change="handleViewModeChange">
-            <el-option label="得分大类" value="score" />
-            <el-option label="任务类别" value="taskCategory" />
-          </el-select>
-        </div>
+      <SimpleFilterBar
+        :enabled="isSimpleMode"
+        v-model:expanded="simpleFilterExpanded"
+        :summary-text="simpleFilterSummary"
+      >
+        <FilterBar>
+          <div class="filter-item">
+            <span class="filter-label">可视化维度</span>
+            <FilterSelect v-model="filters.viewMode" style="width: 140px" @change="handleViewModeChange">
+              <el-option label="得分大类" value="score" />
+              <el-option label="任务类别" value="taskCategory" />
+            </FilterSelect>
+          </div>
 
-        <div class="filter-item">
-          <span class="filter-label">统计维度</span>
-          <el-select v-model="filters.cycle" style="width: 140px" @change="handleCycleChange">
-            <el-option label="日" value="day" />
-            <el-option label="周" value="week" />
-            <el-option label="月" value="month" />
-            <el-option label="年" value="year" />
-          </el-select>
-        </div>
+          <div class="filter-item">
+            <span class="filter-label">统计维度</span>
+            <FilterSelect v-model="filters.cycle" style="width: 140px" @change="handleCycleChange">
+              <el-option label="日" value="day" />
+              <el-option label="周" value="week" />
+              <el-option label="月" value="month" />
+              <el-option label="年" value="year" />
+            </FilterSelect>
+          </div>
 
-        <div class="filter-item">
-          <span class="filter-label">开始日期</span>
-          <el-date-picker
-            v-model="filters.startDate"
-            type="date"
-            placeholder="全部"
-            value-format="YYYY-MM-DD"
-            style="width: 160px"
-            @change="handleRangeChange"
-          />
-        </div>
+          <div class="filter-item">
+            <span class="filter-label">开始日期</span>
+            <el-date-picker
+              v-model="filters.startDate"
+              type="date"
+              placeholder="全部"
+              value-format="YYYY-MM-DD"
+              style="width: 160px"
+              @change="handleRangeChange"
+            />
+          </div>
 
-        <div class="filter-item">
-          <span class="filter-label">结束日期</span>
-          <el-date-picker
-            v-model="filters.endDate"
-            type="date"
-            placeholder="全部"
-            value-format="YYYY-MM-DD"
-            style="width: 160px"
-            @change="handleRangeChange"
-          />
-        </div>
-
-        <div class="filter-item">
-          <span class="filter-label">搜索人名</span>
-          <el-input
-            v-model="searchName"
-            placeholder="输入姓名筛选"
-            clearable
-            style="width: 180px"
-            @input="handleSearchName"
-          />
-        </div>
-      </FilterBar>
+          <div class="filter-item">
+            <span class="filter-label">结束日期</span>
+            <el-date-picker
+              v-model="filters.endDate"
+              type="date"
+              placeholder="全部"
+              value-format="YYYY-MM-DD"
+              style="width: 160px"
+              @change="handleRangeChange"
+            />
+          </div>
+        </FilterBar>
+      </SimpleFilterBar>
     </el-card>
 
     <el-card class="user-select-card">
@@ -62,6 +57,17 @@
         <div class="user-select-header">
           <span class="title">选择人员</span>
           <div class="actions">
+            <FilterAutocomplete
+              v-model="searchName"
+              :fetch-suggestions="fetchUserNameSuggestions"
+              trigger-on-focus
+              clearable
+              placeholder="输入姓名筛选"
+              style="width: 180px"
+              @select="handleSearchName"
+              @input="handleSearchName"
+              @clear="handleSearchName"
+            />
             <el-button type="primary" size="small" @click="selectAll">全选</el-button>
             <el-button size="small" @click="clearAll">清除</el-button>
             <span class="selected-count">已选 {{ selectedUserKeys.size }} 人</span>
@@ -82,7 +88,7 @@
         </el-button>
       </div>
 
-      <div class="user-pagination">
+      <div class="pagination-wrapper">
         <el-pagination
           v-model:current-page="userPage"
           v-model:page-size="userPageSize"
@@ -193,10 +199,15 @@ import dayjs from 'dayjs';
 import * as echarts from 'echarts';
 
 import FilterBar from '@/components/common/FilterBar.vue';
+import FilterAutocomplete from '@/components/common/FilterAutocomplete.vue';
+import FilterSelect from '@/components/common/FilterSelect.vue';
+import SimpleFilterBar from '@/components/common/SimpleFilterBar.vue';
+import { useSimpleMode } from '@/composables/useSimpleMode';
 import request from '@/api/request';
 
 const VIEW_MODE_SCORE = 'score';
 const VIEW_MODE_TASK_CATEGORY = 'taskCategory';
+const { isSimpleMode, simpleFilterExpanded } = useSimpleMode();
 
 // 任务类别固定为 Ⅰ/Ⅱ/Ⅲ/Ⅳ 类
 const TASK_CATEGORY_DEFAULT_ORDER = ['Ⅰ类', 'Ⅱ类', 'Ⅲ类', 'Ⅳ类'];
@@ -330,6 +341,11 @@ const filters = reactive({
   startDate: '',
   endDate: ''
 });
+const simpleFilterSummary = computed(() => {
+  const viewModeText = filters.viewMode === VIEW_MODE_TASK_CATEGORY ? '任务类别' : '得分大类';
+  const cycleMap = { day: '日', week: '周', month: '月', year: '年' };
+  return `当前筛选：可视化维度=${viewModeText} | 统计维度=${cycleMap[filters.cycle] || filters.cycle} | 日期=${filters.startDate}~${filters.endDate}`;
+});
 
 const initDateRange = () => {
   const range = buildDefaultRange(filters.cycle);
@@ -380,6 +396,15 @@ const userOptions = computed(() => {
   rows.sort((a, b) => (a.userName ?? '').localeCompare(b.userName ?? ''));
   return rows.map(row => ({ key: normalizeUserKey(row), userName: row.userName, userId: row.userId }));
 });
+
+const fetchUserNameSuggestions = (queryString, callback) => {
+  const query = typeof queryString === 'string' ? queryString.trim().toLowerCase() : '';
+  const list = Array.isArray(userOptions.value) ? userOptions.value : [];
+  const matched = query
+    ? list.filter(item => (item.userName ?? '').toLowerCase().includes(query))
+    : list;
+  callback(matched.slice(0, 50).map(item => ({ value: item.userName })));
+};
 
 const filteredUsers = computed(() => {
   const keyword = (searchName.value ?? '').trim().toLowerCase();
@@ -904,6 +929,7 @@ onBeforeUnmount(() => {
         display: flex;
         align-items: center;
         gap: 10px;
+        flex-wrap: wrap;
 
         .selected-count {
           color: #909399;
@@ -919,10 +945,8 @@ onBeforeUnmount(() => {
       min-height: 40px;
     }
 
-    .user-pagination {
+    .pagination-wrapper {
       margin-top: 16px;
-      display: flex;
-      justify-content: flex-end;
     }
   }
 

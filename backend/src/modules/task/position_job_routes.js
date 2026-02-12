@@ -32,4 +32,10 @@ export const registerPositionJobRoutes = (router) => {
     upload.single('file'),
     positionJobController.importPositionJobs
   );
+  router.post(
+    '/position-jobs/import-preview',
+    checkRole(['admin', 'station_manager', 'department_manager', 'deputy_manager']),
+    upload.single('file'),
+    positionJobController.previewImportPositionJobs
+  );
 };

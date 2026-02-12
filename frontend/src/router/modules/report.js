@@ -81,8 +81,29 @@ export const reportRoutes = [
       {
         path: 'quarterly-award',
         name: 'PointsSummaryQuarterlyAward',
-        component: () => import('@/modules/report/pages/points/QuarterlyPointsAwardTab.vue'),
-        meta: { title: '季度积分奖', roles: ['dev_test', 'operator', 'maintenance', 'station_manager', 'deputy_manager', 'department_manager', 'senior_management', 'client'] }
+        component: () => import('@/modules/report/pages/points/QuarterlyAwardContainer.vue'),
+        redirect: '/points-summary/quarterly-award/calc',
+        meta: { title: '季度积分奖', roles: ['dev_test', 'operator', 'maintenance', 'station_manager', 'deputy_manager', 'department_manager', 'senior_management', 'client'] },
+        children: [
+          {
+            path: 'calc',
+            name: 'QuarterlyAwardCalc',
+            component: () => import('@/modules/report/pages/points/QuarterlyAwardCalcTab.vue'),
+            meta: { title: '季度积分奖计算', roles: ['dev_test', 'operator', 'maintenance', 'station_manager', 'deputy_manager', 'department_manager', 'senior_management', 'client'] }
+          },
+          {
+            path: 'history',
+            name: 'QuarterlyAwardHistory',
+            component: () => import('@/modules/report/pages/points/QuarterlyAwardHistoryTab.vue'),
+            meta: { title: '季度积分奖历史数据', roles: ['dev_test', 'operator', 'maintenance', 'station_manager', 'deputy_manager', 'department_manager', 'senior_management', 'client'] }
+          },
+          {
+            path: 'visual',
+            name: 'QuarterlyAwardVisual',
+            component: () => import('@/modules/report/pages/points/QuarterlyAwardVisualTab.vue'),
+            meta: { title: '季度积分奖可视化分析', roles: ['dev_test', 'operator', 'maintenance', 'station_manager', 'deputy_manager', 'department_manager', 'senior_management', 'client'] }
+          }
+        ]
       }
     ]
   },

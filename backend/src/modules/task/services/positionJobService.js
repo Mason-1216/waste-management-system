@@ -928,6 +928,264 @@ export const importPositionJobs = async (ctx) => {
   }
 };
 
+export const previewImportPositionJobs = async (ctx) => {
+  const { file } = ctx.request;
+
+  if (!file) {
+    throw createError(400, '请上传Excel文件');
+  }
+
+  const workbook = new ExcelJS.Workbook();
+  await workbook.xlsx.load(file.buffer);
+
+  const worksheet = workbook.getWorksheet(1);
+  if (!worksheet) {
+    throw createError(400, 'Excel内容为空');
+  }
+
+  const normalizeCellValue = (value) => {
+    if (value && typeof value === 'object') {
+      if (value.text !== undefined) return value.text;
+      if (value.result !== undefined) return value.result;
+      if (Array.isArray(value.richText)) {
+        return value.richText.map(item => item.text ?? '').join('');
+      }
+    }
+    return value;
+  };
+  const parseNumber = (value, parser) => {
+    const normalized = normalizeCellValue(value);
+    if (normalized === undefined || normalized === null || normalized === '') return null;
+    const parsed = parser(normalized);
+    return Number.isNaN(parsed) ? null : parsed;
+  };
+  const parseBoolean = (value) => {
+    const normalized = normalizeCellValue(value);
+    if (normalized === undefined || normalized === null || normalized === '') return null;
+    const text = String(normalized).trim();
+    if (text === '是') return 1;
+    if (text === '否') return 0;
+    return null;
+  };
+  const parseText = (value) => {
+    const normalized = normalizeCellValue(value);
+    if (normalized === undefined || normalized === null) return '';
+    return String(normalized).trim();
+  };
+  const parseOptionalText = (value) => {
+    const text = parseText(value);
+    return text ? text : undefined;
+  };
+
+  const headerMap = new Map();
+  const headerRow = worksheet.getRow(1);
+  if (headerRow?.hasValues) {
+    headerRow.eachCell((cell, colNumber) => {
+      const headerText = parseText(cell.value);
+      if (headerText) {
+        headerMap.set(headerText, colNumber);
+      }
+    });
+  }
+
+  const usesNewOrder = headerMap.has('结果定义');
+  const colIndex = {
+    stationName: headerMap.get('场站') ?? 1,
+    positionName: headerMap.get('岗位') ?? 2,
+    sortOrder: headerMap.get('排序') ?? 3,
+    jobName: headerMap.get('任务名称') ?? 4,
+    resultDefinition: headerMap.get('结果定义') ?? (usesNewOrder ? 5 : null),
+    taskCategory: headerMap.get('任务类别') ?? (usesNewOrder ? 6 : 5),
+    scoreMethod: headerMap.get('给分方式') ?? (usesNewOrder ? 7 : 6),
+    standardHours: headerMap.get('标准工时(h/d)') ?? (usesNewOrder ? 8 : 7),
+    points: headerMap.get('单位积分') ?? (usesNewOrder ? 9 : 8),
+    quantity: headerMap.get('数量') ?? (usesNewOrder ? 10 : 9),
+    pointsRule: headerMap.get('积分规则') ?? (usesNewOrder ? 11 : 10),
+    quantityEditable: headerMap.get('填报时数量是否可修改')
+      ?? headerMap.get('数量是否可修改')
+      ?? (usesNewOrder ? 12 : 11),
+    pointsEditable: headerMap.get('填报时积分是否可修改')
+      ?? headerMap.get('积分是否可修改')
+      ?? (usesNewOrder ? 13 : 12),
+    dispatchReviewRequired: headerMap.get('派发任务是否强制审核') ?? (usesNewOrder ? 14 : 13)
+  };
+
+  const stations = await Station.findAll({
+    attributes: ['id', 'station_name']
+  });
+
+  const summary = { total: 0, create: 0, update: 0, skip: 0, error: 0 };
+  const rows = [];
+
+  for (let i = 2; i <= worksheet.rowCount; i += 1) {
+    const row = worksheet.getRow(i);
+    if (!row.hasValues) continue;
+
+    summary.total += 1;
+
+    const stationName = parseText(row.getCell(colIndex.stationName).value);
+    const positionName = parseText(row.getCell(colIndex.positionName).value);
+    const sortOrder = parseNumber(row.getCell(colIndex.sortOrder).value, Number.parseInt);
+    const jobName = parseText(row.getCell(colIndex.jobName).value);
+    const resultDefinition = colIndex.resultDefinition
+      ? parseOptionalText(row.getCell(colIndex.resultDefinition).value)
+      : undefined;
+    const rawTaskCategory = parseOptionalText(row.getCell(colIndex.taskCategory).value);
+    const taskCategory = normalizeTaskCategory(rawTaskCategory);
+    const scoreMethod = parseOptionalText(row.getCell(colIndex.scoreMethod).value);
+    const standardHours = parseNumber(row.getCell(colIndex.standardHours).value, Number.parseFloat);
+    const points = parseNumber(row.getCell(colIndex.points).value, Number.parseFloat);
+    const quantity = parseNumber(row.getCell(colIndex.quantity).value, Number.parseInt);
+    const pointsRule = parseOptionalText(row.getCell(colIndex.pointsRule).value);
+    const quantityEditable = parseBoolean(row.getCell(colIndex.quantityEditable).value);
+    const pointsEditable = parseBoolean(row.getCell(colIndex.pointsEditable).value);
+    const dispatchReviewRequired = parseBoolean(row.getCell(colIndex.dispatchReviewRequired).value);
+
+    const previewRow = {
+      rowNum: i,
+      action: 'error',
+      message: '',
+      diff: {},
+      stationName,
+      positionName,
+      jobName,
+      resultDefinition: resultDefinition ?? '',
+      taskCategory: taskCategory ?? '',
+      scoreMethod: scoreMethod ?? '',
+      standardHours,
+      points,
+      quantity,
+      pointsRule: pointsRule ?? '',
+      quantityEditable,
+      pointsEditable,
+      dispatchReviewRequired,
+      sortOrder: sortOrder ?? null
+    };
+
+    if (!positionName || !jobName) {
+      previewRow.message = '岗位和任务名称不能为空';
+      summary.error += 1;
+      rows.push(previewRow);
+      continue;
+    }
+
+    if (!Number.isInteger(quantity) || quantity < 1 || quantity > 1000) {
+      previewRow.message = '数量必须是 1-1000 的整数';
+      summary.error += 1;
+      rows.push(previewRow);
+      continue;
+    }
+
+    const normalizedSortOrder = sortOrder ?? 1;
+    if (!Number.isInteger(normalizedSortOrder) || normalizedSortOrder < 1 || normalizedSortOrder > 9999) {
+      previewRow.message = '排序必须是 1-9999 的整数';
+      summary.error += 1;
+      rows.push(previewRow);
+      continue;
+    }
+
+    let stationId = null;
+    if (stationName) {
+      const station = stations.find(s => s.station_name === stationName);
+      if (!station) {
+        previewRow.message = `找不到场站 "${stationName}"`;
+        summary.error += 1;
+        rows.push(previewRow);
+        continue;
+      }
+      stationId = station.id;
+    }
+
+    const existing = await PositionJob.findOne({
+      where: {
+        position_name: positionName,
+        job_name: jobName,
+        station_id: stationId
+      }
+    });
+
+    if (!existing) {
+      previewRow.action = 'create';
+      previewRow.message = '将新增';
+      summary.create += 1;
+      rows.push(previewRow);
+      continue;
+    }
+
+    const { patch, diff } = buildPositionJobUpdatePatchWithDiff({
+      existing,
+      payload: {
+        result_definition: resultDefinition ?? null,
+        task_category: taskCategory ?? null,
+        score_method: scoreMethod ?? null,
+        standard_hours: standardHours ?? null,
+        points,
+        quantity,
+        points_rule: pointsRule ?? null,
+        quantity_editable: quantityEditable,
+        points_editable: pointsEditable,
+        dispatch_review_required: dispatchReviewRequired,
+        sort_order: normalizedSortOrder
+      }
+    });
+
+    previewRow.diff = diff;
+    if (Object.keys(patch).length === 0) {
+      previewRow.action = 'skip';
+      previewRow.message = '无变更，跳过';
+      summary.skip += 1;
+      rows.push(previewRow);
+      continue;
+    }
+
+    previewRow.action = 'update';
+    previewRow.message = '将更新';
+    summary.update += 1;
+    rows.push(previewRow);
+  }
+
+  ctx.body = {
+    code: 200,
+    message: 'success',
+    data: {
+      summary,
+      rows
+    }
+  };
+};
+
+const buildPositionJobUpdatePatchWithDiff = ({ existing, payload }) => {
+  const patch = {};
+  const diff = {};
+
+  const setIfChanged = (key, nextValue) => {
+    if (nextValue === undefined || nextValue === null) return;
+    if (existing[key] === nextValue) return;
+    patch[key] = nextValue;
+    diff[key] = { from: existing[key], to: nextValue };
+  };
+
+  setIfChanged('result_definition', payload.result_definition);
+  setIfChanged('task_category', payload.task_category);
+  setIfChanged('score_method', payload.score_method);
+  setIfChanged('standard_hours', payload.standard_hours);
+  setIfChanged('points', payload.points);
+  setIfChanged('quantity', payload.quantity);
+  setIfChanged('points_rule', payload.points_rule);
+  if (payload.quantity_editable !== null && payload.quantity_editable !== undefined) {
+    setIfChanged('quantity_editable', payload.quantity_editable);
+  }
+  if (payload.points_editable !== null && payload.points_editable !== undefined) {
+    setIfChanged('points_editable', payload.points_editable);
+  }
+  if (payload.dispatch_review_required !== null && payload.dispatch_review_required !== undefined) {
+    setIfChanged('dispatch_review_required', payload.dispatch_review_required);
+  }
+  setIfChanged('sort_order', payload.sort_order);
+
+  return { patch, diff };
+};
+
 /**
  * 获取岗位任务模板
  * GET /api/position-jobs/template

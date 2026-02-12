@@ -1,7 +1,7 @@
 ﻿<template>
   <div class="maintenance-task-page">
     <!-- 管理者视图：显示Tab -->
-    <el-tabs v-if="canManage || activeTab === 'records'" v-model="activeTab" type="border-card" :class="{ 'tabs-hidden': hideTabs }">
+    <el-tabs v-if="canManage || activeTab === 'records'" v-model="activeTab" type="card" :class="{ 'tabs-hidden': hideTabs }">
       <!-- Tab 1: 保养工作 -->
       <el-tab-pane v-if="!hideTabs || activeTab === 'work'" label="保养工作" name="work">
         <MaintenanceWorkPanel :can-manage="canManage" />
@@ -12,6 +12,9 @@
         <div class="page-header">
           <h2>设备保养计划</h2>
           <div class="header-actions">
+            <el-button v-if="isSimpleMode" @click="simpleShowTable = !simpleShowTable">
+              {{ simpleShowTable ? '切换卡片' : '切换表格' }}
+            </el-button>
             <el-button type="primary" :loading="planExporting" @click="handleExportPlans">
               <el-icon><Upload /></el-icon>批量导出
             </el-button>
@@ -21,10 +24,21 @@
             <el-button type="info" @click="downloadPlanTemplate">
               <el-icon><Download /></el-icon>下载模板
             </el-button>
-            <el-button type="success" @click="triggerPlanImport">
+            <el-button type="success" :loading="planImportSubmitting" @click="triggerPlanImport">
               <el-icon><Download /></el-icon>批量导入
             </el-button>
             <input ref="planFileInputRef" type="file" accept=".xlsx,.xls" style="display:none" @change="handlePlanImport" />
+            <ImportPreviewDialog
+              v-model="planImportPreviewVisible"
+              title="设备保养计划 - 导入预览"
+              :rows="planImportPreviewRows"
+              :summary="planImportPreviewSummary"
+              :truncated="planImportPreviewTruncated"
+              :max-rows="planImportPreviewMaxRows"
+              :confirm-loading="planImportSubmitting"
+              :columns="planImportColumns"
+              @confirm="confirmPlanImport"
+            />
             <el-button v-if="selectedPlanRows.length" type="danger" @click="batchDeletePlans">
               <el-icon><Delete /></el-icon>
               批量删除 ({{ selectedPlanRows.length }})
@@ -33,7 +47,12 @@
         </div>
 
         <el-card class="filter-card">
-          <FilterBar>
+          <SimpleFilterBar
+            :enabled="isSimpleMode"
+            v-model:expanded="simpleFilterExpanded"
+            :summary-text="planFilterSummaryText"
+          >
+            <FilterBar>
             <div class="filter-item">
               <span class="filter-label">关键词</span>
               <FilterAutocomplete
@@ -70,10 +89,11 @@
                 <el-option label="年保养" value="yearly" />
               </FilterSelect>
             </div>
-          </FilterBar>
+            </FilterBar>
+          </SimpleFilterBar>
         </el-card>
 
-        <TableWrapper v-loading="planLoading">
+        <TableWrapper v-if="!isSimpleMode || simpleShowTable" v-loading="planLoading">
           <el-table
             ref="planTableRef"
             :data="planTableRows"
@@ -124,6 +144,23 @@
             </el-table-column>
           </el-table>
         </TableWrapper>
+        <div v-else class="simple-card-list" v-loading="planLoading">
+          <el-empty v-if="planTableRows.length === 0" description="暂无数据" />
+          <div v-for="row in planTableRows" :key="row.rowKey" class="simple-card-item">
+            <div class="card-title">{{ row.equipmentName || '-' }}</div>
+            <div class="card-meta">场站：{{ row.station?.stationName || '-' }}</div>
+            <div class="card-meta">设备编号：{{ row.equipmentCode || '-' }}</div>
+            <div class="card-meta">安装位置：{{ row.installLocation || '-' }}</div>
+            <div class="card-meta">工作名称：{{ row.standard?.name || '-' }}</div>
+            <div class="card-meta">积分：{{ row.standard?.points ?? 0 }}</div>
+            <div class="card-meta">保养周期：{{ getCycleLabel(row.cycleType) }}</div>
+            <div class="card-meta">保养日期：{{ getMaintenanceTimeText(row) }}</div>
+            <div class="card-actions">
+              <el-button link type="primary" @click="showPlanDialog(row)">编辑</el-button>
+              <el-button link type="danger" @click="deletePlan(row)">删除</el-button>
+            </div>
+          </div>
+        </div>
 
         <div class="pagination-wrapper">
           <el-pagination
@@ -142,18 +179,33 @@
       <el-tab-pane v-if="!hideTabs || activeTab === 'position'" label="保养计划岗位分配" name="position">
         <div class="page-header">
           <h2>保养计划岗位分配</h2>
-          <div class="header-actions">
-            <el-button type="primary" :loading="positionExporting" @click="handleExportPositionPlans">
-              <el-icon><Upload /></el-icon>批量导出
+          <div class="header-actions"> 
+            <el-button v-if="isSimpleMode" @click="simpleShowTable = !simpleShowTable">
+              {{ simpleShowTable ? '切换卡片' : '切换表格' }}
             </el-button>
-            <el-button type="primary" @click="showPositionAssignDialog">
-              <el-icon><Plus /></el-icon>分配保养计划
-            </el-button>
-          </div>
-        </div>
+            <el-button type="primary" :loading="positionExporting" @click="handleExportPositionPlans"> 
+              <el-icon><Upload /></el-icon>批量导出 
+            </el-button> 
+            <el-button type="info" @click="downloadPositionAssignTemplate"> 
+              <el-icon><Download /></el-icon>下载模板 
+            </el-button> 
+            <el-button type="success" :loading="positionImportSubmitting" @click="triggerPositionAssignImport"> 
+              <el-icon><Download /></el-icon>批量导入 
+            </el-button> 
+            <input ref="positionAssignFileInputRef" type="file" accept=".xlsx,.xls" style="display:none" @change="handlePositionAssignImport" /> 
+            <el-button type="primary" @click="showPositionAssignDialog"> 
+              <el-icon><Plus /></el-icon>分配保养计划 
+            </el-button> 
+          </div> 
+        </div> 
 
         <el-card class="filter-card">
-          <FilterBar>
+          <SimpleFilterBar
+            :enabled="isSimpleMode"
+            v-model:expanded="simpleFilterExpanded"
+            :summary-text="positionFilterSummaryText"
+          >
+            <FilterBar>
             <div class="filter-item">
               <span class="filter-label">场站</span>
               <FilterSelect v-model="positionFilters.stationId" placeholder="全部" filterable clearable style="width: 150px;" @change="applyPositionFilters" @clear="applyPositionFilters">
@@ -198,58 +250,56 @@
                 @keyup.enter="applyPositionFilters"
               />
             </div>
-            <div class="filter-item">
-              <span class="filter-label">安装位置</span>
-              <FilterAutocomplete
-                v-model="positionFilters.installLocation"
-                :fetch-suggestions="fetchPositionInstallLocationSuggestions"
+            <div class="filter-item"> 
+              <span class="filter-label">安装位置</span> 
+              <FilterAutocomplete 
+                v-model="positionFilters.installLocation" 
+                :fetch-suggestions="fetchPositionInstallLocationSuggestions" 
                 trigger-on-focus
                 placeholder="全部"
                 clearable
                 style="width: 160px;"
                 @select="applyPositionFilters"
                 @input="applyPositionFilters"
-                @clear="applyPositionFilters"
-                @keyup.enter="applyPositionFilters"
-              />
-            </div>
-            <div class="filter-item">
-              <span class="filter-label">保养周期</span>
-              <FilterSelect v-model="positionFilters.cycleType" placeholder="全部" filterable clearable style="width: 120px;" @change="applyPositionFilters" @clear="applyPositionFilters">
-                <el-option label="全部" value="all" />
-                <el-option label="日保养" value="daily" />
-                <el-option label="周保养" value="weekly" />
-                <el-option label="月保养" value="monthly" />
-                <el-option label="年保养" value="yearly" />
-              </FilterSelect>
-            </div>
-          </FilterBar>
-        </el-card>
+                @clear="applyPositionFilters" 
+                @keyup.enter="applyPositionFilters" 
+              /> 
+            </div> 
+            </FilterBar> 
+          </SimpleFilterBar>
+        </el-card> 
 
-        <TableWrapper v-loading="positionLoading">
+        <TableWrapper v-if="!isSimpleMode || simpleShowTable" v-loading="positionLoading">
           <el-table :data="positionPlanList" stripe border>
             <el-table-column prop="stationName" label="场站" width="120" />
             <el-table-column prop="positionName" label="岗位" width="120" />
-            <el-table-column prop="equipmentCode" label="设备编号" width="120" />
-            <el-table-column prop="equipmentName" label="设备名称" min-width="150" />
-            <el-table-column prop="installLocation" label="安装位置" width="150" />
-            <el-table-column label="保养周期" width="260">
-              <template #default="{ row }">
-                <div class="cycle-tags">
-                  <el-tag v-if="row.hasDailyCycle" size="small" type="success">日保养</el-tag>
-                  <el-tag v-if="row.hasWeeklyCycle" size="small" type="warning">周保养</el-tag>
-                  <el-tag v-if="row.hasMonthlyCycle" size="small" type="primary">月保养</el-tag>
-                  <el-tag v-if="row.hasYearlyCycle" size="small" type="danger">年保养</el-tag>
-                </div>
-              </template>
-            </el-table-column>
-            <el-table-column label="操作" width="100">
-              <template #default="{ row }">
-                <el-button link type="danger" size="small" @click="deletePositionPlan(row)">删除</el-button>
-              </template>
+            <el-table-column prop="equipmentCode" label="设备编号" width="120" /> 
+            <el-table-column prop="equipmentName" label="设备名称" min-width="150" /> 
+            <el-table-column prop="installLocation" label="安装位置" width="150" /> 
+            <el-table-column label="操作" width="100"> 
+              <template #default="{ row }"> 
+                <el-button link type="danger" size="small" @click="deletePositionPlan(row)">删除</el-button> 
+              </template> 
             </el-table-column>
           </el-table>
         </TableWrapper>
+        <div v-else class="simple-card-list" v-loading="positionLoading">
+          <el-empty v-if="positionPlanList.length === 0" description="暂无数据" />
+          <div
+            v-for="row in positionPlanList"
+            :key="`${row.stationId || row.stationName}-${row.positionName}-${row.equipmentCode}`"
+            class="simple-card-item"
+          >
+            <div class="card-title">{{ row.equipmentName || '-' }}</div>
+            <div class="card-meta">场站：{{ row.stationName || '-' }}</div>
+            <div class="card-meta">岗位：{{ row.positionName || '-' }}</div>
+            <div class="card-meta">设备编号：{{ row.equipmentCode || '-' }}</div>
+            <div class="card-meta">安装位置：{{ row.installLocation || '-' }}</div>
+            <div class="card-actions">
+              <el-button link type="danger" @click="deletePositionPlan(row)">删除</el-button>
+            </div>
+          </div>
+        </div>
 
         <div class="pagination-wrapper">
           <el-pagination
@@ -269,6 +319,9 @@
         <div class="page-header">
           <h2>保养工作记录</h2>
           <div class="header-actions">
+            <el-button v-if="isSimpleMode" @click="simpleShowTable = !simpleShowTable">
+              {{ simpleShowTable ? '切换卡片' : '切换表格' }}
+            </el-button>
             <el-button type="primary" :loading="recordExporting" @click="handleExportWorkRecords">
               <el-icon><Upload /></el-icon>批量导出
             </el-button>
@@ -276,7 +329,12 @@
         </div>
 
         <el-card class="filter-card">
-          <FilterBar>
+          <SimpleFilterBar
+            :enabled="isSimpleMode"
+            v-model:expanded="simpleFilterExpanded"
+            :summary-text="recordFilterSummaryText"
+          >
+            <FilterBar>
             <div class="filter-item">
               <span class="filter-label">场站</span>
               <FilterSelect v-model="recordFilters.stationId" placeholder="全部" filterable clearable style="width: 150px;" @change="applyRecordFilters" @clear="applyRecordFilters">
@@ -384,10 +442,11 @@
                 @change="applyRecordFilters"
               />
             </div>
-          </FilterBar>
+            </FilterBar>
+          </SimpleFilterBar>
         </el-card>
 
-        <TableWrapper v-loading="recordLoading">
+        <TableWrapper v-if="!isSimpleMode || simpleShowTable" v-loading="recordLoading">
           <el-table :data="workRecordList" stripe border>
             <el-table-column prop="stationName" label="场站" width="110" />
             <el-table-column prop="positionName" label="岗位" width="110" />
@@ -428,6 +487,31 @@
             </el-table-column>
           </el-table>
         </TableWrapper>
+        <div v-else class="simple-card-list" v-loading="recordLoading">
+          <el-empty v-if="workRecordList.length === 0" description="暂无数据" />
+          <div v-for="row in workRecordList" :key="row.id || row.recordCode" class="simple-card-item">
+            <div class="card-title">{{ row.equipmentName || '-' }}</div>
+            <div class="card-meta">场站：{{ row.stationName || '-' }}</div>
+            <div class="card-meta">岗位：{{ row.positionName || '-' }}</div>
+            <div class="card-meta">设备编号：{{ row.equipmentCode || '-' }}</div>
+            <div class="card-meta">积分：{{ getRecordPoints(row) }}</div>
+            <div class="card-meta">保养周期：{{ getCycleLabel(row.cycleType) }}</div>
+            <div class="card-meta">工作日期：{{ row.workDate || '-' }}</div>
+            <div class="card-meta">执行人：{{ row.executorName || '-' }}</div>
+            <div class="card-meta">状态：{{ getRecordStatusText(row) }}</div>
+            <div class="card-actions">
+              <el-button v-if="!row.isMissing" link type="primary" @click="viewWorkRecord(row)">查看</el-button>
+              <el-button
+                v-if="!row.isMissing && row.status === 'completed'"
+                link
+                type="success"
+                @click="showVerifyDialog(row)"
+              >
+                验收
+              </el-button>
+            </div>
+          </div>
+        </div>
 
         <div class="pagination-wrapper">
           <el-pagination
@@ -476,22 +560,12 @@
             @selection-change="onPlanSelectionChange"
           >
             <el-table-column type="selection" width="50" />
-            <el-table-column prop="equipmentCode" label="设备编号" width="120" />
-            <el-table-column prop="equipmentName" label="设备名称" min-width="150" />
-            <el-table-column prop="installLocation" label="安装位置" width="120" />
-            <el-table-column label="保养周期" width="200">
-              <template #default="{ row }">
-                <div class="cycle-tags">
-                  <el-tag v-if="row.hasDailyCycle" size="small" type="success">日</el-tag>
-                  <el-tag v-if="row.hasWeeklyCycle" size="small" type="warning">周</el-tag>
-                  <el-tag v-if="row.hasMonthlyCycle" size="small" type="primary">月</el-tag>
-                  <el-tag v-if="row.hasYearlyCycle" size="small" type="danger">年</el-tag>
-                </div>
-              </template>
-            </el-table-column>
-          </el-table>
-        </el-form-item>
-      </el-form>
+            <el-table-column prop="equipmentCode" label="设备编号" width="120" /> 
+            <el-table-column prop="equipmentName" label="设备名称" min-width="150" /> 
+            <el-table-column prop="installLocation" label="安装位置" width="120" /> 
+          </el-table> 
+        </el-form-item> 
+      </el-form> 
       <template #footer>
         <el-button @click="positionAssignDialogVisible = false">取消</el-button>
         <el-button type="primary" @click="submitPositionAssign" :loading="positionAssignSubmitting">确定分配</el-button>
@@ -551,10 +625,10 @@
       </template>
     </FormDialog>
 
-    <!-- 保养计划编辑对话框 -->
-    <MaintenancePlanDialog
-      ref="planFormRef"
-      v-model:visible="planDialogVisible"
+    <!-- 保养计划编辑对话框 --> 
+    <MaintenancePlanDialog 
+      ref="planFormRef" 
+      v-model:visible="planDialogVisible" 
       :is-edit="planIsEdit"
       :plan-form="planForm"
       :plan-rules="planRules"
@@ -562,10 +636,20 @@
       :saving="planSaving"
       :add-standard="addStandard"
       :remove-standard="removeStandard"
-      @save="savePlan"
+      @save="savePlan" 
+    /> 
+
+    <ImportPreviewDialog
+      v-model="positionImportDialogVisible"
+      title="保养计划岗位分配 - 导入预览"
+      :rows="positionImportRows"
+      :summary="positionImportSummary"
+      :confirm-loading="positionImportSubmitting"
+      :columns="positionImportColumns"
+      @confirm="confirmPositionAssignImport"
     />
-  </div>
-</template>
+  </div> 
+</template> 
 
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue';
@@ -580,8 +664,11 @@ import { useUserStore } from '@/store/modules/user';
 import MaintenanceWorkRecordDetailDialog from '@/modules/maintenance/components/MaintenanceWorkRecordDetailDialog.vue';
 import MaintenanceWorkPanel from '@/modules/maintenance/components/MaintenanceWorkPanel.vue';
 import MaintenancePlanDialog from '@/modules/maintenance/components/MaintenancePlanDialog.vue';
+import ImportPreviewDialog from '@/components/common/ImportPreviewDialog.vue';
+import SimpleFilterBar from '@/components/common/SimpleFilterBar.vue';
 import FormDialog from '@/components/system/FormDialog.vue';
 import { buildExportFileName, exportRowsToXlsx, fetchAllPaged } from '@/utils/tableExport';
+import { useSimpleMode } from '@/composables/useSimpleMode';
 
 const props = defineProps({
   defaultTab: { type: String, default: 'work' },
@@ -589,6 +676,7 @@ const props = defineProps({
 });
 
 const userStore = useUserStore();
+const { isSimpleMode, simpleShowTable, simpleFilterExpanded } = useSimpleMode();
 
 // 权限控制：只有站长、部门经理、副经理可以看到管理功能
 const canManage = computed(() => userStore.hasRole(['station_manager', 'department_manager', 'deputy_manager']));
@@ -766,23 +854,13 @@ const handleExportPlans = async () => {
   }
 };
 
-const getPositionCycleText = (row) => {
-  const labels = [];
-  if (row?.hasDailyCycle) labels.push('日保养');
-  if (row?.hasWeeklyCycle) labels.push('周保养');
-  if (row?.hasMonthlyCycle) labels.push('月保养');
-  if (row?.hasYearlyCycle) labels.push('年保养');
-  return labels.length > 0 ? labels.join('/') : '-';
-};
-
-const resolvePositionExportColumns = () => ([
-  { label: '场站', prop: 'stationName' },
-  { label: '岗位', prop: 'positionName' },
-  { label: '设备编号', prop: 'equipmentCode' },
-  { label: '设备名称', prop: 'equipmentName' },
-  { label: '安装位置', prop: 'installLocation' },
-  { label: '保养周期', value: (row) => getPositionCycleText(row) }
-]);
+const resolvePositionExportColumns = () => ([ 
+  { label: '场站', prop: 'stationName' }, 
+  { label: '岗位', prop: 'positionName' }, 
+  { label: '设备编号', prop: 'equipmentCode' }, 
+  { label: '设备名称', prop: 'equipmentName' }, 
+  { label: '安装位置', prop: 'installLocation' } 
+]); 
 
 const handleExportPositionPlans = async () => {
   if (positionExporting.value) return;
@@ -948,21 +1026,45 @@ const planRules = {
 const planFileInputRef = ref(null);
 const planTableRef = ref(null);
 const selectedPlanRows = ref([]);
+const planImportPreviewVisible = ref(false);
+const planImportPreviewSummary = ref({});
+const planImportPreviewRows = ref([]);
+const planImportPreviewTruncated = ref(false);
+const planImportPreviewMaxRows = ref(0);
+const planImportSubmitting = ref(false);
+const planImportPayload = ref([]);
+
+const planImportColumns = [
+  { prop: 'stationName', label: '场站', minWidth: 120 },
+  { prop: 'equipmentCode', label: '设备编号', minWidth: 120 },
+  { prop: 'equipmentName', label: '设备名称', minWidth: 140, diffKey: 'equipmentName' },
+  { prop: 'installLocation', label: '安装位置', minWidth: 140, diffKey: 'installLocation' },
+  {
+    prop: 'cycleType',
+    label: '保养周期',
+    width: 100,
+    formatter: (row) => getCycleLabel(row?.cycleType)
+  },
+  { prop: 'weeklyDay', label: '周检查日', width: 90 },
+  { prop: 'monthlyDay', label: '月检查日', width: 90 },
+  { prop: 'yearlyMonth', label: '年检查月', width: 90 },
+  { prop: 'yearlyDay', label: '年检查日', width: 90 },
+  { prop: 'maintenanceStandardsCount', label: '标准条目', width: 100, diffKey: 'maintenanceStandards' }
+];
 
 // ========== 保养计划岗位分配相关 ==========
 const stationList = ref([]);
 const positionPlanList = ref([]);
 const positionPlanSuggestionList = ref([]);
 const positionLoading = ref(false);
-const defaultPositionFilters = {
-  stationId: 'all',
-  positionName: 'all',
-  equipmentCode: '',
-  equipmentName: '',
-  installLocation: '',
-  cycleType: 'all'
-};
-const positionFilters = ref({ ...defaultPositionFilters });
+const defaultPositionFilters = { 
+  stationId: 'all', 
+  positionName: 'all', 
+  equipmentCode: '', 
+  equipmentName: '', 
+  installLocation: '' 
+}; 
+const positionFilters = ref({ ...defaultPositionFilters }); 
 
 const fetchPositionEquipmentCodeSuggestions = createListSuggestionFetcher(
   () => positionPlanSuggestionList.value,
@@ -983,23 +1085,35 @@ const positionPagination = ref({
   total: 0
 });
 
-const positionAssignDialogVisible = ref(false);
-const positionAssignFormRef = ref(null);
-const positionAssignSubmitting = ref(false);
-const positionAssignForm = ref({
-  stationId: null,
-  positionName: '',
-  planIds: []
-});
-const stationPositions = ref([]);
-const stationPlanOptions = ref([]);
-const selectedPlanIds = ref([]);
-const planSelectTableRef = ref(null);
+const positionAssignDialogVisible = ref(false); 
+const positionAssignFormRef = ref(null); 
+const positionAssignSubmitting = ref(false); 
+const positionAssignForm = ref({ 
+  stationId: null, 
+  positionName: '', 
+  planIds: [] 
+}); 
+const stationPositions = ref([]); 
+const stationPlanOptions = ref([]); 
+const selectedPlanIds = ref([]); 
+const planSelectTableRef = ref(null); 
+const positionAssignFileInputRef = ref(null); 
 
-const allPositions = computed(() => {
-  const positions = new Set();
-  positionPlanList.value.forEach(item => {
-    if (item.positionName) positions.add(item.positionName);
+const positionImportDialogVisible = ref(false); 
+const positionImportSubmitting = ref(false); 
+const positionImportRows = ref([]); 
+const positionImportSummary = ref({});
+const positionImportPayload = ref([]);
+const positionImportColumns = [
+  { prop: 'stationName', label: '场站', minWidth: 130 },
+  { prop: 'equipmentCode', label: '设备编号', minWidth: 130 },
+  { prop: 'positionName', label: '岗位', minWidth: 130, diffKey: 'position_name' }
+];
+ 
+const allPositions = computed(() => { 
+  const positions = new Set(); 
+  positionPlanList.value.forEach(item => { 
+    if (item.positionName) positions.add(item.positionName); 
   });
   ['操作1', '操作2', '操作3', '控制室', '机修'].forEach(p => positions.add(p));
   return Array.from(positions);
@@ -1024,6 +1138,45 @@ const defaultRecordFilters = {
   endDate: today
 };
 const recordFilters = ref({ ...defaultRecordFilters });
+const resolveStationNameById = (stationId) => {
+  const target = stationList.value.find(item => String(item.id) === String(stationId));
+  return target?.stationName || stationId;
+};
+const recordStatusLabelMap = {
+  pending: '待提交',
+  completed: '待验收',
+  verified: '已验收'
+};
+const planFilterSummaryText = computed(() => {
+  const parts = [];
+  if (planFilters.value.stationId !== 'all') parts.push(`场站=${resolveStationNameById(planFilters.value.stationId)}`);
+  if (planFilters.value.cycleType !== 'all') parts.push(`保养周期=${getCycleLabel(planFilters.value.cycleType)}`);
+  const keyword = String(planFilters.value.keyword || '').trim();
+  if (keyword) parts.push(`关键词=${keyword}`);
+  return parts.length ? `当前筛选：${parts.join('，')}` : '当前筛选：全部';
+});
+const positionFilterSummaryText = computed(() => {
+  const parts = [];
+  if (positionFilters.value.stationId !== 'all') parts.push(`场站=${resolveStationNameById(positionFilters.value.stationId)}`);
+  if (positionFilters.value.positionName !== 'all') parts.push(`岗位=${positionFilters.value.positionName}`);
+  if (String(positionFilters.value.equipmentCode || '').trim()) parts.push(`设备编号=${String(positionFilters.value.equipmentCode).trim()}`);
+  if (String(positionFilters.value.equipmentName || '').trim()) parts.push(`设备名称=${String(positionFilters.value.equipmentName).trim()}`);
+  if (String(positionFilters.value.installLocation || '').trim()) parts.push(`安装位置=${String(positionFilters.value.installLocation).trim()}`);
+  return parts.length ? `当前筛选：${parts.join('，')}` : '当前筛选：全部';
+});
+const recordFilterSummaryText = computed(() => {
+  const parts = [];
+  if (recordFilters.value.stationId !== 'all') parts.push(`场站=${resolveStationNameById(recordFilters.value.stationId)}`);
+  if (String(recordFilters.value.positionName || '').trim()) parts.push(`岗位=${String(recordFilters.value.positionName).trim()}`);
+  if (String(recordFilters.value.equipmentCode || '').trim()) parts.push(`设备编号=${String(recordFilters.value.equipmentCode).trim()}`);
+  if (String(recordFilters.value.equipmentName || '').trim()) parts.push(`设备名称=${String(recordFilters.value.equipmentName).trim()}`);
+  if (recordFilters.value.cycleType !== 'all') parts.push(`保养周期=${getCycleLabel(recordFilters.value.cycleType)}`);
+  if (String(recordFilters.value.executorName || '').trim()) parts.push(`执行人=${String(recordFilters.value.executorName).trim()}`);
+  if (recordFilters.value.status !== 'all') parts.push(`状态=${recordStatusLabelMap[recordFilters.value.status] || recordFilters.value.status}`);
+  if (recordFilters.value.startDate) parts.push(`开始=${recordFilters.value.startDate}`);
+  if (recordFilters.value.endDate) parts.push(`结束=${recordFilters.value.endDate}`);
+  return parts.length ? `当前筛选：${parts.join('，')}` : '当前筛选：全部';
+});
 
 const fetchRecordPositionNameSuggestions = createListSuggestionFetcher(
   () => workRecordSuggestionList.value,
@@ -1210,20 +1363,16 @@ const loadPlanList = async () => {
   }
 };
 
-const normalizePositionPlan = (item) => ({
-  id: item.id,
-  stationId: item.station_id,
-  stationName: item.station?.station_name || '-',
-  positionName: item.position_name,
-  planId: item.plan_id,
-  equipmentCode: item.plan?.equipment_code || '-',
-  equipmentName: item.plan?.equipment_name || '-',
-  installLocation: item.plan?.install_location || '-',
-  hasDailyCycle: item.plan?.daily_enabled ?? false,
-  hasWeeklyCycle: item.plan?.weekly_enabled ?? false,
-  hasMonthlyCycle: item.plan?.monthly_enabled ?? false,
-  hasYearlyCycle: item.plan?.yearly_enabled ?? false
-});
+const normalizePositionPlan = (item) => ({ 
+  id: item.id, 
+  stationId: item.station_id, 
+  stationName: item.station?.station_name || '-', 
+  positionName: item.position_name, 
+  planId: item.plan_id, 
+  equipmentCode: item.plan?.equipment_code || '-', 
+  equipmentName: item.plan?.equipment_name || '-', 
+  installLocation: item.plan?.install_location || '-' 
+}); 
 
 const normalizeWorkRecord = (item) => ({
   id: item.id,
@@ -1676,6 +1825,7 @@ const downloadPlanTemplate = () => {
 
 // 触发导入
 const triggerPlanImport = () => {
+  if (planImportSubmitting.value) return;
   planFileInputRef.value?.click();
 };
 
@@ -1686,6 +1836,13 @@ const parseScheduleNumber = (value, min, max) => {
   if (min !== undefined && parsed < min) return null;
   if (max !== undefined && parsed > max) return null;
   return parsed;
+};
+
+const resolveErrorMessage = (error, fallback = '操作失败') => {
+  const responseMessage = typeof error?.response?.data?.message === 'string' ? error.response.data.message.trim() : '';
+  if (responseMessage) return responseMessage;
+  const message = typeof error?.message === 'string' ? error.message.trim() : '';
+  return message || fallback;
 };
 
 const parseWeeklyDay = (value) => {
@@ -1737,14 +1894,19 @@ const handlePlanImport = async (event) => {
     const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
 
     const planMap = new Map();
+    const defaultFillStats = {
+      weekly: 0,
+      monthly: 0,
+      yearly: 0
+    };
     const cycleMap = { '日保养': 'daily', '周保养': 'weekly', '月保养': 'monthly', '年保养': 'yearly' };
     const headerRow = Array.isArray(jsonData[0]) ? jsonData[0] : [];
     const getHeaderValue = (value) => String(value ?? '').trim();
     const hasScheduleColumns = ['周检查日', '月检查日', '年检查月', '年检查日']
-      .some(label => headerRow.some(cell => getHeaderValue(cell) === label));
+      .some((label) => headerRow.some((cell) => getHeaderValue(cell) === label));
     const findHeaderIndex = (labels, fallback) => {
       for (const label of labels) {
-        const idx = headerRow.findIndex(cell => getHeaderValue(cell) === label);
+        const idx = headerRow.findIndex((cell) => getHeaderValue(cell) === label);
         if (idx > -1) return idx;
       }
       return fallback;
@@ -1759,12 +1921,11 @@ const handlePlanImport = async (event) => {
     const monthlyIndex = findHeaderIndex(['月检查日'], hasScheduleColumns ? 6 : -1);
     const yearlyMonthIndex = findHeaderIndex(['年检查月'], hasScheduleColumns ? 7 : -1);
     const yearlyDayIndex = findHeaderIndex(['年检查日'], hasScheduleColumns ? 8 : -1);
-    // 兼容旧模板：保养标准/保养规范
     const standardIndex = findHeaderIndex(['工作名称', '保养标准'], hasScheduleColumns ? 9 : 5);
     const specIndex = findHeaderIndex(['规范', '保养规范'], hasScheduleColumns ? 10 : 6);
     const pointsIndex = findHeaderIndex(['积分'], hasScheduleColumns ? 11 : 7);
 
-    for (let i = 1; i < jsonData.length; i++) {
+    for (let i = 1; i < jsonData.length; i += 1) {
       const row = jsonData[i];
       if (!row || row.length === 0) continue;
       const stationName = String(row[stationIndex] ?? '').trim();
@@ -1782,30 +1943,46 @@ const handlePlanImport = async (event) => {
 
       const key = `${stationName}||${equipmentCode}||${equipmentName}||${installLocation}||${cycleType}`;
       if (!planMap.has(key)) {
+        const defaultWeeklyDay = cycleType === 'weekly' && weeklyDay === null ? 1 : weeklyDay;
+        const defaultMonthlyDay = cycleType === 'monthly' && monthlyDay === null ? 1 : monthlyDay;
+        const missingYearly = cycleType === 'yearly' && (yearlyMonth === null || yearlyDay === null);
+        const defaultYearlyMonth = cycleType === 'yearly' ? (yearlyMonth ?? 1) : '';
+        const defaultYearlyDay = cycleType === 'yearly' ? (yearlyDay ?? 1) : '';
+
+        if (cycleType === 'weekly' && weeklyDay === null) {
+          defaultFillStats.weekly += 1;
+        }
+        if (cycleType === 'monthly' && monthlyDay === null) {
+          defaultFillStats.monthly += 1;
+        }
+        if (missingYearly) {
+          defaultFillStats.yearly += 1;
+        }
+
         planMap.set(key, {
           stationName,
           equipmentCode,
           equipmentName,
           installLocation,
           cycleType,
-          weeklyDay: cycleType === 'weekly' ? weeklyDay : null,
-          monthlyDay: cycleType === 'monthly' ? monthlyDay : null,
-          yearlyMonth: cycleType === 'yearly' ? yearlyMonth : null,
-          yearlyDay: cycleType === 'yearly' ? yearlyDay : null,
+          weeklyDay: cycleType === 'weekly' ? defaultWeeklyDay : '',
+          monthlyDay: cycleType === 'monthly' ? defaultMonthlyDay : '',
+          yearlyMonth: defaultYearlyMonth,
+          yearlyDay: defaultYearlyDay,
           maintenanceStandards: []
         });
       }
       const plan = planMap.get(key);
-      if (cycleType === 'weekly' && plan.weeklyDay === null && weeklyDay !== null) {
+      if (cycleType === 'weekly' && weeklyDay !== null) {
         plan.weeklyDay = weeklyDay;
       }
-      if (cycleType === 'monthly' && plan.monthlyDay === null && monthlyDay !== null) {
+      if (cycleType === 'monthly' && monthlyDay !== null) {
         plan.monthlyDay = monthlyDay;
       }
-      if (cycleType === 'yearly' && plan.yearlyMonth === null && yearlyMonth !== null) {
+      if (cycleType === 'yearly' && yearlyMonth !== null) {
         plan.yearlyMonth = yearlyMonth;
       }
-      if (cycleType === 'yearly' && plan.yearlyDay === null && yearlyDay !== null) {
+      if (cycleType === 'yearly' && yearlyDay !== null) {
         plan.yearlyDay = yearlyDay;
       }
 
@@ -1821,26 +1998,75 @@ const handlePlanImport = async (event) => {
       }
     }
 
-    const plans = Array.from(planMap.values());
+    const plans = Array.from(planMap.values()).map((item) => ({
+      ...item,
+      weeklyDay: item.weeklyDay ?? '',
+      monthlyDay: item.monthlyDay ?? '',
+      yearlyMonth: item.yearlyMonth ?? '',
+      yearlyDay: item.yearlyDay ?? ''
+    }));
     if (plans.length === 0) {
       ElMessage.warning('未找到有效数据');
       return;
     }
 
-    const res = await request.post('/maintenance-plan-library/batch-import', { plans });
-    const successCount = res.success ?? res.successCount ?? 0;
-    const failedCount = res.failed ?? 0;
-    const firstError = Array.isArray(res.errors) && res.errors.length > 0 ? res.errors[0] : '';
-    if (failedCount > 0) {
-      ElMessage.warning(`导入完成: 成功${successCount}条，失败${failedCount}条${firstError ? `，例如：${firstError}` : ''}`);
-    } else {
-      ElMessage.success(`导入完成: 成功${successCount}条`);
+    planImportPayload.value = plans;
+    const previewRes = await request.post('/maintenance-plan-library/batch-import-preview', { plans });
+    planImportPreviewSummary.value = previewRes?.summary ?? {};
+    planImportPreviewRows.value = Array.isArray(previewRes?.rows) ? previewRes.rows : [];
+    planImportPreviewTruncated.value = !!previewRes?.truncated;
+    planImportPreviewMaxRows.value = typeof previewRes?.maxRows === 'number' ? previewRes.maxRows : 0;
+    planImportPreviewVisible.value = true;
+
+    const defaultMessages = [];
+    if (defaultFillStats.weekly > 0) {
+      defaultMessages.push(`周保养缺失周检查日 ${defaultFillStats.weekly} 条，已默认填充为周一`);
     }
-    loadPlanList();
-  } catch (err) {
-    ElMessage.error(err.message || '导入失败');
+    if (defaultFillStats.monthly > 0) {
+      defaultMessages.push(`月保养缺失月检查日 ${defaultFillStats.monthly} 条，已默认填充为1号`);
+    }
+    if (defaultFillStats.yearly > 0) {
+      defaultMessages.push(`年保养缺失年检查月/日 ${defaultFillStats.yearly} 条，已默认填充为1月1日`);
+    }
+    if (defaultMessages.length > 0) {
+      ElMessage.warning(defaultMessages.join('；'));
+    }
+  } catch (error) {
+    ElMessage.error(resolveErrorMessage(error, '导入失败'));
   } finally {
     if (planFileInputRef.value) planFileInputRef.value.value = '';
+  }
+};
+
+const confirmPlanImport = async () => {
+  if (planImportSubmitting.value) return;
+  if (!Array.isArray(planImportPayload.value) || planImportPayload.value.length === 0) {
+    ElMessage.warning('没有可导入的数据');
+    return;
+  }
+
+  planImportSubmitting.value = true;
+  try {
+    const res = await request.post('/maintenance-plan-library/batch-import', { plans: planImportPayload.value });
+    const successCount = Number(res?.success ?? 0);
+    const updatedCount = Number(res?.updated ?? 0);
+    const skippedCount = Number(res?.skipped ?? 0);
+    const failedCount = Number(res?.failed ?? 0);
+    const firstError = Array.isArray(res?.errors) && res.errors.length > 0 ? res.errors[0] : '';
+
+    if (failedCount > 0) {
+      ElMessage.warning(`导入完成：新增${successCount}条，更新${updatedCount}条，跳过${skippedCount}条，失败${failedCount}条${firstError ? `，例如：${firstError}` : ''}`);
+    } else {
+      ElMessage.success(`导入完成：新增${successCount}条，更新${updatedCount}条，跳过${skippedCount}条`);
+    }
+
+    planImportPreviewVisible.value = false;
+    planImportPayload.value = [];
+    await loadPlanList();
+  } catch (error) {
+    ElMessage.error(resolveErrorMessage(error, '导入失败'));
+  } finally {
+    planImportSubmitting.value = false;
   }
 };
 
@@ -1863,15 +2089,12 @@ const buildPositionPlanParamsForPage = ({ page, pageSize } = {}) => {
   if (equipmentName) {
     params.equipmentName = equipmentName;
   }
-  const installLocation = String(positionFilters.value.installLocation ?? '').trim();
-  if (installLocation) {
-    params.installLocation = installLocation;
-  }
-  if (positionFilters.value.cycleType && positionFilters.value.cycleType !== 'all') {
-    params.cycleType = positionFilters.value.cycleType;
-  }
-  return params;
-};
+  const installLocation = String(positionFilters.value.installLocation ?? '').trim(); 
+  if (installLocation) { 
+    params.installLocation = installLocation; 
+  } 
+  return params; 
+}; 
 
 const buildWorkRecordParamsForPage = ({ page, pageSize } = {}) => {
   const params = {};
@@ -1995,21 +2218,152 @@ const resetRecordFilters = () => {
 };
 
 // ========== 岗位分配操作 ==========
-const showPositionAssignDialog = () => {
-  positionAssignForm.value = {
-    stationId: null,
-    positionName: '',
-    planIds: []
+const showPositionAssignDialog = () => { 
+  positionAssignForm.value = { 
+    stationId: null, 
+    positionName: '', 
+    planIds: [] 
   };
   stationPositions.value = [];
   stationPlanOptions.value = [];
-  selectedPlanIds.value = [];
-  positionAssignDialogVisible.value = true;
-};
+  selectedPlanIds.value = []; 
+  positionAssignDialogVisible.value = true; 
+}; 
 
-const onPositionStationChange = async (stationId) => {
-  positionAssignForm.value.positionName = '';
-  positionAssignForm.value.planIds = [];
+const downloadPositionAssignTemplate = () => { 
+  import('xlsx').then((XLSX) => { 
+    const templateData = [ 
+      { 
+        '场站': '示例场站', 
+        '岗位': '操作1', 
+        '设备编号': 'EQ0001' 
+      }, 
+      { 
+        '场站': '示例场站', 
+        '岗位': '控制室', 
+        '设备编号': 'EQ0002' 
+      } 
+    ]; 
+    const ws = XLSX.utils.json_to_sheet(templateData); 
+    applyTemplateHeaderStyle(XLSX, ws, 1); 
+    const wb = XLSX.utils.book_new(); 
+    XLSX.utils.book_append_sheet(wb, ws, '岗位分配'); 
+    addTemplateInstructionSheet(XLSX, wb, [ 
+      ['场站', '经理/副经理/管理员：必填；站长：可留空（默认当前场站）。'], 
+      ['岗位', '必填，岗位名称。'], 
+      ['设备编号', '必填，设备编号（与保养计划库一致）。'] 
+    ]); 
+    XLSX.writeFile(wb, '保养计划岗位分配模板.xlsx'); 
+    ElMessage.success('模板已下载'); 
+  }); 
+}; 
+
+const triggerPositionAssignImport = () => { 
+  if (positionImportSubmitting.value) return;
+  positionAssignFileInputRef.value?.click(); 
+}; 
+ 
+const normalizeImportText = (value) => String(value ?? '').replace(/\uFEFF/g, '').trim(); 
+ 
+const handlePositionAssignImport = async (event) => { 
+  const file = event.target.files?.[0]; 
+  if (!file) return; 
+ 
+  try { 
+    const XLSX = await import('xlsx'); 
+    const readFile = () => new Promise((resolve, reject) => { 
+      const reader = new FileReader(); 
+      reader.onload = (e) => resolve(e.target.result); 
+      reader.onerror = reject; 
+      reader.readAsArrayBuffer(file); 
+    }); 
+ 
+    const arrayBuffer = await readFile(); 
+    const data = new Uint8Array(arrayBuffer); 
+    const workbook = XLSX.read(data, { type: 'array' }); 
+    const sheetName = workbook.SheetNames[0]; 
+    const worksheet = workbook.Sheets[sheetName]; 
+    const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: '' }); 
+    const headerRow = Array.isArray(jsonData[0]) ? jsonData[0] : []; 
+ 
+    const findHeaderIndex = (labels, fallback) => { 
+      for (const label of labels) { 
+        const idx = headerRow.findIndex(cell => normalizeImportText(cell) === label); 
+        if (idx > -1) return idx; 
+      } 
+      return fallback; 
+    }; 
+ 
+    const stationIndex = findHeaderIndex(['场站'], 0); 
+    const positionIndex = findHeaderIndex(['岗位'], 1); 
+    const equipmentIndex = findHeaderIndex(['设备编号'], 2); 
+
+    const rows = [];
+    for (let i = 1; i < jsonData.length; i += 1) {
+      const row = jsonData[i];
+      if (!row || row.length === 0) continue;
+      const rowNum = i + 1;
+      const stationName = normalizeImportText(row[stationIndex]);
+      const positionName = normalizeImportText(row[positionIndex]);
+      const equipmentCode = normalizeImportText(row[equipmentIndex]);
+      rows.push({
+        rowNum,
+        stationName,
+        positionName,
+        equipmentCode
+      });
+    }
+
+    if (rows.length === 0) { 
+      ElMessage.warning('未找到有效数据'); 
+      return; 
+    } 
+ 
+    positionImportPayload.value = rows;
+    const previewRes = await request.post('/maintenance-position-plans/batch-import-preview', { rows });
+    positionImportRows.value = Array.isArray(previewRes?.rows) ? previewRes.rows : [];
+    positionImportSummary.value = previewRes?.summary ?? {};
+    positionImportDialogVisible.value = true; 
+  } catch (error) { 
+    ElMessage.error(resolveErrorMessage(error, '解析失败')); 
+  } finally { 
+    if (positionAssignFileInputRef.value) positionAssignFileInputRef.value.value = ''; 
+  } 
+}; 
+
+const confirmPositionAssignImport = async () => { 
+  if (positionImportSubmitting.value) return; 
+  if (!Array.isArray(positionImportPayload.value) || positionImportPayload.value.length === 0) {
+    ElMessage.warning('没有可导入的数据'); 
+    return; 
+  } 
+ 
+  positionImportSubmitting.value = true; 
+  try { 
+    const res = await request.post('/maintenance-position-plans/batch-import', { rows: positionImportPayload.value });
+    const successCount = Number(res?.success ?? 0);
+    const updatedCount = Number(res?.updated ?? 0);
+    const skippedCount = Number(res?.skipped ?? 0);
+    const failedCount = Number(res?.failed ?? 0);
+    const firstError = Array.isArray(res?.errors) && res.errors.length > 0 ? res.errors[0] : '';
+    if (failedCount > 0) { 
+      ElMessage.warning(`导入完成：新增${successCount}行，更新${updatedCount}行，跳过${skippedCount}行，失败${failedCount}行${firstError ? `，例如：${firstError}` : ''}`); 
+    } else { 
+      ElMessage.success(`导入完成：新增${successCount}行，更新${updatedCount}行，跳过${skippedCount}行`); 
+    } 
+    positionImportDialogVisible.value = false; 
+    positionImportPayload.value = [];
+    await loadPositionPlans(); 
+  } catch (error) { 
+    ElMessage.error(resolveErrorMessage(error, '导入失败')); 
+  } finally { 
+    positionImportSubmitting.value = false; 
+  } 
+}; 
+ 
+const onPositionStationChange = async (stationId) => { 
+  positionAssignForm.value.positionName = ''; 
+  positionAssignForm.value.planIds = []; 
   selectedPlanIds.value = [];
 
   if (!stationId) {
@@ -2037,39 +2391,38 @@ const onPositionStationChange = async (stationId) => {
     stationPositions.value = ['操作1', '操作2', '操作3', '控制室', '机修'];
   }
 
-  // 加载场站保养计划
-  try {
-    const res = await request.get('/maintenance-plan-library', { params: { stationId, pageSize: 200 } });
-    const planMap = new Map();
-    (res.list || []).forEach(item => {
-      const key = `${item.equipment_code}||${item.equipment_name}||${item.install_location}`;
-      if (!planMap.has(key)) {
-        planMap.set(key, {
-          key,
-          planId: item.id,
-          planIds: [item.id],
-          equipmentCode: item.equipment_code,
-          equipmentName: item.equipment_name,
-          installLocation: item.install_location,
-          hasDailyCycle: false,
-          hasWeeklyCycle: false,
-          hasMonthlyCycle: false,
-          hasYearlyCycle: false
-        });
-      }
-      const plan = planMap.get(key);
-      if (plan && Array.isArray(plan.planIds) && !plan.planIds.includes(item.id)) {
-        plan.planIds.push(item.id);
-      }
-      if (item.cycle_type === 'daily') plan.hasDailyCycle = true;
-      if (item.cycle_type === 'weekly') plan.hasWeeklyCycle = true;
-      if (item.cycle_type === 'monthly') plan.hasMonthlyCycle = true;
-      if (item.cycle_type === 'yearly') plan.hasYearlyCycle = true;
-    });
-    stationPlanOptions.value = Array.from(planMap.values());
-  } catch (e) {
-    stationPlanOptions.value = [];
-  }
+  // 加载场站保养计划 
+  try { 
+    const res = await request.get('/maintenance-plan-library', { params: { stationId, pageSize: 5000 } }); 
+    const planMap = new Map(); 
+    (res.list || []).forEach(item => { 
+      const key = String(item.equipment_code ?? '').trim(); 
+      if (!key) return; 
+      if (!planMap.has(key)) { 
+        planMap.set(key, { 
+          key, 
+          planId: item.id, 
+          planIds: [item.id], 
+          equipmentCode: item.equipment_code, 
+          equipmentName: item.equipment_name, 
+          installLocation: item.install_location 
+        }); 
+      } 
+      const plan = planMap.get(key); 
+      if (plan && Array.isArray(plan.planIds) && !plan.planIds.includes(item.id)) { 
+        plan.planIds.push(item.id); 
+      } 
+      if (plan && !plan.equipmentName && item.equipment_name) { 
+        plan.equipmentName = item.equipment_name; 
+      } 
+      if (plan && !plan.installLocation && item.install_location) { 
+        plan.installLocation = item.install_location; 
+      } 
+    }); 
+    stationPlanOptions.value = Array.from(planMap.values()); 
+  } catch (e) { 
+    stationPlanOptions.value = []; 
+  } 
 };
 
 const onPlanSelectionChange = (selection) => {
@@ -2177,6 +2530,8 @@ const submitVerify = async () => {
 watch(
   activeTab,
   (tab) => {
+    simpleShowTable.value = false;
+    simpleFilterExpanded.value = false;
     if (tab === 'records') {
       loadWorkRecords();
       return;
@@ -2203,6 +2558,37 @@ onMounted(() => {
 .maintenance-task-page {
   padding: 16px;
 
+  .simple-card-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .simple-card-item {
+    border: 1px solid #ebeef5;
+    border-radius: 8px;
+    background: #fff;
+    padding: 12px;
+  }
+
+  .card-title {
+    font-weight: 600;
+    margin-bottom: 8px;
+  }
+
+  .card-meta {
+    font-size: 13px;
+    color: #606266;
+    margin-bottom: 4px;
+  }
+
+  .card-actions {
+    margin-top: 8px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
   :deep(.tabs-hidden) {
     .el-tabs__header {
       display: none;
@@ -2212,13 +2598,13 @@ onMounted(() => {
       padding: 0;
     }
 
-    &.el-tabs--border-card {
+    &.el-tabs--card {
       border: none;
       background: transparent;
       box-shadow: none;
     }
 
-    &.el-tabs--border-card > .el-tabs__content {
+    &.el-tabs--card > .el-tabs__content {
       background: transparent;
     }
   }

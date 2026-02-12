@@ -6,6 +6,9 @@
         <el-button type="primary" @click="isRecordsView ? goFormView() : goRecordsView()">
           {{ isRecordsView ? '自检表单' : '查询' }}
         </el-button>
+        <el-button v-if="isRecordsView && isSimpleMode" @click="simpleShowTable = !simpleShowTable">
+          {{ simpleShowTable ? '切换卡片' : '切换表格' }}
+        </el-button>
         <el-button v-if="isRecordsView" type="primary" :loading="exporting" @click="exportRecords">
           <el-icon><Upload /></el-icon>批量导出
         </el-button>
@@ -81,6 +84,11 @@
     </el-card>
 
     <template v-if="isRecordsView">
+      <SimpleFilterBar
+        :enabled="isSimpleMode"
+        v-model:expanded="simpleFilterExpanded"
+        :summary-text="simpleFilterSummary"
+      >
       <el-card class="filter-card">
         <FilterBar>
         <div class="filter-item">
@@ -162,10 +170,11 @@
         </div>
         </FilterBar>
       </el-card>
+      </SimpleFilterBar>
 
         <div class="history-section">
           <h3>记录列表</h3>
-          <el-table :data="historyList" stripe border>
+          <el-table v-if="!isSimpleMode || simpleShowTable" :data="historyList" stripe border>
             <el-table-column prop="inspectionDate" label="日期" width="120">
               <template #default="{ row }">
                 {{ formatDate(row.inspectionDate) }}
@@ -199,6 +208,29 @@
               </template>
             </el-table-column>
           </el-table>
+          <div v-else class="simple-card-list">
+            <el-empty v-if="historyList.length === 0" description="暂无记录" />
+            <el-card v-for="row in historyList" :key="row.id || `${row.inspectionDate}-${row.submitTime}`" class="simple-record-card">
+              <template #header>
+                <div class="card-header">
+                  <span class="card-title">{{ formatDate(row.inspectionDate) }}</span>
+                  <el-tag :type="getInspectionResult(row).type">{{ getInspectionResult(row).text }}</el-tag>
+                </div>
+              </template>
+              <div class="card-body">
+                <div class="card-line">
+                  <span>责任区：{{ getWorkTypeNames(row) }}</span>
+                </div>
+                <div class="card-line">
+                  <span>积分：{{ getInspectionPoints(row) }}</span>
+                  <span>提交时间：{{ formatDateTime(row.submitTime) }}</span>
+                </div>
+                <div class="card-actions">
+                  <el-button link type="primary" @click="viewDetail(row)">详情</el-button>
+                </div>
+              </div>
+            </el-card>
+          </div>
         </div>
 
         <div class="pagination-wrapper">
@@ -280,6 +312,7 @@
 <script setup>
 import { ref, onMounted, computed, watch } from 'vue';
 import { useUserStore } from '@/store/modules/user';
+import { useUiModeStore } from '@/store/modules/uiMode';
 import { useUpload } from '@/composables/useUpload';
 import { ElMessage } from 'element-plus';
 import { CircleCheck, Warning } from '@element-plus/icons-vue';
@@ -289,10 +322,12 @@ import request from '@/api/request';
 import { getHygieneAreasByPosition } from '@/api/hygieneManagement';
 import HygieneAreaChecklist from '@/modules/inspection/components/HygieneAreaChecklist.vue';
 import FilterBar from '@/components/common/FilterBar.vue';
+import SimpleFilterBar from '@/components/common/SimpleFilterBar.vue';
 import FormDialog from '@/components/system/FormDialog.vue';
 import { buildExportFileName, exportRowsToXlsx } from '@/utils/tableExport';
 
 const userStore = useUserStore();
+const uiModeStore = useUiModeStore();
 const route = useRoute();
 const router = useRouter();
 
@@ -306,6 +341,10 @@ const goFormView = () => {
 
 const { uploadUrl, uploadHeaders, resolveUploadUrl } = useUpload();
 const formRef = ref(null);
+const canUseSimpleMode = computed(() => userStore.roleCode === 'dev_test' || userStore.baseRoleCode === 'dev_test');
+const isSimpleMode = computed(() => canUseSimpleMode.value && uiModeStore.isSimpleMode);
+const simpleShowTable = ref(false);
+const simpleFilterExpanded = ref(false);
 
 const currentDate = ref(dayjs().format('YYYY-MM-DD'));
 const today = dayjs().format('YYYY-MM-DD');
@@ -344,6 +383,27 @@ const sortOrderOptions = [
   { label: '升序', value: 'asc' },
   { label: '降序', value: 'desc' }
 ];
+
+const simpleFilterSummary = computed(() => {
+  const parts = [];
+  if (startDate.value || endDate.value) {
+    const start = startDate.value || '不限';
+    const end = endDate.value || '不限';
+    parts.push(`日期=${start}~${end}`);
+  }
+  if (historyFilters.value.sortOrder) {
+    const sortLabel = sortOrderOptions.find(item => item.value === historyFilters.value.sortOrder)?.label;
+    if (sortLabel) parts.push(`排序=${sortLabel}`);
+  }
+  if (historyFilters.value.areaName && historyFilters.value.areaName !== 'all') {
+    parts.push(`责任区=${historyFilters.value.areaName}`);
+  }
+  if (historyFilters.value.result && historyFilters.value.result !== 'all') {
+    const resultLabel = historyResultOptions.find(item => item.value === historyFilters.value.result)?.label;
+    if (resultLabel) parts.push(`检查结果=${resultLabel}`);
+  }
+  return parts.length > 0 ? parts.join(' | ') : '当前筛选：全部';
+});
 
 const pagination = ref({
   page: 1,
@@ -963,6 +1023,12 @@ watch(isRecordsView, (value) => {
   if (!value) return;
   loadHistory();
 });
+
+watch(isSimpleMode, (enabled) => {
+  if (enabled) return;
+  simpleShowTable.value = false;
+  simpleFilterExpanded.value = false;
+});
 </script>
 
 <style lang="scss" scoped>
@@ -982,10 +1048,60 @@ watch(isRecordsView, (value) => {
       cursor: pointer;
       color: var(--el-color-primary);
     }
+
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
   }
 
   .filter-card {
     margin-bottom: 20px;
+  }
+
+  .simple-card-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .simple-record-card {
+    border-left: 4px solid #409eff;
+
+    .card-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .card-title {
+      font-size: 16px;
+      font-weight: 600;
+      color: #303133;
+    }
+
+    .card-body {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .card-line {
+      display: flex;
+      gap: 12px;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      color: #606266;
+      font-size: 14px;
+    }
+
+    .card-actions {
+      display: flex;
+      justify-content: flex-end;
+    }
   }
 
   .inspection-form-card {

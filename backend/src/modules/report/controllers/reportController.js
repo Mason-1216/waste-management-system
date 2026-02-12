@@ -18,8 +18,10 @@ export const saveAdjustedHourlyPoints = reportService.saveAdjustedHourlyPoints;
 export const getAdjustedHourlyPointsHistory = reportService.getAdjustedHourlyPointsHistory;
 export const downloadManualPointsTemplate = reportService.downloadManualPointsTemplate;
 export const importManualPoints = reportService.importManualPoints;
+export const previewImportManualPoints = reportService.previewImportManualPoints;
 export const downloadManualWorkHoursTemplate = reportService.downloadManualWorkHoursTemplate;
 export const importManualWorkHours = reportService.importManualWorkHours;
+export const previewImportManualWorkHours = reportService.previewImportManualWorkHours;
 export const getManualWorkHoursList = reportService.getManualWorkHoursList;
 export const updateManualWorkHour = reportService.updateManualWorkHour;
 export const deleteManualWorkHour = reportService.deleteManualWorkHour;
@@ -44,8 +46,10 @@ export default {
   getAdjustedHourlyPointsHistory,
   downloadManualPointsTemplate,
   importManualPoints,
+  previewImportManualPoints,
   downloadManualWorkHoursTemplate,
   importManualWorkHours,
+  previewImportManualWorkHours,
   getManualWorkHoursList,
   updateManualWorkHour,
   deleteManualWorkHour,

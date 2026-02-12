@@ -629,16 +629,114 @@ PREPARE stmt FROM @sql;
 EXECUTE stmt;
 DEALLOCATE PREPARE stmt;
 
--- 修正应用小时积分表
+-- 应用小时积分表（实际值 + 修正值）
 CREATE TABLE IF NOT EXISTS adjusted_hourly_points (
     id INT PRIMARY KEY AUTO_INCREMENT,
     user_id INT NOT NULL COMMENT '用户ID',
-    end_month VARCHAR(10) NOT NULL COMMENT '统计截止月（YYYY-MM）',
-    adjusted_points DECIMAL(10, 2) NOT NULL COMMENT '修正应用小时积分',
+    end_month VARCHAR(10) NOT NULL COMMENT '记录月份（YYYY-MM）',
+    actual_points DECIMAL(10, 4) NULL COMMENT '实际应用小时积分',
+    adjusted_points DECIMAL(10, 2) NULL COMMENT '修正应用小时积分',
+    total_points DECIMAL(12, 2) NULL COMMENT '统计窗口累计积分',
+    total_hours DECIMAL(12, 2) NULL COMMENT '统计窗口累计工时',
+    range_start_month VARCHAR(10) NULL COMMENT '统计窗口起始月（YYYY-MM）',
+    range_end_month VARCHAR(10) NULL COMMENT '统计窗口结束月（YYYY-MM）',
     created_by_id INT COMMENT '创建人ID',
     created_by_name VARCHAR(50) COMMENT '创建人姓名',
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     UNIQUE KEY uk_user_month (user_id, end_month),
     INDEX idx_end_month (end_month)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='修正应用小时积分';
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='应用小时积分（实际/修正）';
+
+-- adjusted_points 允许为空（仅保存实际值时无需修正值）
+SET @sql := (
+    SELECT IF(
+        COUNT(*) > 0,
+        'ALTER TABLE adjusted_hourly_points MODIFY COLUMN adjusted_points DECIMAL(10, 2) NULL COMMENT ''修正应用小时积分''',
+        'SELECT 1'
+    )
+    FROM information_schema.COLUMNS
+    WHERE table_schema = DATABASE()
+      AND table_name = 'adjusted_hourly_points'
+      AND column_name = 'adjusted_points'
+      AND IS_NULLABLE = 'NO'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+-- 补齐实际值及统计窗口字段
+SET @sql := (
+    SELECT IF(
+        COUNT(*) = 0,
+        'ALTER TABLE adjusted_hourly_points ADD COLUMN actual_points DECIMAL(10, 4) NULL COMMENT ''实际应用小时积分'' AFTER end_month',
+        'SELECT 1'
+    )
+    FROM information_schema.COLUMNS
+    WHERE table_schema = DATABASE()
+      AND table_name = 'adjusted_hourly_points'
+      AND column_name = 'actual_points'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @sql := (
+    SELECT IF(
+        COUNT(*) = 0,
+        'ALTER TABLE adjusted_hourly_points ADD COLUMN total_points DECIMAL(12, 2) NULL COMMENT ''统计窗口累计积分'' AFTER adjusted_points',
+        'SELECT 1'
+    )
+    FROM information_schema.COLUMNS
+    WHERE table_schema = DATABASE()
+      AND table_name = 'adjusted_hourly_points'
+      AND column_name = 'total_points'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @sql := (
+    SELECT IF(
+        COUNT(*) = 0,
+        'ALTER TABLE adjusted_hourly_points ADD COLUMN total_hours DECIMAL(12, 2) NULL COMMENT ''统计窗口累计工时'' AFTER total_points',
+        'SELECT 1'
+    )
+    FROM information_schema.COLUMNS
+    WHERE table_schema = DATABASE()
+      AND table_name = 'adjusted_hourly_points'
+      AND column_name = 'total_hours'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @sql := (
+    SELECT IF(
+        COUNT(*) = 0,
+        'ALTER TABLE adjusted_hourly_points ADD COLUMN range_start_month VARCHAR(10) NULL COMMENT ''统计窗口起始月（YYYY-MM）'' AFTER total_hours',
+        'SELECT 1'
+    )
+    FROM information_schema.COLUMNS
+    WHERE table_schema = DATABASE()
+      AND table_name = 'adjusted_hourly_points'
+      AND column_name = 'range_start_month'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @sql := (
+    SELECT IF(
+        COUNT(*) = 0,
+        'ALTER TABLE adjusted_hourly_points ADD COLUMN range_end_month VARCHAR(10) NULL COMMENT ''统计窗口结束月（YYYY-MM）'' AFTER range_start_month',
+        'SELECT 1'
+    )
+    FROM information_schema.COLUMNS
+    WHERE table_schema = DATABASE()
+      AND table_name = 'adjusted_hourly_points'
+      AND column_name = 'range_end_month'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;

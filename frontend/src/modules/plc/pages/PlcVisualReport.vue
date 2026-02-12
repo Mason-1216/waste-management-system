@@ -1,66 +1,72 @@
 ﻿<template>
   <div class="plc-visual-report">
     <el-card class="filter-card">
-      <FilterBar>
-        <div class="filter-item">
-          <span class="filter-label">开始日期</span>
-          <el-date-picker
-            v-model="startDate"
-            type="date"
-            placeholder="全部"
-            value-format="YYYY-MM-DD"
-            @change="handleQuery"
-          />
-        </div>
-        <div class="filter-item">
-          <span class="filter-label">结束日期</span>
-          <el-date-picker
-            v-model="endDate"
-            type="date"
-            placeholder="全部"
-            value-format="YYYY-MM-DD"
-            @change="handleQuery"
-          />
-        </div>
-        <div class="filter-item">
-          <span class="filter-label">场站</span>
-          <FilterSelect v-model="filters.stationId" placeholder="全部" filterable clearable @change="handleQuery" @clear="handleQuery">
-            <el-option label="全部" value="all" />
-            <el-option
-              v-for="station in stations"
-              :key="station.id"
-              :label="station.station_name"
-              :value="station.id"
+      <SimpleFilterBar
+        :enabled="isSimpleMode"
+        v-model:expanded="simpleFilterExpanded"
+        :summary-text="simpleFilterSummary"
+      >
+        <FilterBar>
+          <div class="filter-item">
+            <span class="filter-label">开始日期</span>
+            <el-date-picker
+              v-model="startDate"
+              type="date"
+              placeholder="全部"
+              value-format="YYYY-MM-DD"
+              @change="handleQuery"
             />
-          </FilterSelect>
-        </div>
-        <div class="filter-item">
-          <span class="filter-label">分类</span>
-          <FilterSelect v-model="filters.categoryId" placeholder="全部" filterable clearable @change="handleQuery" @clear="handleQuery">
-            <el-option label="全部" value="all" />
-            <el-option
-              v-for="category in categories"
-              :key="category.id"
-              :label="category.category_name"
-              :value="category.id"
+          </div>
+          <div class="filter-item">
+            <span class="filter-label">结束日期</span>
+            <el-date-picker
+              v-model="endDate"
+              type="date"
+              placeholder="全部"
+              value-format="YYYY-MM-DD"
+              @change="handleQuery"
             />
-          </FilterSelect>
-        </div>
-        <div class="filter-item">
-          <span class="filter-label">周期</span>
-          <FilterSelect v-model="timeGranularity" placeholder="全部" filterable style="width: 140px" @change="handleGranularityChange">
-            <el-option label="全部" value="all" />
-            <el-option label="日" value="day" />
-            <el-option label="周" value="week" />
-            <el-option label="月" value="month" />
-            <el-option label="年" value="year" />
-          </FilterSelect>
-        </div>
-      </FilterBar>
+          </div>
+          <div class="filter-item">
+            <span class="filter-label">场站</span>
+            <FilterSelect v-model="filters.stationId" placeholder="全部" filterable clearable @change="handleQuery" @clear="handleQuery">
+              <el-option label="全部" value="all" />
+              <el-option
+                v-for="station in stations"
+                :key="station.id"
+                :label="station.station_name"
+                :value="station.id"
+              />
+            </FilterSelect>
+          </div>
+          <div class="filter-item">
+            <span class="filter-label">分类</span>
+            <FilterSelect v-model="filters.categoryId" placeholder="全部" filterable clearable @change="handleQuery" @clear="handleQuery">
+              <el-option label="全部" value="all" />
+              <el-option
+                v-for="category in categories"
+                :key="category.id"
+                :label="category.category_name"
+                :value="category.id"
+              />
+            </FilterSelect>
+          </div>
+          <div class="filter-item">
+            <span class="filter-label">周期</span>
+            <FilterSelect v-model="timeGranularity" placeholder="全部" filterable style="width: 140px" @change="handleGranularityChange">
+              <el-option label="全部" value="all" />
+              <el-option label="日" value="day" />
+              <el-option label="周" value="week" />
+              <el-option label="月" value="month" />
+              <el-option label="年" value="year" />
+            </FilterSelect>
+          </div>
+        </FilterBar>
+      </SimpleFilterBar>
     </el-card>
 
     <el-card class="content-card">
-      <el-tabs v-model="activeTab" @tab-change="handleTabChange">
+      <el-tabs v-model="activeTab" type="card" @tab-change="handleTabChange">
         <el-tab-pane label="计量型图表" name="cumulative">
           <div class="chart-container">
             <h3>用量趋势图</h3>
@@ -90,10 +96,12 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted, nextTick } from 'vue'
+import { computed, ref, reactive, onMounted, nextTick } from 'vue'
 import dayjs from 'dayjs'
 import { ElMessage } from 'element-plus'
 import * as echarts from 'echarts'
+import SimpleFilterBar from '@/components/common/SimpleFilterBar.vue'
+import { useSimpleMode } from '@/composables/useSimpleMode'
 import { getCumulativeReport, getFluctuatingReport, getCategories } from '@/api/plcMonitor'
 import { getAllStations } from '@/api/station'
 const activeTab = ref('cumulative')
@@ -102,10 +110,26 @@ const endDate = ref(dayjs().format('YYYY-MM-DD'))
 const timeGranularity = ref('day')
 const stations = ref([])
 const categories = ref([])
+const { isSimpleMode, simpleFilterExpanded } = useSimpleMode()
 
 const filters = reactive({
   stationId: 'all',
   categoryId: 'all'
+})
+const resolveStationLabel = (id) => {
+  if (id === 'all') return '全部'
+  const matched = stations.value.find(item => item.id === id)
+  return matched?.station_name || String(id)
+}
+const resolveCategoryLabel = (id) => {
+  if (id === 'all') return '全部'
+  const matched = categories.value.find(item => item.id === id)
+  return matched?.category_name || String(id)
+}
+const simpleFilterSummary = computed(() => {
+  const station = resolveStationLabel(filters.stationId)
+  const category = resolveCategoryLabel(filters.categoryId)
+  return `当前筛选：开始=${startDate.value} | 结束=${endDate.value} | 场站=${station} | 分类=${category} | 周期=${timeGranularity.value}`
 })
 
 const cumulativeTrendChart = ref(null)

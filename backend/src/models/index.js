@@ -51,6 +51,8 @@ import PlcReading from './PlcReading.js';
 import ManualPointsEntry from './ManualPointsEntry.js';
 import ManualWorkHour from './ManualWorkHour.js';
 import AdjustedHourlyPoints from './AdjustedHourlyPoints.js';
+import QuarterlyAwardGroup from './QuarterlyAwardGroup.js';
+import QuarterlyAwardDetail from './QuarterlyAwardDetail.js';
 
 // 导出所有模型
 export {
@@ -104,7 +106,9 @@ export {
   PlcReading,
   ManualPointsEntry,
   ManualWorkHour,
-  AdjustedHourlyPoints
+  AdjustedHourlyPoints,
+  QuarterlyAwardGroup,
+  QuarterlyAwardDetail
 };
 
 // 定义模型关联关系
@@ -282,6 +286,11 @@ export const defineAssociations = () => {
   PlcReading.belongsTo(PlcCategory, { foreignKey: 'category_id', as: 'category' });
   PlcReading.belongsTo(Station, { foreignKey: 'station_id', as: 'station' });
   PlcMonitorConfig.hasMany(PlcReading, { foreignKey: 'config_id', as: 'readings' });
+
+  // 季度积分奖分组与明细
+  QuarterlyAwardGroup.hasMany(QuarterlyAwardDetail, { foreignKey: 'group_id', as: 'details' });
+  QuarterlyAwardDetail.belongsTo(QuarterlyAwardGroup, { foreignKey: 'group_id', as: 'group' });
+  QuarterlyAwardDetail.belongsTo(User, { foreignKey: 'user_id', as: 'user' });
 };
 
 export default {

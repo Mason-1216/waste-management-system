@@ -1,6 +1,6 @@
 【编码要求】本文件必须使用UTF-8保存与写入，禁止使用其它编码。
 # 运行项目管理系统 - 上下文摘要
-> 最后更新 2026-02-11
+> 最后更新 2026-02-12 
 
 ## 项目目标
 构建废弃物处理场站的运行管理系统，覆盖多角色、多场站的日常运营管理：
@@ -13,7 +13,9 @@
 
 ## 当前状态
 ### 已完成（摘要）
-- 积分统计模块升级：新增“积分汇总/应用小时积分/季度积分奖(占位)”三个子项（侧边栏子菜单）；积分汇总支持日/周/月/年（默认日=当天，周=周一~周日），包含“积分统计表+积分明细表”两张独立表格（统一样式、均分页）；积分统计表与积分明细表筛选项彻底分离；积分统计表筛选放回统计表卡片内部（统计筛选），筛选项/列名统一使用“姓名”；积分明细表筛选放在明细表卡片内部，筛选项为维度/日期/姓名/任务名称/任务类别/数据来源，并新增“任务类别”列；页面优化：表格标题字号高于筛选标题，筛选区恢复全局 FilterBar 默认布局（非折叠/非网格），并将积分明细表展示在积分统计表上方；统计表点击各类别数字会在该行下方展开/折叠粗略明细（项目/单位积分/次数/得分/来源），点另一行自动收起上一行；“派发任务”在积分统计中更名为“临时任务”；数据来源统一为“汇总表统计/人工录入”。
+- 积分汇总按钮区优化：积分明细表与积分统计表顶部导入/导出按钮区改为右侧集中对齐，避免随窗口分散；批量导出/下载模板/人工导入/导入工时按钮补充图标（Download/Upload）。
+- 应用小时积分优化：计算页与历史页筛选区统一 FilterBar 交互并新增年份筛选（取消历史页查询按钮）；历史页人名选择改为“搜索+人员按钮+全选/清除+分页”；应用小时积分可视化改为两张“最大值/最小值/平均值”组合图（实际值、修正值分开展示）；周期性积分分析图右上角最大/最小示意图例整体向左上微调。
+- 积分统计模块升级：新增“积分汇总/应用小时积分/季度积分奖”三个子项（侧边栏子菜单）；积分汇总支持日/周/月/年（默认日=当天，周=周一~周日），包含“积分统计表+积分明细表”两张独立表格（统一样式、均分页）；积分统计表与积分明细表筛选项彻底分离；积分统计表筛选放回统计表卡片内部（统计筛选），筛选项/列名统一使用“姓名”；积分明细表筛选放在明细表卡片内部，筛选项为维度/日期/姓名/任务名称/任务类别/数据来源，并新增“任务类别”列；页面优化：表格标题字号高于筛选标题，筛选区恢复全局 FilterBar 默认布局（非折叠/非网格），并将积分明细表展示在积分统计表上方；统计表点击各类别数字会在该行下方展开/折叠粗略明细（项目/单位积分/次数/得分/来源），点另一行自动收起上一行；“派发任务”在积分统计中更名为“临时任务”；数据来源统一为“汇总表统计/人工录入”。
 - 积分统计新增接口与导入：GET /api/reports/points-summary-period、GET /api/reports/points-details、GET /api/reports/points-manual-template、POST /api/reports/points-manual-import（经理角色，模板新增“任务类别(Ⅰ类/Ⅱ类/Ⅲ类/Ⅳ类)”列，选填不填默认Ⅰ类）；GET /api/reports/applied-hourly-points（近6个月累计总积分/工时）、GET /api/reports/work-hours-manual-template、POST /api/reports/work-hours-manual-import（经理角色）。
 - 积分可视化分析：新增 /points-summary/visual（Top10+个人分层堆叠，支持“得分大类/任务类别”两套维度且顺序可调并本地保存；筛选项统一使用“姓名”；任务类别固定为Ⅰ类/Ⅱ类/Ⅲ类/Ⅳ类，来源包含岗位工作/临时任务/自行申请/维修任务/人工导入）、新增 /points-summary/applied-hourly-visual（Top10应用小时积分+个人分类分层堆叠，筛选项统一使用“姓名”）。
 - 任务类别统一：岗位工作任务汇总表/临时工作任务汇总表/维修任务汇总表任务类别固定为Ⅰ类/Ⅱ类/Ⅲ类/Ⅳ类；新增/编辑/导入时空值或旧值统一按Ⅰ类；导入模板与“填写说明”同步更新。
@@ -888,19 +890,16 @@ docker logs wms-backend --tail 50
 
 ## 2026-01-27
 
-- ??????/???????????????????????/????ID???????????? inspection_items ???????
 
 
 
 ## 2026-01-27
 
-- ???????????????????????????????
 
 
 
 ## 2026-01-27
 
-- ???????? /api/self-inspections/my 500??????? result ????????????
 
 ## 2026-01-27
 
@@ -919,11 +918,9 @@ docker logs wms-backend --tail 50
 - 权限菜单替换为 menu:/inspection-records，移除卫生菜单内的员工检查记录入口。
 ## 2026-01-27
 
-- ?????????? permissionSeeds.js ???/??????? Node ?????
 
 ## 2026-01-27
 
-- ?????????permissionSeeds.js ?? UTF-8 BOM????????
 
 ## 2026-01-27
 
@@ -938,7 +935,6 @@ docker logs wms-backend --tail 50
 ## 2026-01-27
 
 - 开发测试可见排班管理视图：排班管理角色判断与路由角色加入 dev_test。
-- ?????????/???????????????????????????
 
 ## 2026-02-06
 - PLC历史数据：筛选区移除下载模板/批量导入按钮（保留页头按钮）；汇总与历史表格不再被大卡片包裹，表格与分页分离显示。
@@ -959,12 +955,9 @@ docker logs wms-backend --tail 50
 - 维保数据报表：全年趋势图增加场站筛选（按角色/可用场站限制），选择场站后设备下拉仅显示该场站设备；筛选项标签文本移到控件外。
 
 ## 2026-02-07
-- ??????????????????????????????/????/????/????/????/?????/??/??/????????????????????????
-- ???????????????/??/??????????????????????????????????
 
 ## 2026-02-07
 - 用户管理/权限：菜单权限（menuCodes）支持在基准角色之上给单个用户增加菜单；路由守卫改为按菜单权限（基于权限目录的最长前缀匹配）放行/拦截，允许用户单独勾选的菜单突破写死的角色限制，并支持 deny 生效；侧边栏与首页快捷操作按菜单权限过滤并自动注入角色菜单里缺失但用户被授予的菜单项（如 岗位工作任务汇总表）。
-- ????????? processing ?????????????/???????????????????????????????????
 
 ## 2026-02-07
 - 临时任务：数据库迁移补齐 temporary_tasks 表 deduction_reason/deduction_points 字段，修复 /api/temporary-tasks 500（Unknown column TemporaryTask.deduction_reason）。
@@ -1119,3 +1112,88 @@ docker logs wms-backend --tail 50
 - 后端(Report): GET /api/reports/points-cycle-analysis 接口返回数据结构升级，dailyPoints 从数字改为对象 { total, byCategory, byTaskCategory }，支持按得分大类（safety/hygiene/repair/maintenance/fixed/dispatch/selfApply/deduction）和任务类别（Ⅰ类/Ⅱ类/Ⅲ类/Ⅳ类）分类统计。
 - 前端(Report): 周期性积分分析页面图表改为堆积柱状图，每个日期/月份/年份显示两根柱子（最大值/最小值），每根柱子内部按分类堆积（最大值实色、最小值半透明），同时显示平均值折线图；标题右侧切换按钮支持"任务类别统计"和"得分大类统计"两种维度。
 - 前端(Report): 得分大类统计不含扣分，只显示正向得分类别（安全/卫生/维修/保养/固定工作/临时任务/自行申请）。
+
+## 2026-02-12
+- 前端(保养): 保养计划岗位分配改为按“设备编号-岗位”维度展示与管理，移除“保养周期”列与筛选；分配弹窗同样不再展示周期列（仅用于展示设备信息与选择设备）。
+- 前端(保养): 保养计划岗位分配新增“下载模板/批量导入”，导入前支持预览校验（行号/场站/岗位/设备编号/错误原因），确认后批量建立“设备编号-岗位”关联。
+- 后端(保养): /api/maintenance-position-plans 按“场站-岗位-设备编号”合并返回；删除分配时按“场站-岗位-设备编号”批量解除关联。
+- 后端(保养): 新增/批量导入保养计划库时，若该设备编号已存在岗位分配，自动同步将新计划纳入对应岗位分配，确保新增计划不影响岗位关联。
+- 后端(保养): 新增 POST /api/maintenance-position-plans/batch-import 接口，支持按模板批量导入“设备编号-岗位”关联（自动展开到设备的全部保养计划ID，重复自动跳过）。
+- 后端(Report): 应用小时积分口径调整：记录月份=展示月份；每月实际应用小时积分按“记录月往前6个整月”的累计积分/累计工时计算（不包含记录月份当月）。
+- 后端(Report/DB): adjusted_hourly_points 扩展保存实际值与统计窗口（actual_points/total_points/total_hours/range_start_month/range_end_month），adjusted_points 允许为空；历史查询时覆盖更新实际值快照。
+- 前端(Report): 应用小时积分计算页筛选文案改为“记录月份”；历史记录分两张表展示“实际应用小时积分/修正应用小时积分”。
+- 后端(Report): 恢复季度积分奖路由注册，修复权限中间件引用与Koa路由写法，季度积分奖接口正常可用（分组/计算/历史/可视化）。
+- 前端(Report): 季度积分奖计算页人员下拉取数修复：/users 查询参数改为 status=1，并将用户字段映射为 { id, name }。
+- 后端(PLC监控): 临时移除“配置导入预览/历史导入预览”路由注册（路由引用未实现的 controller 方法，导致后端启动崩溃）。
+- 后端(系统): 临时移除“用户批量导入预览”路由注册（服务未实现，导致后端启动崩溃）。
+- 前端(Report): 积分统计（积分明细/积分统计/任务积分分析/周期性积分分析）页面统一组件：按钮区改为统一工具栏样式，筛选下拉统一使用 FilterSelect/FilterAutocomplete，表格统一包裹 TableWrapper，分页参数与样式统一（含展开明细与人员选择分页）。
+- 后端(PLC监控): 修复启动崩溃：将 previewImportConfigs / previewImportHistoryData 纳入 plcMonitorController 默认导出，恢复 /plc-monitor/configs/import-preview 与 /plc-monitor/history/import-preview 路由中间件函数引用。
+- 前端(Layout/权限): 新增“标准版/简洁版”模式开关状态管理；切换入口仅 dev_test 可见；非 dev_test 登录或路由访问时强制回退 standard（并覆盖 uiMode=simple 查询参数），避免非测试角色进入简洁版。
+- 前端(简洁版首批): 排班管理/临时任务填报与记录/故障上报页面接入简洁版卡片视图（含“切换表格”、筛选摘要折叠）；其中排班支持场站视图/人员视图切换，故障上报补充状态颜色图例。
+- 前端(导入预览统一): 维修任务汇总表、临时工作任务汇总表、故障上报-设备管理、设备保养计划库、保养计划岗位分配统一接入 ImportPreviewDialog，导入改为“预览 -> 确认导入”流程。
+- 前端(导入失败提示): 以上 Excel 批量导入入口统一透传后端 message，失败弹窗显示具体原因；故障上报“设备导入模板”改为调用后端模板下载，修复模板表头乱码。
+- 后端(保养岗位导入): 新增 POST /api/maintenance-position-plans/batch-import-preview；POST /api/maintenance-position-plans/batch-import 改为“同场站同设备存在即更新岗位”，保证同设备仅保留一个岗位分配，设备已分配到其他岗位时导入按“将更新”处理。
+- 后端(维修任务导入): /api/repair-task-library/import 对无变更记录改为 skip，并在导入汇总中新增“跳过”统计，和预览结果口径一致。
+
+
+
+
+- 前端(简洁版统一组件): 新增 `SimpleFilterBar` 组件（筛选摘要 + 折叠展开），统一简洁版筛选区交互与样式，避免各页面重复实现。
+- 前端(简洁版): 临时任务填报/记录、故障上报、排班管理改为复用 `SimpleFilterBar`；排班管理同时修复简洁版角色判定，支持 `roleCode` 或 `baseRoleCode` 为 `dev_test` 时进入简洁版。
+- 前端(简洁版-岗位工作): 固定任务填报、岗位工作任务汇总表、岗位工作完成情况记录接入简洁版（卡片/表格切换）；岗位工作相关记录页接入统一筛选折叠摘要。
+- 发布验证: 前端 `pnpm -C frontend build` 通过；执行 `docker-compose build backend frontend` 与 `docker-compose up -d --no-deps backend frontend` 完成重建与重启；PLC 容器保持未重启（运行持续）。
+- 前端(简洁版-安全/卫生): 安全自检、安全他检、卫生自检、卫生他检4页在“查询视图”新增简洁版卡片/表格切换，并接入统一筛选折叠摘要组件 `SimpleFilterBar`。
+- 前端(简洁版-检查记录): 安全/卫生检查记录在简洁版下改为卡片展示核心信息（日期、检查结果、对象/责任区、积分等），保留“详情/查看”入口与原有数据权限、筛选逻辑一致。
+
+
+- 前端(简洁版-维修流程): 维修派发单(/maintenance-dispatch)、维修工作(/repair-work)、设备维修记录(/repair-records)新增简洁版卡片/表格切换，卡片默认折叠并展示状态/紧急程度，筛选区统一接入 `SimpleFilterBar`。
+- 前端(简洁版-设备与任务库): 设备管理(/device-faults/equipment)、维修任务汇总表(/device-faults/task-library)新增简洁版卡片/表格切换；支持卡片勾选批量删除、折叠查看详情，并统一使用筛选摘要折叠组件 `SimpleFilterBar`。
+
+- 前端(Report): 任务积分分析、周期性积分分析、应用小时积分（历史记录/可视化分析）已将“搜索人名”从顶部筛选栏移入“选择人员”区域，并放到“全选”按钮左侧，保持输入即筛选与联想选择能力。
+- 前端(Report): 调整后保留原有业务筛选项（任务积分分析保留可视化维度/统计维度/起止日期，周期性积分分析保留起止日期，应用小时积分保留年份），仅统一人名筛选入口位置与操作区布局。
+
+## 2026-02-12 (部门删除500修复)
+- 后端(Core/组织): 修复删除部门接口500：`departmentService.deleteDepartment` 原按不存在的 `users.department_id` 统计导致 SQL 报错；改为按 `users.department_name = departments.dept_name` 校验部门下用户占用，删除接口恢复正常返回。
+- 回归验证: 使用 admin 权限执行“新增部门 -> 删除部门”接口链路，确认删除成功（HTTP 200）且不再触发服务器内部错误。
+
+- 前端(PLC): PLC数据报表页Tab组件统一为卡片样式（type="card"），与积分汇总页一致。
+- 前端(UI统一): 全系统Tab组件完成统一，所有 `el-tabs` 已收敛为 `type="card"`（含报表、PLC、维保、卫生工作安排、组织管理等页面）；并同步修正保养任务页 `tabs-hidden` 下的卡片样式选择器。
+
+- Frontend(SimpleUI-Maintenance): Added simple mode card/table toggle and SimpleFilterBar summary-collapse for /maintenance-plan, /maintenance-record, /maintenance-task (plan/position/records).
+- Frontend(SimpleUI-Inspection): Added simple mode card/table toggle and SimpleFilterBar summary-collapse for /safety-rectification and /hygiene-work-arrangement; review validation now requires reviewConfirmed='YES' before score submit.
+- Frontend(Notification): Fixed garbled Chinese copy in Notification Management (title, group names, clear-unread confirm text).
+- Frontend(SimpleUI-Admin): Added simple mode card/table toggle and SimpleFilterBar summary-collapse to /user-management.
+
+## 2026-02-12 (积分统计模块统一到用户管理风格)
+- 后端(Report): 工时导入模板 `workHours` 示例值改为小数并统一两位小数格式（Excel 列格式 `0.00`），填写说明补充“保留2位小数”。
+- 前端(Report): 工时导入筛选默认值调整为“当年1月-12月”，姓名筛选改为“全部 + 下拉可选姓名”，移除查询按钮并保持筛选项变更自动查询。
+- 前端(Report): 工时导入操作区按钮样式与图标对齐用户管理页风格（下载模板/导入工时统一图标体系），按钮集中右侧显示。
+- 前端(Report): 季度积分奖历史页移除查询按钮，默认“今年 + 当前季度”，分组名称/姓名默认“全部”，筛选变更自动刷新。
+- 前端(Report): 季度积分奖计算/历史/可视化三页筛选区统一为用户管理页同款结构（`FilterBar + FilterSelect + SimpleFilterBar`），并补充简洁版筛选摘要文案。
+- 发布验证: 前端 `pnpm -C frontend build` 通过（含季度积分奖与工时导入页面）。
+
+## 2026-02-12 (季度积分奖可视化调整)
+- 后端(Report): 季度积分奖可视化排名数据改为全量返回（移除 Top10 限制），按“季度积分降序 -> 季度积分奖降序”排序，支持分组后显示完整人名排名。
+- 前端(Report): 季度积分奖可视化页精简为单图：一个排名组合图（柱状=个人季度积分总和，折线=个人季度积分奖(元)），保留年份/季度/分组筛选；选择分组后自动加载并按排名展示该分组人员。
+- 前端(Report): 排名图新增横轴滑动缩放（dataZoom），人员较多时可横向浏览完整排名。
+- 前端(Report): 按需求将组合图映射调整为“柱状=个人季度积分总和，折线=个人季度积分奖(元)”，与业务口径一致。
+
+- Frontend(SimpleUI-Report): Added simple mode card/table toggle + SimpleFilterBar summary-collapse for points detail/statistics, applied-hourly calc/history, work-hours import, and quarterly-award history pages.
+- Frontend(SimpleUI-Report): Added SimpleFilterBar summary-collapse to report index, points visual, points cycle analysis, and applied-hourly visual pages for unified folded filter UX.
+- Frontend(SimpleUI-PLC): Added simple mode card/table toggle + SimpleFilterBar summary-collapse for PLC data report (cumulative/fluctuating + top10 ranking card view).
+- Frontend(SimpleUI-PLC): Added SimpleFilterBar summary-collapse to PLC visual report filters.
+- Release verification: Frontend `pnpm -C frontend build` passed; `docker-compose build backend frontend` completed; backend/frontend containers recreated and running; PLC container uptime remains continuous (not restarted).
+
+## 2026-02-12 (Maintenance plan import defaults + validation compatibility)
+- Backend(Maintenance): relaxed `batch-import-preview/batch-import` numeric field validation to accept `null` for schedule fields (`weeklyDay/monthlyDay/yearlyMonth/yearlyDay`) to avoid 400 validation failures on old payloads.
+- Frontend(MaintenanceTask): maintenance-plan Excel import now auto-fills missing schedule fields by cycle type:
+  - weekly without weekly day -> default Monday (`1`)
+  - monthly without monthly day -> default day `1`
+  - yearly without month/day -> default `1/1`
+- Frontend(MaintenanceTask): added warning toast after preview build when defaults are auto-filled, so users can see exactly which defaults were applied.
+- Verification: with file `E:\\配置文件\\沃尔玛 保养计划 20260121.xlsx`, `/api/maintenance-plan-library/batch-import-preview` now returns HTTP 200; preview opens normally; rebuild/restart done for backend/frontend only.
+
+- Frontend(SimpleUI-Admin): Organization Management (/organization-management) now supports simple mode card/table toggle across station/department/company/role tabs, and all tab filters now use SimpleFilterBar summary-collapse.
+- Frontend(SimpleUI-Support): Help & Feedback admin record list now supports simple mode card/table toggle and SimpleFilterBar summary-collapse for user/type/content filters.
+- Frontend(SimpleUI-PLC): PLC realtime/config/history/category sub-pages now support simple mode card/table toggle for list sections and SimpleFilterBar summary-collapse for filter areas.
+- Release verification: Frontend `pnpm -C frontend build` passed; `docker-compose build backend frontend` completed; `docker-compose up -d --no-deps backend frontend` completed; PLC container remained running continuously (not restarted).

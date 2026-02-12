@@ -39,4 +39,10 @@ export const registerRepairTaskLibraryRoutes = (router) => {
     upload.single('file'),
     repairTaskLibraryController.importRepairTaskLibrary
   );
+  router.post(
+    '/repair-task-library/import-preview',
+    checkRole(['admin', 'department_manager', 'deputy_manager', 'senior_management']),
+    upload.single('file'),
+    repairTaskLibraryController.previewImportRepairTaskLibrary
+  );
 };

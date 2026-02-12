@@ -1,42 +1,37 @@
 <template>
   <div class="points-cycle-analysis-tab">
     <el-card class="filter-card">
-      <FilterBar>
-        <div class="filter-item">
-          <span class="filter-label">开始日期</span>
-          <el-date-picker
-            v-model="filters.startDate"
-            type="date"
-            placeholder="选择开始日期"
-            value-format="YYYY-MM-DD"
-            style="width: 160px"
-            @change="handleRangeChange"
-          />
-        </div>
+      <SimpleFilterBar
+        :enabled="isSimpleMode"
+        v-model:expanded="simpleFilterExpanded"
+        :summary-text="simpleFilterSummary"
+      >
+        <FilterBar>
+          <div class="filter-item">
+            <span class="filter-label">开始日期</span>
+            <el-date-picker
+              v-model="filters.startDate"
+              type="date"
+              placeholder="全部"
+              value-format="YYYY-MM-DD"
+              style="width: 160px"
+              @change="handleRangeChange"
+            />
+          </div>
 
-        <div class="filter-item">
-          <span class="filter-label">结束日期</span>
-          <el-date-picker
-            v-model="filters.endDate"
-            type="date"
-            placeholder="选择结束日期"
-            value-format="YYYY-MM-DD"
-            style="width: 160px"
-            @change="handleRangeChange"
-          />
-        </div>
-
-        <div class="filter-item">
-          <span class="filter-label">搜索人名</span>
-          <el-input
-            v-model="searchName"
-            placeholder="输入姓名筛选"
-            clearable
-            style="width: 180px"
-            @input="handleSearchName"
-          />
-        </div>
-      </FilterBar>
+          <div class="filter-item">
+            <span class="filter-label">结束日期</span>
+            <el-date-picker
+              v-model="filters.endDate"
+              type="date"
+              placeholder="全部"
+              value-format="YYYY-MM-DD"
+              style="width: 160px"
+              @change="handleRangeChange"
+            />
+          </div>
+        </FilterBar>
+      </SimpleFilterBar>
     </el-card>
 
     <el-card class="user-select-card">
@@ -44,6 +39,17 @@
         <div class="user-select-header">
           <span class="title">选择人员</span>
           <div class="actions">
+            <FilterAutocomplete
+              v-model="searchName"
+              :fetch-suggestions="fetchUserNameSuggestions"
+              trigger-on-focus
+              clearable
+              placeholder="输入姓名筛选"
+              style="width: 180px"
+              @select="handleSearchName"
+              @input="handleSearchName"
+              @clear="handleSearchName"
+            />
             <el-button type="primary" size="small" @click="selectAll">全选</el-button>
             <el-button size="small" @click="clearAll">清除</el-button>
             <span class="selected-count">已选 {{ selectedUserKeys.size }} 人</span>
@@ -64,7 +70,7 @@
         </el-button>
       </div>
 
-      <div class="user-pagination">
+      <div class="pagination-wrapper">
         <el-pagination
           v-model:current-page="userPage"
           v-model:page-size="userPageSize"
@@ -135,6 +141,9 @@ import dayjs from 'dayjs';
 import * as echarts from 'echarts';
 
 import FilterBar from '@/components/common/FilterBar.vue';
+import FilterAutocomplete from '@/components/common/FilterAutocomplete.vue';
+import SimpleFilterBar from '@/components/common/SimpleFilterBar.vue';
+import { useSimpleMode } from '@/composables/useSimpleMode';
 import request from '@/api/request';
 
 const resolveText = (value) => (typeof value === 'string' ? value.trim() : '');
@@ -169,6 +178,8 @@ const filters = reactive({
   startDate: '',
   endDate: ''
 });
+const { isSimpleMode, simpleFilterExpanded } = useSimpleMode();
+const simpleFilterSummary = computed(() => `当前筛选：开始=${filters.startDate || '全部'} | 结束=${filters.endDate || '全部'}`);
 
 const initDateRange = () => {
   const range = buildDefaultRange();
@@ -216,6 +227,15 @@ const userOptions = computed(() => {
   rows.sort((a, b) => (a.userName ?? '').localeCompare(b.userName ?? ''));
   return rows.map(row => ({ key: normalizeUserKey(row), userName: row.userName, userId: row.userId }));
 });
+
+const fetchUserNameSuggestions = (queryString, callback) => {
+  const query = typeof queryString === 'string' ? queryString.trim().toLowerCase() : '';
+  const list = Array.isArray(userOptions.value) ? userOptions.value : [];
+  const matched = query
+    ? list.filter(item => (item.userName ?? '').toLowerCase().includes(query))
+    : list;
+  callback(matched.slice(0, 50).map(item => ({ value: item.userName })));
+};
 
 const filteredUsers = computed(() => {
   const keyword = (searchName.value ?? '').trim().toLowerCase();
@@ -633,47 +653,47 @@ const renderStackedChart = (chartInstance, data) => {
       // Y轴（纵轴）
       {
         type: 'line',
-        right: 50,
-        top: 0,
+        right: 64,
+        top: -6,
         shape: { x1: 0, y1: 0, x2: 0, y2: 36 },
         style: { stroke: '#909399', lineWidth: 1 }
       },
       // X轴（横轴）
       {
         type: 'line',
-        right: -12,
-        top: 36,
+        right: 2,
+        top: 30,
         shape: { x1: 0, y1: 0, x2: 62, y2: 0 },
         style: { stroke: '#909399', lineWidth: 1 }
       },
       // 最大值柱子（空心，灰色边框）
       {
         type: 'rect',
-        right: 24,
-        top: 6,
+        right: 38,
+        top: 0,
         shape: { width: 16, height: 30 },
         style: { fill: 'transparent', stroke: '#909399', lineWidth: 2 }
       },
       // 最小值柱子（空心，橙红边框）
       {
         type: 'rect',
-        right: 0,
-        top: 16,
+        right: 14,
+        top: 10,
         shape: { width: 16, height: 20 },
         style: { fill: 'transparent', stroke: '#E74C3C', lineWidth: 2 }
       },
       // 最大值文字
       {
         type: 'text',
-        right: 20,
-        top: 40,
+        right: 34,
+        top: 34,
         style: { text: '最大', fill: '#606266', fontSize: 10 }
       },
       // 最小值文字
       {
         type: 'text',
-        right: -4,
-        top: 40,
+        right: 10,
+        top: 34,
         style: { text: '最小', fill: '#606266', fontSize: 10 }
       }
     ],
@@ -782,6 +802,7 @@ onBeforeUnmount(() => {
         display: flex;
         align-items: center;
         gap: 10px;
+        flex-wrap: wrap;
 
         .selected-count {
           color: #909399;
@@ -797,10 +818,8 @@ onBeforeUnmount(() => {
       min-height: 40px;
     }
 
-    .user-pagination {
+    .pagination-wrapper {
       margin-top: 16px;
-      display: flex;
-      justify-content: flex-end;
     }
   }
 

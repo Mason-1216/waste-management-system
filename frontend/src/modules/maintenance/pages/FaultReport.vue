@@ -7,24 +7,36 @@
         <el-button type="info" @click="downloadEquipmentTemplate">
           <el-icon><Download /></el-icon>下载模板
         </el-button>
-        <BaseUpload
-          ref="uploadEquipmentRef"
-          :auto-upload="false"
-          :show-file-list="false"
-          :on-change="handleEquipmentFileChange"
-          accept=".xlsx,.xls"
-        >
-          <el-button type="success">
-            <el-icon><Download /></el-icon>批量导入
-          </el-button>
-        </BaseUpload>
+        <el-button type="success" :loading="equipmentImportPreviewLoading" @click="triggerEquipmentImport">
+          <el-icon><Download /></el-icon>批量导入
+        </el-button>
         <el-button type="primary" @click="showAddEquipmentDialog">
           <el-icon><Plus /></el-icon>新增
         </el-button>
       </div>
     </div>
 
-    <el-tabs v-model="activeTab" type="border-card">
+    <input
+      ref="equipmentImportFileInputRef"
+      type="file"
+      accept=".xlsx,.xls"
+      style="display: none"
+      @change="handleEquipmentImportFileSelected"
+    />
+
+    <ImportPreviewDialog
+      v-model="equipmentImportPreviewVisible"
+      title="设备管理 - 导入预览"
+      :rows="equipmentImportPreviewRows"
+      :summary="equipmentImportPreviewSummary"
+      :truncated="equipmentImportPreviewTruncated"
+      :max-rows="equipmentImportPreviewMaxRows"
+      :confirm-loading="equipmentImportSubmitting"
+      :columns="equipmentImportColumns"
+      @confirm="confirmEquipmentImport"
+    />
+
+    <el-tabs v-model="activeTab" type="card">
 
       <el-tab-pane label="故障上报" name="report">
 
@@ -393,12 +405,11 @@ import { ref, computed, onMounted, watch } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { Plus, Download, Upload } from '@element-plus/icons-vue';
 import dayjs from 'dayjs';
-import * as XLSX from 'xlsx';
 
 import FilterBar from '@/components/common/FilterBar.vue';
+import ImportPreviewDialog from '@/components/common/ImportPreviewDialog.vue';
 import { useUserStore } from '@/store/modules/user';
 import { useUpload } from '@/composables/useUpload';
-import { addTemplateInstructionSheet, applyTemplateHeaderStyle } from '@/utils/excelTemplate';
 import request from '@/api/request';
 import FormDialog from '@/components/system/FormDialog.vue';
 import { buildExportFileName, exportRowsToXlsx } from '@/utils/tableExport';
@@ -410,8 +421,9 @@ import {
   getEquipmentByCode,
 
   createEquipment,
-
-  batchCreateEquipment,
+  downloadEquipmentTemplate as downloadEquipmentTemplateApi,
+  importEquipment,
+  previewImportEquipment,
 
   updateEquipment,
 
@@ -491,6 +503,24 @@ const loadingEquipment = ref(false);
 
 const equipmentList = ref([]);
 const equipmentPagination = ref({ page: 1, pageSize: 5, total: 0 });
+const equipmentImportFileInputRef = ref(null);
+const equipmentImportFile = ref(null);
+const equipmentImportPreviewLoading = ref(false);
+const equipmentImportSubmitting = ref(false);
+const equipmentImportPreviewVisible = ref(false);
+const equipmentImportPreviewSummary = ref({});
+const equipmentImportPreviewRows = ref([]);
+const equipmentImportPreviewTruncated = ref(false);
+const equipmentImportPreviewMaxRows = ref(0);
+const equipmentImportColumns = [
+  { prop: 'stationName', label: '场站', minWidth: 140 },
+  { prop: 'installationLocation', label: '安装地点', minWidth: 160, diffKey: 'installation_location' },
+  { prop: 'equipmentCode', label: '设备编号', minWidth: 140 },
+  { prop: 'equipmentName', label: '设备名称', minWidth: 160, diffKey: 'equipment_name' },
+  { prop: 'specification', label: '规格', width: 120, diffKey: 'specification' },
+  { prop: 'model', label: '型号', width: 120, diffKey: 'model' },
+  { prop: 'material', label: '材质', width: 120, diffKey: 'material' }
+];
 
 const equipmentDialogVisible = ref(false);
 
@@ -625,6 +655,12 @@ const getStatusLabel = (status) => {
 const formatDateTime = (date) => dayjs(date).format('YYYY-MM-DD HH:mm');
 
 const formatDate = (date) => date ? dayjs(date).format('YYYY-MM-DD') : '-';
+const resolveErrorMessage = (error, fallback = '操作失败') => {
+  const responseMessage = typeof error?.response?.data?.message === 'string' ? error.response.data.message.trim() : '';
+  if (responseMessage) return responseMessage;
+  const message = typeof error?.message === 'string' ? error.message.trim() : '';
+  return message || fallback;
+};
 
 const resolveDisplayStatus = (item) => {
 
@@ -1100,7 +1136,8 @@ const deleteEquipmentItem = async (id) => {
 
 // 下载导入模板
 
-const downloadEquipmentTemplate = () => {
+const downloadEquipmentTemplateLegacy = () => {
+  return;
   const templateData = [
     { 'åºç«': 'ç«ç¹A', 'è®¾å¤ç¼å·': 'EQ001', 'è®¾å¤åç§°': 'è®¾å¤A', 'å®è£å°ç¹': 'ä½ç½®A' },
     { 'åºç«': 'ç«ç¹B', 'è®¾å¤ç¼å·': 'EQ002', 'è®¾å¤åç§°': 'è®¾å¤B', 'å®è£å°ç¹': 'ä½ç½®B' },
@@ -1124,7 +1161,8 @@ const downloadEquipmentTemplate = () => {
 
 // 处理设备导入文件
 
-const handleEquipmentFileChange = async (file) => {
+const handleEquipmentFileChangeLegacy = async (file) => {
+  return;
 
   const rawFile = file.raw;
 
@@ -1134,9 +1172,9 @@ const handleEquipmentFileChange = async (file) => {
 
   try {
 
-    const data = await readExcelFile(rawFile);
+    const data = await readExcelFileLegacy(rawFile);
 
-    await importEquipmentData(data);
+    await importEquipmentDataLegacy(data);
 
   } catch (e) {
 
@@ -1150,7 +1188,8 @@ const handleEquipmentFileChange = async (file) => {
 
 // 读取 Excel 文件
 
-const readExcelFile = (file) => {
+const readExcelFileLegacy = (file) => {
+  return Promise.resolve([]);
 
   return new Promise((resolve, reject) => {
 
@@ -1190,7 +1229,8 @@ const readExcelFile = (file) => {
 
 // 导入设备数据
 
-const importEquipmentData = async (data) => {
+const importEquipmentDataLegacy = async (data) => {
+  return;
 
   if (!data || data.length === 0) {
 
@@ -1284,7 +1324,94 @@ const importEquipmentData = async (data) => {
 
 };
 
+const downloadEquipmentTemplate = async () => {
+  try {
+    const response = await downloadEquipmentTemplateApi();
+    const blob = new Blob([response], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = '设备导入模板.xlsx';
+    document.body.appendChild(a);
+    a.click();
+    window.URL.revokeObjectURL(url);
+    document.body.removeChild(a);
+  } catch (error) {
+    ElMessage.error(resolveErrorMessage(error, '下载模板失败'));
+  }
+};
 
+const triggerEquipmentImport = () => {
+  if (equipmentImportPreviewLoading.value) return;
+  equipmentImportFileInputRef.value?.click();
+};
+
+const isExcelFile = (file) => {
+  const mime = file?.type;
+  return mime === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    || mime === 'application/vnd.ms-excel';
+};
+
+const handleEquipmentImportFileSelected = async (event) => {
+  const file = event?.target?.files?.[0];
+  if (event?.target) event.target.value = '';
+  if (!file) return;
+
+  if (!isExcelFile(file)) {
+    ElMessage.error('只能上传 Excel 文件');
+    return;
+  }
+  if (file.size / 1024 / 1024 >= 5) {
+    ElMessage.error('文件大小不能超过 5MB');
+    return;
+  }
+
+  equipmentImportFile.value = file;
+  equipmentImportPreviewLoading.value = true;
+  try {
+    const previewRes = await previewImportEquipment(file);
+    equipmentImportPreviewSummary.value = previewRes?.summary ?? {};
+    equipmentImportPreviewRows.value = Array.isArray(previewRes?.rows) ? previewRes.rows : [];
+    equipmentImportPreviewTruncated.value = !!previewRes?.truncated;
+    equipmentImportPreviewMaxRows.value = typeof previewRes?.maxRows === 'number' ? previewRes.maxRows : 0;
+    equipmentImportPreviewVisible.value = true;
+  } catch (error) {
+    ElMessage.error(resolveErrorMessage(error, '导入失败'));
+  } finally {
+    equipmentImportPreviewLoading.value = false;
+  }
+};
+
+const confirmEquipmentImport = async () => {
+  if (!equipmentImportFile.value) {
+    ElMessage.warning('请选择文件');
+    return;
+  }
+
+  equipmentImportSubmitting.value = true;
+  try {
+    const results = await importEquipment(equipmentImportFile.value);
+    const list = Array.isArray(results) ? results : [];
+    const created = list.filter((row) => row?.status === 'success').length;
+    const updated = list.filter((row) => row?.status === 'updated').length;
+    const skipped = list.filter((row) => row?.status === 'skip').length;
+    const failed = list.filter((row) => row?.status === 'error').length;
+
+    if (failed > 0) {
+      ElMessage.warning(`导入完成：新增${created}条，更新${updated}条，跳过${skipped}条，失败${failed}条`);
+    } else {
+      ElMessage.success(`导入完成：新增${created}条，更新${updated}条，跳过${skipped}条`);
+    }
+
+    equipmentImportPreviewVisible.value = false;
+    equipmentImportFile.value = null;
+    await loadEquipmentList();
+  } catch (error) {
+    ElMessage.error(resolveErrorMessage(error, '导入失败'));
+  } finally {
+    equipmentImportSubmitting.value = false;
+  }
+};
 
 onMounted(() => {
 

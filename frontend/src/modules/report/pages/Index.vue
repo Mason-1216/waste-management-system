@@ -14,55 +14,61 @@
 
     </div>
 
-    <el-tabs v-model="activeTab" @tab-change="handleTabChange">
+    <el-tabs v-model="activeTab" type="card" @tab-change="handleTabChange">
       <el-tab-pane label="设备保养统计" name="maintenance" />
       <el-tab-pane label="设备故障统计" name="faults" />
     </el-tabs>
 
     <el-card class="filter-card">
-      <FilterBar>
-        <div class="filter-item">
-          <span class="filter-label">开始日期</span>
-          <el-date-picker
-            v-model="filters.startDate"
-            type="date"
-            placeholder="全部"
-            value-format="YYYY-MM-DD"
-            @change="refreshActive"
-          />
-        </div>
-        <div class="filter-item">
-          <span class="filter-label">结束日期</span>
-          <el-date-picker
-            v-model="filters.endDate"
-            type="date"
-            placeholder="全部"
-            value-format="YYYY-MM-DD"
-            @change="refreshActive"
-          />
-        </div>
-        <div class="filter-item">
-          <span class="filter-label">场站</span>
-          <FilterSelect
-            v-model="filters.stationId"
-            placeholder="全部"
-            :clearable="!isStationLocked"
-            filterable
-            :disabled="isStationLocked"
-            style="width: 200px"
-            @change="handleStationChange"
-            @clear="handleStationChange"
-          >
-            <el-option label="全部" :value="null" />
-            <el-option
-              v-for="s in stationOptions"
-              :key="s.id"
-              :label="s.stationName"
-              :value="s.id"
+      <SimpleFilterBar
+        :enabled="isSimpleMode"
+        v-model:expanded="simpleFilterExpanded"
+        :summary-text="simpleFilterSummary"
+      >
+        <FilterBar>
+          <div class="filter-item">
+            <span class="filter-label">开始日期</span>
+            <el-date-picker
+              v-model="filters.startDate"
+              type="date"
+              placeholder="全部"
+              value-format="YYYY-MM-DD"
+              @change="refreshActive"
             />
-          </FilterSelect>
-        </div>
-      </FilterBar>
+          </div>
+          <div class="filter-item">
+            <span class="filter-label">结束日期</span>
+            <el-date-picker
+              v-model="filters.endDate"
+              type="date"
+              placeholder="全部"
+              value-format="YYYY-MM-DD"
+              @change="refreshActive"
+            />
+          </div>
+          <div class="filter-item">
+            <span class="filter-label">场站</span>
+            <FilterSelect
+              v-model="filters.stationId"
+              placeholder="全部"
+              :clearable="!isStationLocked"
+              filterable
+              :disabled="isStationLocked"
+              style="width: 200px"
+              @change="handleStationChange"
+              @clear="handleStationChange"
+            >
+              <el-option label="全部" :value="null" />
+              <el-option
+                v-for="s in stationOptions"
+                :key="s.id"
+                :label="s.stationName"
+                :value="s.id"
+              />
+            </FilterSelect>
+          </div>
+        </FilterBar>
+      </SimpleFilterBar>
     </el-card>
 
     <ReportSummaryCards :items="summaryCards" />
@@ -160,12 +166,15 @@ import ReportSummaryCards from '@/modules/report/components/ReportSummaryCards.v
 import ReportChartCard from '@/modules/report/components/ReportChartCard.vue';
 import FilterBar from '@/components/common/FilterBar.vue';
 import FilterSelect from '@/components/common/FilterSelect.vue';
+import SimpleFilterBar from '@/components/common/SimpleFilterBar.vue';
 import { getAllStations } from '@/api/station';
 import { getEquipment } from '@/api/equipment';
 import { useUserStore } from '@/store/modules/user';
+import { useSimpleMode } from '@/composables/useSimpleMode';
 
 const activeTab = ref('maintenance');
 const userStore = useUserStore();
+const { isSimpleMode, simpleFilterExpanded } = useSimpleMode();
 const effectiveRole = computed(() => userStore.baseRoleCode || userStore.roleCode || '');
 const stations = ref([]);
 const maintenanceRows = ref([]);
@@ -196,6 +205,10 @@ const filters = ref({
   keyword: '',
   maintenanceStatus: '',
   faultStatus: ''
+});
+const simpleFilterSummary = computed(() => {
+  const stationLabel = filters.value.stationId === null ? '全部' : String(filters.value.stationId);
+  return `当前筛选：开始=${filters.value.startDate} | 结束=${filters.value.endDate} | 场站=${stationLabel}`;
 });
 
 // 趋势图筛选

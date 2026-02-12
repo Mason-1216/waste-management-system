@@ -5,6 +5,7 @@ export const createMaintenancePlanLibrary = planLibraryService.createMaintenance
 export const updateMaintenancePlanLibrary = planLibraryService.updateMaintenancePlanLibrary;
 export const deleteMaintenancePlanLibrary = planLibraryService.deleteMaintenancePlanLibrary;
 export const batchImportMaintenancePlanLibrary = planLibraryService.batchImportMaintenancePlanLibrary;
+export const previewBatchImportMaintenancePlanLibrary = planLibraryService.previewBatchImportMaintenancePlanLibrary;
 export const getMaintenanceAssignments = planLibraryService.getMaintenanceAssignments;
 export const createMaintenanceAssignment = planLibraryService.createMaintenanceAssignment;
 export const updateMaintenanceAssignment = planLibraryService.updateMaintenanceAssignment;
@@ -19,6 +20,7 @@ export default {
   updateMaintenancePlanLibrary,
   deleteMaintenancePlanLibrary,
   batchImportMaintenancePlanLibrary,
+  previewBatchImportMaintenancePlanLibrary,
   getMaintenanceAssignments,
   createMaintenanceAssignment,
   updateMaintenanceAssignment,

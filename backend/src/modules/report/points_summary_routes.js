@@ -18,4 +18,10 @@ export const registerPointsSummaryReportRoutes = (router) => {
     upload.single('file'),
     reportController.importManualPoints
   );
+  router.post(
+    '/reports/points-manual-import-preview',
+    checkRole(managerRoles),
+    upload.single('file'),
+    reportController.previewImportManualPoints
+  );
 };

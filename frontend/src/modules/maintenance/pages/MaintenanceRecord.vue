@@ -3,6 +3,9 @@
     <div class="page-header">
       <h2>设备保养记录</h2>
       <div class="header-actions">
+        <el-button v-if="isSimpleMode" @click="simpleShowTable = !simpleShowTable">
+          {{ simpleShowTable ? '切换卡片' : '切换表格' }}
+        </el-button>
         <el-button type="primary" :loading="exporting" @click="handleExport">
           <el-icon><Upload /></el-icon>批量导出
         </el-button>
@@ -14,7 +17,12 @@
 
     <!-- 筛选 -->
     <el-card class="filter-card">
-      <FilterBar>
+      <SimpleFilterBar
+        :enabled="isSimpleMode"
+        v-model:expanded="simpleFilterExpanded"
+        :summary-text="simpleFilterSummaryText"
+      >
+        <FilterBar>
         <div class="filter-item">
           <span class="filter-label">审核状态</span>
           <FilterSelect v-model="filters.status" placeholder="全部" filterable clearable @change="loadList" @clear="loadList">
@@ -44,11 +52,12 @@
             @change="loadList"
           />
         </div>
-      </FilterBar>
+        </FilterBar>
+      </SimpleFilterBar>
     </el-card>
 
     <!-- 列表 -->
-    <el-table :data="recordList" stripe border>
+    <el-table v-if="!isSimpleMode || simpleShowTable" :data="recordList" stripe border>
       <el-table-column prop="equipmentName" label="设备名称" min-width="120" />
       <el-table-column prop="maintenanceType" label="保养类型" width="100">
         <template #default="{ row }">
@@ -88,6 +97,28 @@
         </template>
       </el-table-column>
     </el-table>
+    <div v-else class="simple-card-list">
+      <el-empty v-if="recordList.length === 0" description="暂无数据" />
+      <div v-for="row in recordList" :key="row.id" class="simple-card-item">
+        <div class="card-title">{{ row.equipmentName || '-' }}</div>
+        <div class="card-meta">保养类型：{{ getTypeLabel(row.maintenanceType) }}</div>
+        <div class="card-meta">保养日期：{{ formatDate(row.maintenanceDate) }}</div>
+        <div class="card-meta">工时：{{ row.workHours }}h</div>
+        <div class="card-meta">操作人：{{ row.operator?.realName || '-' }}</div>
+        <div class="card-meta">状态：{{ getStatusLabel(row.approvalStatus) }}</div>
+        <div class="card-actions">
+          <el-button link type="primary" @click="viewDetail(row)">详情</el-button>
+          <el-button
+            v-if="row.approvalStatus === 'pending'"
+            link
+            type="danger"
+            @click="deleteRecord(row)"
+          >
+            删除
+          </el-button>
+        </div>
+      </div>
+    </div>
 
     <!-- 分页 -->
     <div class="pagination-wrapper">
@@ -211,9 +242,12 @@ import FormDialog from '@/components/system/FormDialog.vue';
 import { useRoute } from 'vue-router';
 import { Upload } from '@element-plus/icons-vue';
 import { buildExportFileName, exportRowsToXlsx, fetchAllPaged } from '@/utils/tableExport';
+import SimpleFilterBar from '@/components/common/SimpleFilterBar.vue';
+import { useSimpleMode } from '@/composables/useSimpleMode';
 
 const userStore = useUserStore();
 const route = useRoute();
+const { isSimpleMode, simpleShowTable, simpleFilterExpanded } = useSimpleMode();
 
 const { uploadUrl, uploadHeaders, resolveUploadUrl } = useUpload();
 const formRef = ref(null);
@@ -233,6 +267,13 @@ const defaultFilters = {
   endDate: today
 };
 const filters = ref({ ...defaultFilters });
+const simpleFilterSummaryText = computed(() => {
+  const parts = [];
+  if (filters.value.status !== 'all') parts.push(`审核状态=${getStatusLabel(filters.value.status)}`);
+  if (filters.value.startDate) parts.push(`开始=${filters.value.startDate}`);
+  if (filters.value.endDate) parts.push(`结束=${filters.value.endDate}`);
+  return parts.length ? `当前筛选：${parts.join('，')}` : '当前筛选：全部';
+});
 
 const pagination = ref({
   page: 1,
@@ -473,6 +514,36 @@ onMounted(() => {
     background: #fff;
     padding: 16px;
     border-radius: 8px;
+  }
+
+  .simple-card-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .simple-card-item {
+    border: 1px solid #ebeef5;
+    border-radius: 8px;
+    background: #fff;
+    padding: 12px;
+  }
+
+  .card-title {
+    font-weight: 600;
+    margin-bottom: 8px;
+  }
+
+  .card-meta {
+    font-size: 13px;
+    color: #606266;
+    margin-bottom: 4px;
+  }
+
+  .card-actions {
+    margin-top: 8px;
+    display: flex;
+    gap: 8px;
   }
 }
 </style>

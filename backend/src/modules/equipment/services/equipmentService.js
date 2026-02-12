@@ -301,13 +301,13 @@ export const importEquipment = async (ctx) => {
       const row = worksheet.getRow(i);
       if (!row.hasValues) continue;
 
-      const stationName = row.getCell(1).value?.toString().trim();
-      const installationLocation = row.getCell(2).value?.toString().trim();
-      const equipmentCode = row.getCell(3).value?.toString().trim();
-      const equipmentName = row.getCell(4).value?.toString().trim();
-      const specification = row.getCell(5).value?.toString().trim();
-      const model = row.getCell(6).value?.toString().trim();
-      const material = row.getCell(7).value?.toString().trim();
+      const stationName = normalizeCellText(row.getCell(1).value);
+      const installationLocation = normalizeCellText(row.getCell(2).value);
+      const equipmentCode = normalizeCellText(row.getCell(3).value);
+      const equipmentName = normalizeCellText(row.getCell(4).value);
+      const specification = normalizeCellText(row.getCell(5).value);
+      const model = normalizeCellText(row.getCell(6).value);
+      const material = normalizeCellText(row.getCell(7).value);
 
       if (!stationName) {
         results.push({ row: i, stationName, equipmentCode, equipmentName, status: 'error', message: '场站不能为空' });
@@ -339,31 +339,49 @@ export const importEquipment = async (ctx) => {
         }
       });
 
-      if (existing) {
-        results.push({ row: i, stationName, equipmentCode, equipmentName, status: 'duplicate', message: '该场站已存在相同编号的设备' });
+      if (!existing) {
+        await Equipment.create({
+          station_id: stationId,
+          equipment_code: equipmentCode,
+          equipment_name: equipmentName,
+          installation_location: installationLocation,
+          specification: resolveOptionalText(specification),
+          model: resolveOptionalText(model),
+          material: resolveOptionalText(material)
+        });
+
+        results.push({ row: i, stationName, equipmentCode, equipmentName, status: 'success' });
         continue;
       }
 
-      await Equipment.create({
-        station_id: stationId,
-        equipment_code: equipmentCode,
-        equipment_name: equipmentName,
-        installation_location: installationLocation,
-        specification: specification || null,
-        model: model || null,
-        material: material || null
+      const nextPatch = buildEquipmentUpdatePatch({
+        existing,
+        payload: {
+          equipment_name: equipmentName,
+          installation_location: installationLocation,
+          specification,
+          model,
+          material
+        }
       });
 
-      results.push({ row: i, stationName, equipmentCode, equipmentName, status: 'success' });
+      if (Object.keys(nextPatch).length === 0) {
+        results.push({ row: i, stationName, equipmentCode, equipmentName, status: 'skip', message: '无变更，已跳过' });
+        continue;
+      }
+
+      await existing.update(nextPatch);
+      results.push({ row: i, stationName, equipmentCode, equipmentName, status: 'updated', message: '已更新' });
     }
 
     const successCount = results.filter((r) => r.status === 'success').length;
     const errorCount = results.filter((r) => r.status === 'error').length;
-    const duplicateCount = results.filter((r) => r.status === 'duplicate').length;
+    const updatedCount = results.filter((r) => r.status === 'updated').length;
+    const skipCount = results.filter((r) => r.status === 'skip').length;
 
     ctx.body = {
       code: 200,
-      message: `导入完成：成功${successCount}条，重复${duplicateCount}条，失败${errorCount}条`,
+      message: `导入完成：新增${successCount}条，更新${updatedCount}条，跳过${skipCount}条，失败${errorCount}条`,
       data: results
     };
   } catch (error) {
@@ -373,6 +391,182 @@ export const importEquipment = async (ctx) => {
       data: null
     };
   }
+};
+
+export const previewImportEquipment = async (ctx) => {
+  const { file } = ctx.request;
+  if (!file) {
+    throw createError(400, '请上传Excel文件');
+  }
+
+  const ExcelJS = (await import('exceljs')).default;
+  const workbook = new ExcelJS.Workbook();
+  await workbook.xlsx.load(file.buffer);
+
+  const worksheet = workbook.getWorksheet(1);
+  if (!worksheet) {
+    throw createError(400, 'Excel 内容为空');
+  }
+
+  const stations = await Station.findAll({
+    attributes: ['id', 'station_name']
+  });
+
+  const stationIdByName = new Map(stations.map(s => [s.station_name, s.id]));
+
+  const rows = [];
+  const summary = { total: 0, create: 0, update: 0, skip: 0, error: 0 };
+
+  for (let i = 2; i <= worksheet.rowCount; i += 1) {
+    const row = worksheet.getRow(i);
+    if (!row.hasValues) continue;
+
+    summary.total += 1;
+
+    const stationName = normalizeCellText(row.getCell(1).value);
+    const installationLocation = normalizeCellText(row.getCell(2).value);
+    const equipmentCode = normalizeCellText(row.getCell(3).value);
+    const equipmentName = normalizeCellText(row.getCell(4).value);
+    const specification = normalizeCellText(row.getCell(5).value);
+    const model = normalizeCellText(row.getCell(6).value);
+    const material = normalizeCellText(row.getCell(7).value);
+
+    const previewRow = {
+      rowNum: i,
+      action: 'error',
+      message: '',
+      diff: {},
+      stationName,
+      installationLocation,
+      equipmentCode,
+      equipmentName,
+      specification,
+      model,
+      material
+    };
+
+    if (!stationName) {
+      previewRow.message = '场站不能为空';
+      summary.error += 1;
+      rows.push(previewRow);
+      continue;
+    }
+
+    const stationId = stationIdByName.get(stationName) ?? null;
+    if (!stationId) {
+      previewRow.message = `未找到场站：${stationName}`;
+      summary.error += 1;
+      rows.push(previewRow);
+      continue;
+    }
+
+    if (!equipmentCode) {
+      previewRow.message = '设备编号不能为空';
+      summary.error += 1;
+      rows.push(previewRow);
+      continue;
+    }
+
+    const existing = await Equipment.findOne({
+      where: {
+        station_id: stationId,
+        equipment_code: equipmentCode
+      }
+    });
+
+    if (!existing) {
+      if (!installationLocation || !equipmentName) {
+        previewRow.message = '新增时：设备名称/安装地点不能为空';
+        summary.error += 1;
+        rows.push(previewRow);
+        continue;
+      }
+      previewRow.action = 'create';
+      summary.create += 1;
+      rows.push(previewRow);
+      continue;
+    }
+
+    const { patch, diff } = buildEquipmentUpdatePatchWithDiff({
+      existing,
+      payload: {
+        equipment_name: equipmentName,
+        installation_location: installationLocation,
+        specification,
+        model,
+        material
+      }
+    });
+
+    previewRow.diff = diff;
+    if (Object.keys(patch).length === 0) {
+      previewRow.action = 'skip';
+      previewRow.message = '无变更，跳过';
+      summary.skip += 1;
+      rows.push(previewRow);
+      continue;
+    }
+
+    previewRow.action = 'update';
+    previewRow.message = '将更新';
+    summary.update += 1;
+    rows.push(previewRow);
+  }
+
+  ctx.body = {
+    code: 200,
+    message: 'success',
+    data: {
+      summary,
+      rows
+    }
+  };
+};
+
+const normalizeCellText = (value) => {
+  if (value === undefined || value === null) return '';
+  if (typeof value === 'object') {
+    if (value.text !== undefined) return String(value.text).trim();
+    if (value.result !== undefined) return String(value.result).trim();
+    if (Array.isArray(value.richText)) return value.richText.map(item => item.text ?? '').join('').trim();
+  }
+  return String(value).trim();
+};
+
+const resolveOptionalText = (text) => {
+  const normalized = typeof text === 'string' ? text.trim() : '';
+  return normalized ? normalized : null;
+};
+
+const buildEquipmentUpdatePatch = ({ existing, payload }) => {
+  const patch = {};
+
+  if (payload.equipment_name && payload.equipment_name !== existing.equipment_name) {
+    patch.equipment_name = payload.equipment_name;
+  }
+  if (payload.installation_location && payload.installation_location !== existing.installation_location) {
+    patch.installation_location = payload.installation_location;
+  }
+  if (payload.specification && payload.specification !== existing.specification) {
+    patch.specification = payload.specification;
+  }
+  if (payload.model && payload.model !== existing.model) {
+    patch.model = payload.model;
+  }
+  if (payload.material && payload.material !== existing.material) {
+    patch.material = payload.material;
+  }
+
+  return patch;
+};
+
+const buildEquipmentUpdatePatchWithDiff = ({ existing, payload }) => {
+  const patch = buildEquipmentUpdatePatch({ existing, payload });
+  const diff = {};
+  Object.keys(patch).forEach((key) => {
+    diff[key] = { from: existing[key], to: patch[key] };
+  });
+  return { patch, diff };
 };
 
 

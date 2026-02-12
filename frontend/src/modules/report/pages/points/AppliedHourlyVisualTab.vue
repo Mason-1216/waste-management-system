@@ -1,28 +1,20 @@
 <template>
   <div class="applied-hourly-visual-tab">
     <el-card class="filter-card">
-      <FilterBar>
-        <div class="filter-item">
-          <span class="filter-label">统计截止月</span>
-          <el-date-picker
-            v-model="filters.endMonth"
-            type="month"
-            value-format="YYYY-MM"
-            style="width: 160px"
-            @change="load"
-          />
-        </div>
-        <div class="filter-item">
-          <span class="filter-label">搜索人名</span>
-          <el-input
-            v-model="searchName"
-            placeholder="输入姓名筛选"
-            clearable
-            style="width: 180px"
-            @input="handleSearchName"
-          />
-        </div>
-      </FilterBar>
+      <SimpleFilterBar
+        :enabled="isSimpleMode"
+        v-model:expanded="simpleFilterExpanded"
+        :summary-text="simpleFilterSummary"
+      >
+        <FilterBar>
+          <div class="filter-item">
+            <span class="filter-label">年份</span>
+            <FilterSelect v-model="filters.year" style="width: 140px" @change="load">
+              <el-option v-for="year in yearOptions" :key="year" :label="`${year}年`" :value="year" />
+            </FilterSelect>
+          </div>
+        </FilterBar>
+      </SimpleFilterBar>
     </el-card>
 
     <el-card class="user-select-card">
@@ -30,6 +22,17 @@
         <div class="user-select-header">
           <span class="title">选择人员</span>
           <div class="actions">
+            <FilterAutocomplete
+              v-model="searchName"
+              :fetch-suggestions="fetchUserNameSuggestions"
+              trigger-on-focus
+              clearable
+              placeholder="输入姓名筛选"
+              style="width: 180px"
+              @select="handleSearchName"
+              @input="handleSearchName"
+              @clear="handleSearchName"
+            />
             <el-button type="primary" size="small" @click="selectAll">全选</el-button>
             <el-button size="small" @click="clearAll">清除</el-button>
             <span class="selected-count">已选 {{ selectedUserKeys.size }} 人</span>
@@ -66,47 +69,89 @@
       <el-card class="chart-panel">
         <template #header>
           <div class="panel-header">
-            <span class="title">TOP10 应用小时积分</span>
+            <div class="header-left">
+              <div class="title">实际应用小时积分</div>
+              <span class="subtitle">按月最大值 / 最小值 / 平均值</span>
+            </div>
           </div>
         </template>
-        <div ref="top10ChartRef" class="chart" />
+        <div ref="actualChartRef" class="chart" />
       </el-card>
 
       <el-card class="chart-panel">
         <template #header>
           <div class="panel-header">
-            <span class="title">全量排名（最多显示100人）</span>
+            <div class="header-left">
+              <div class="title">修正应用小时积分</div>
+              <span class="subtitle">按月最大值 / 最小值 / 平均值</span>
+            </div>
           </div>
         </template>
-        <div ref="fullChartRef" class="chart chart-full" />
+        <div ref="adjustedChartRef" class="chart" />
       </el-card>
     </div>
   </div>
 </template>
 
 <script setup>
-import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, reactive, watch } from 'vue';
 import dayjs from 'dayjs';
 import * as echarts from 'echarts';
 
+import FilterAutocomplete from '@/components/common/FilterAutocomplete.vue';
 import FilterBar from '@/components/common/FilterBar.vue';
+import FilterSelect from '@/components/common/FilterSelect.vue';
+import SimpleFilterBar from '@/components/common/SimpleFilterBar.vue';
+import { useSimpleMode } from '@/composables/useSimpleMode';
 import request from '@/api/request';
 
-const filters = reactive({
-  endMonth: dayjs().format('YYYY-MM')
+const currentYear = dayjs().year();
+const yearOptions = computed(() => {
+  const years = [];
+  for (let year = currentYear; year >= currentYear - 5; year -= 1) {
+    years.push(year);
+  }
+  return years;
 });
 
-const searchName = ref('');
+const filters = reactive({
+  year: currentYear
+});
+const { isSimpleMode, simpleFilterExpanded } = useSimpleMode();
+const simpleFilterSummary = computed(() => `当前筛选：年份=${filters.year}`);
+
+const monthColumns = ref([]);
 const allRows = ref([]);
+const searchName = ref('');
 const selectedUserKeys = ref(new Set());
 const userPage = ref(1);
 const userPageSize = ref(15);
 
+const normalizeUserKey = (row) => {
+  const uid = row?.userId;
+  if (uid !== undefined && uid !== null && uid !== '') return String(uid);
+  const name = row?.userName ?? '';
+  return name ? `name::${name}` : 'unknown';
+};
+
+const buildEndMonth = () => {
+  return `${filters.year}-12`;
+};
+
 const userOptions = computed(() => {
   const rows = Array.isArray(allRows.value) ? allRows.value.slice() : [];
   rows.sort((a, b) => (a.userName ?? '').localeCompare(b.userName ?? ''));
-  return rows.map(row => ({ key: row.key, userName: row.userName }));
+  return rows.map(row => ({ key: normalizeUserKey(row), userName: row.userName }));
 });
+
+const fetchUserNameSuggestions = (queryString, callback) => {
+  const query = typeof queryString === 'string' ? queryString.trim().toLowerCase() : '';
+  const list = Array.isArray(userOptions.value) ? userOptions.value : [];
+  const matched = query
+    ? list.filter(item => (item.userName ?? '').toLowerCase().includes(query))
+    : list;
+  callback(matched.slice(0, 50).map(item => ({ value: item.userName })));
+};
 
 const filteredUsers = computed(() => {
   const keyword = (searchName.value ?? '').trim().toLowerCase();
@@ -122,26 +167,8 @@ const pagedUsers = computed(() => {
 const selectedRows = computed(() => {
   const keys = selectedUserKeys.value;
   if (keys.size === 0) return [];
-  return allRows.value.filter(row => keys.has(row.key));
+  return allRows.value.filter(row => keys.has(normalizeUserKey(row)));
 });
-
-const sortedSelectedRows = computed(() => {
-  const rows = selectedRows.value.slice();
-  rows.sort((a, b) => {
-    const left = Number(a.appliedHourlyPoints);
-    const right = Number(b.appliedHourlyPoints);
-    const leftOk = Number.isFinite(left);
-    const rightOk = Number.isFinite(right);
-    if (leftOk && rightOk) return right - left;
-    if (rightOk && !leftOk) return 1;
-    if (leftOk && !rightOk) return -1;
-    return Number(b.totalPoints || 0) - Number(a.totalPoints || 0);
-  });
-  return rows;
-});
-
-const top10Rows = computed(() => sortedSelectedRows.value.slice(0, 10));
-const fullRows = computed(() => sortedSelectedRows.value.slice(0, 100));
 
 const handleSearchName = () => {
   userPage.value = 1;
@@ -166,37 +193,66 @@ const clearAll = () => {
   selectedUserKeys.value = new Set();
 };
 
-const buildParams = () => ({
-  endMonth: filters.endMonth,
-  page: 1,
-  pageSize: 5000
-});
-
-const normalizeUserKey = (row) => {
-  const uid = row?.userId;
-  if (uid !== undefined && uid !== null && uid !== '') return String(uid);
-  const name = row?.userName ?? '';
-  return name ? `name::${name}` : 'unknown';
+const formatMonthLabel = (month) => {
+  const parts = String(month).split('-');
+  if (parts.length !== 2) return month;
+  return `${parseInt(parts[1], 10)}月`;
 };
 
-const applyRows = (list) => {
-  const rows = (list ?? []).map(row => ({
-    key: normalizeUserKey(row),
-    userId: row.userId,
-    userName: row.userName,
-    totalPoints: row.totalPoints,
-    totalHours: row.totalHours,
-    appliedHourlyPoints: row.appliedHourlyPoints
-  }));
-  allRows.value = rows;
-  // 默认全选
-  selectedUserKeys.value = new Set(rows.map(r => r.key));
+const toNumericOrNull = (value) => {
+  if (value === null || value === undefined || value === '') return null;
+  const numberValue = Number(value);
+  if (!Number.isFinite(numberValue)) return null;
+  return numberValue;
 };
 
-const top10ChartRef = ref(null);
-const fullChartRef = ref(null);
-let top10ChartInstance = null;
-let fullChartInstance = null;
+const toFixed2 = (value) => {
+  const numberValue = Number(value);
+  if (!Number.isFinite(numberValue)) return 0;
+  return Number(numberValue.toFixed(2));
+};
+
+const buildExtremeData = (valueKey) => {
+  const periods = monthColumns.value.map(month => formatMonthLabel(month));
+  const maxData = [];
+  const minData = [];
+  const avgData = [];
+
+  monthColumns.value.forEach((month) => {
+    const values = [];
+    selectedRows.value.forEach((row) => {
+      const source = row?.[valueKey] ?? {};
+      const value = toNumericOrNull(source[month]);
+      if (value !== null) {
+        values.push(value);
+      }
+    });
+
+    if (values.length === 0) {
+      maxData.push(0);
+      minData.push(0);
+      avgData.push(0);
+      return;
+    }
+
+    const sum = values.reduce((acc, value) => acc + value, 0);
+    maxData.push(toFixed2(Math.max(...values)));
+    minData.push(toFixed2(Math.min(...values)));
+    avgData.push(toFixed2(sum / values.length));
+  });
+
+  return {
+    periods,
+    maxData,
+    minData,
+    avgData
+  };
+};
+
+const actualChartRef = ref(null);
+const adjustedChartRef = ref(null);
+let actualChartInstance = null;
+let adjustedChartInstance = null;
 
 const ensureChart = (refEl, current) => {
   if (!refEl?.value) return null;
@@ -204,53 +260,118 @@ const ensureChart = (refEl, current) => {
   return echarts.init(refEl.value);
 };
 
-const renderTop10Chart = () => {
-  top10ChartInstance = ensureChart(top10ChartRef, top10ChartInstance);
-  if (!top10ChartInstance) return;
-  const rows = top10Rows.value;
-  const names = rows.map(r => r.userName ?? '');
-  top10ChartInstance.setOption({
-    tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
-    grid: { left: 40, right: 20, top: 20, bottom: 40, containLabel: true },
-    xAxis: { type: 'category', data: names, axisLabel: { rotate: 20 } },
-    yAxis: { type: 'value' },
-    series: [
-      {
-        name: '应用小时积分',
-        type: 'bar',
-        data: rows.map(r => {
-          const n = Number(r.appliedHourlyPoints);
-          return Number.isFinite(n) ? Number(n.toFixed(4)) : 0;
-        }),
-        itemStyle: { color: '#409EFF' }
-      }
-    ]
-  }, true);
-};
+const renderExtremeChart = (chartInstance, data) => {
+  if (!chartInstance) return;
 
-const renderFullChart = () => {
-  fullChartInstance = ensureChart(fullChartRef, fullChartInstance);
-  if (!fullChartInstance) return;
-  const rows = fullRows.value;
-  const names = rows.map(r => r.userName ?? '');
-  fullChartInstance.setOption({
-    tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
-    grid: { left: 40, right: 20, top: 20, bottom: 60, containLabel: true },
+  chartInstance.setOption({
+    tooltip: {
+      trigger: 'axis',
+      axisPointer: { type: 'shadow' },
+      formatter: (params) => {
+        const period = params[0]?.axisValue ?? '';
+        const maxItem = params.find(item => item.seriesName === '最大值');
+        const minItem = params.find(item => item.seriesName === '最小值');
+        const avgItem = params.find(item => item.seriesName === '平均值');
+
+        let html = `<div style="font-weight:600;margin-bottom:8px">${period}</div>`;
+        if (maxItem) {
+          html += `<div>${maxItem.marker} 最大值: ${maxItem.value}</div>`;
+        }
+        if (minItem) {
+          html += `<div>${minItem.marker} 最小值: ${minItem.value}</div>`;
+        }
+        if (avgItem) {
+          html += `<div>${avgItem.marker} 平均值: ${avgItem.value}</div>`;
+        }
+        return html;
+      }
+    },
+    legend: {
+      top: 0,
+      left: 'center',
+      data: ['最大值', '最小值', '平均值']
+    },
+    graphic: [
+      {
+        type: 'line',
+        right: 64,
+        top: -6,
+        shape: { x1: 0, y1: 0, x2: 0, y2: 36 },
+        style: { stroke: '#909399', lineWidth: 1 }
+      },
+      {
+        type: 'line',
+        right: 2,
+        top: 30,
+        shape: { x1: 0, y1: 0, x2: 62, y2: 0 },
+        style: { stroke: '#909399', lineWidth: 1 }
+      },
+      {
+        type: 'rect',
+        right: 38,
+        top: 0,
+        shape: { width: 16, height: 30 },
+        style: { fill: 'transparent', stroke: '#909399', lineWidth: 2 }
+      },
+      {
+        type: 'rect',
+        right: 14,
+        top: 10,
+        shape: { width: 16, height: 20 },
+        style: { fill: 'transparent', stroke: '#E74C3C', lineWidth: 2 }
+      },
+      {
+        type: 'text',
+        right: 34,
+        top: 34,
+        style: { text: '最大', fill: '#606266', fontSize: 10 }
+      },
+      {
+        type: 'text',
+        right: 10,
+        top: 34,
+        style: { text: '最小', fill: '#606266', fontSize: 10 }
+      }
+    ],
+    grid: { left: 50, right: 30, top: 60, bottom: 40, containLabel: true },
     xAxis: {
       type: 'category',
-      data: names,
-      axisLabel: { rotate: 45, interval: 0, fontSize: 10 }
+      data: data.periods,
+      axisLabel: { rotate: data.periods.length > 8 ? 30 : 0 }
     },
-    yAxis: { type: 'value' },
+    yAxis: { type: 'value', name: '积分' },
     series: [
       {
-        name: '应用小时积分',
+        name: '最大值',
         type: 'bar',
-        data: rows.map(r => {
-          const n = Number(r.appliedHourlyPoints);
-          return Number.isFinite(n) ? Number(n.toFixed(4)) : 0;
-        }),
-        itemStyle: { color: '#67C23A' }
+        data: data.maxData,
+        barWidth: 22,
+        itemStyle: {
+          color: '#409EFF',
+          borderColor: '#909399',
+          borderWidth: 2
+        }
+      },
+      {
+        name: '最小值',
+        type: 'bar',
+        data: data.minData,
+        barWidth: 22,
+        itemStyle: {
+          color: 'rgba(245, 108, 108, 0.5)',
+          borderColor: '#E74C3C',
+          borderWidth: 2
+        }
+      },
+      {
+        name: '平均值',
+        type: 'line',
+        data: data.avgData,
+        smooth: true,
+        lineStyle: { color: '#303133', width: 2, type: 'dashed' },
+        itemStyle: { color: '#303133' },
+        symbol: 'circle',
+        symbolSize: 6
       }
     ]
   }, true);
@@ -258,19 +379,67 @@ const renderFullChart = () => {
 
 const renderCharts = async () => {
   await nextTick();
-  renderTop10Chart();
-  renderFullChart();
+
+  actualChartInstance = ensureChart(actualChartRef, actualChartInstance);
+  adjustedChartInstance = ensureChart(adjustedChartRef, adjustedChartInstance);
+
+  renderExtremeChart(actualChartInstance, buildExtremeData('actualPoints'));
+  renderExtremeChart(adjustedChartInstance, buildExtremeData('adjustedPoints'));
+};
+
+const fetchPage = async ({ page, pageSize }) => {
+  return request.get('/reports/applied-hourly-points/history', {
+    params: {
+      endMonth: buildEndMonth(),
+      page,
+      pageSize
+    }
+  });
+};
+
+const loadAllRows = async () => {
+  const pageSize = 500;
+  let page = 1;
+  let total = 0;
+  let loaded = 0;
+  let months = [];
+  const merged = [];
+
+  while (page <= 200) {
+    const payload = await fetchPage({ page, pageSize });
+    const list = Array.isArray(payload?.list) ? payload.list : [];
+    const payloadMonths = Array.isArray(payload?.months) ? payload.months : [];
+
+    if (page === 1) {
+      months = payloadMonths;
+      const numericTotal = Number(payload?.total);
+      total = Number.isFinite(numericTotal) ? numericTotal : list.length;
+    }
+
+    merged.push(...list);
+    loaded += list.length;
+
+    if (list.length === 0) break;
+    if (loaded >= total) break;
+
+    page += 1;
+  }
+
+  return { list: merged, months };
 };
 
 const load = async () => {
   try {
-    const resp = await request.get('/reports/applied-hourly-points', { params: buildParams() });
-    const list = Array.isArray(resp?.list) ? resp.list : (Array.isArray(resp?.data?.list) ? resp.data.list : []);
-    applyRows(list);
+    const payload = await loadAllRows();
+    allRows.value = payload.list;
+    monthColumns.value = payload.months;
+    selectedUserKeys.value = new Set(payload.list.map(row => normalizeUserKey(row)));
     await renderCharts();
   } catch {
     allRows.value = [];
+    monthColumns.value = [];
     selectedUserKeys.value = new Set();
+    await renderCharts();
   }
 };
 
@@ -279,8 +448,8 @@ watch(selectedUserKeys, () => {
 }, { deep: true });
 
 const handleResize = () => {
-  top10ChartInstance?.resize();
-  fullChartInstance?.resize();
+  actualChartInstance?.resize();
+  adjustedChartInstance?.resize();
 };
 
 onMounted(async () => {
@@ -290,10 +459,10 @@ onMounted(async () => {
 
 onBeforeUnmount(() => {
   window.removeEventListener('resize', handleResize);
-  top10ChartInstance?.dispose();
-  fullChartInstance?.dispose();
-  top10ChartInstance = null;
-  fullChartInstance = null;
+  actualChartInstance?.dispose();
+  adjustedChartInstance?.dispose();
+  actualChartInstance = null;
+  adjustedChartInstance = null;
 });
 </script>
 
@@ -319,6 +488,7 @@ onBeforeUnmount(() => {
         display: flex;
         align-items: center;
         gap: 10px;
+        flex-wrap: wrap;
 
         .selected-count {
           color: #909399;
@@ -349,18 +519,25 @@ onBeforeUnmount(() => {
 
   .chart-panel {
     .panel-header {
-      .title {
-        font-weight: 600;
+      .header-left {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+
+        .title {
+          font-weight: 600;
+        }
+
+        .subtitle {
+          color: #909399;
+          font-size: 13px;
+        }
       }
     }
 
     .chart {
-      height: 320px;
+      height: 360px;
       width: 100%;
-    }
-
-    .chart-full {
-      height: 400px;
     }
   }
 }
@@ -372,6 +549,19 @@ onBeforeUnmount(() => {
         flex-direction: column;
         align-items: flex-start;
         gap: 10px;
+      }
+    }
+
+    .chart-panel {
+      .panel-header {
+        .header-left {
+          flex-direction: column;
+          align-items: flex-start;
+        }
+      }
+
+      .chart {
+        height: 300px;
       }
     }
   }

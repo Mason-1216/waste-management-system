@@ -5,6 +5,7 @@ import { registerSafetyReportRoutes } from './safety_report_routes.js';
 import { registerScheduleReportRoutes } from './schedule_report_routes.js';
 import { registerTemporaryTaskReportRoutes } from './temporary_task_report_routes.js';
 import { registerPointsSummaryReportRoutes } from './points_summary_routes.js';
+import { registerQuarterlyAwardRoutes } from './quarterly_award_routes.js';
 
 export const registerReportRoutes = (router) => {
   registerWorkHoursReportRoutes(router);
@@ -14,4 +15,5 @@ export const registerReportRoutes = (router) => {
   registerScheduleReportRoutes(router);
   registerTemporaryTaskReportRoutes(router);
   registerPointsSummaryReportRoutes(router);
+  registerQuarterlyAwardRoutes(router);
 };

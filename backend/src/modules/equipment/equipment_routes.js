@@ -26,6 +26,12 @@ export const registerEquipmentResourceRoutes = (router) => {
     upload.single('file'),
     equipmentController.importEquipment
   );
+  router.post(
+    '/equipment/import-preview',
+    checkRole(['station_manager', 'department_manager', 'deputy_manager']),
+    upload.single('file'),
+    equipmentController.previewImportEquipment
+  );
   router.put(
     '/equipment/:id',
     checkRole(['station_manager', 'department_manager', 'deputy_manager']),

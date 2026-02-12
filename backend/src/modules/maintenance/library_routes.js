@@ -13,6 +13,11 @@ export const registerMaintenancePlanLibraryRoutes = (router) => {
     checkRole(['admin', 'station_manager', 'department_manager', 'deputy_manager']),
     maintenancePlanLibraryController.batchImportMaintenancePlanLibrary
   );
+  router.post(
+    '/maintenance-plan-library/batch-import-preview',
+    checkRole(['admin', 'station_manager', 'department_manager', 'deputy_manager']),
+    maintenancePlanLibraryController.previewBatchImportMaintenancePlanLibrary
+  );
   router.put(
     '/maintenance-plan-library/:id',
     checkRole(['admin', 'station_manager', 'department_manager', 'deputy_manager']),

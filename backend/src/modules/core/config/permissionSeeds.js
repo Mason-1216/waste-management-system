@@ -296,6 +296,7 @@ export const roleModuleDefaults = {
     'module:reports:faults:view', 'module:reports:faults:edit',
     'module:maintenance-task:view', 'module:maintenance-task:edit',
     'module:points-summary:view',
+    'module:quarterly-award:view', 'module:quarterly-award:edit',
     'module:notifications:view', 'module:notifications:edit',
     'module:help-feedback:view', 'module:help-feedback:edit'
   ],
@@ -333,6 +334,7 @@ export const roleModuleDefaults = {
     'module:reports:faults:view', 'module:reports:faults:edit',
     'module:maintenance-task:view', 'module:maintenance-task:edit',
     'module:points-summary:view',
+    'module:quarterly-award:view', 'module:quarterly-award:edit',
     'module:notifications:view', 'module:notifications:edit',
     'module:help-feedback:view', 'module:help-feedback:edit'
   ],
@@ -370,6 +372,7 @@ export const roleModuleDefaults = {
     'module:reports:faults:view', 'module:reports:faults:edit',
     'module:maintenance-task:view', 'module:maintenance-task:edit',
     'module:points-summary:view',
+    'module:quarterly-award:view', 'module:quarterly-award:edit',
     'module:notifications:view', 'module:notifications:edit',
     'module:help-feedback:view', 'module:help-feedback:edit'
   ],
@@ -417,6 +420,7 @@ export const roleModuleDefaults = {
     'module:reports:faults:view', 'module:reports:faults:edit',
     'module:maintenance-task:view', 'module:maintenance-task:edit',
     'module:points-summary:view',
+    'module:quarterly-award:view', 'module:quarterly-award:edit',
     'module:notifications:view',
     'module:help-feedback:view', 'module:help-feedback:edit'
   ],

@@ -8,6 +8,7 @@ export const updatePositionJob = positionJobService.updatePositionJob;
 export const deletePositionJob = positionJobService.deletePositionJob;
 export const getPositionJobsTemplate = positionJobService.getPositionJobsTemplate;
 export const importPositionJobs = positionJobService.importPositionJobs;
+export const previewImportPositionJobs = positionJobService.previewImportPositionJobs;
 
 export default {
   getPositionJobs,
@@ -17,5 +18,6 @@ export default {
   updatePositionJob,
   deletePositionJob,
   getPositionJobsTemplate,
-  importPositionJobs
+  importPositionJobs,
+  previewImportPositionJobs
 };

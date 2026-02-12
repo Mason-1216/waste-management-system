@@ -6,6 +6,7 @@ export const updateRepairTaskLibrary = repairTaskLibraryService.updateRepairTask
 export const deleteRepairTaskLibrary = repairTaskLibraryService.deleteRepairTaskLibrary;
 export const batchDeleteRepairTaskLibrary = repairTaskLibraryService.batchDeleteRepairTaskLibrary;
 export const importRepairTaskLibrary = repairTaskLibraryService.importRepairTaskLibrary;
+export const previewImportRepairTaskLibrary = repairTaskLibraryService.previewImportRepairTaskLibrary;
 export const getRepairTaskLibraryTemplate = repairTaskLibraryService.getRepairTaskLibraryTemplate;
 
 export default {
@@ -15,5 +16,6 @@ export default {
   deleteRepairTaskLibrary,
   batchDeleteRepairTaskLibrary,
   importRepairTaskLibrary,
+  previewImportRepairTaskLibrary,
   getRepairTaskLibraryTemplate
 };

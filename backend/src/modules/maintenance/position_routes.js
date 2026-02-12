@@ -12,6 +12,16 @@ export const registerMaintenancePositionRoutes = (router) => {
     checkRole(['admin', 'station_manager', 'department_manager', 'deputy_manager']),
     maintenancePositionController.createMaintenancePositionPlan
   );
+  router.post(
+    '/maintenance-position-plans/batch-import',
+    checkRole(['admin', 'station_manager', 'department_manager', 'deputy_manager']),
+    maintenancePositionController.batchImportMaintenancePositionPlans
+  );
+  router.post(
+    '/maintenance-position-plans/batch-import-preview',
+    checkRole(['admin', 'station_manager', 'department_manager', 'deputy_manager']),
+    maintenancePositionController.previewBatchImportMaintenancePositionPlans
+  );
   router.delete(
     '/maintenance-position-plans/:id',
     checkRole(['admin', 'station_manager', 'department_manager', 'deputy_manager']),

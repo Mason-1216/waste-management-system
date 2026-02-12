@@ -89,3 +89,17 @@ export const importEquipment = (file) => {
   });
 };
 
+/**
+ * 设备导入预览
+ * @param {File} file - Excel文件
+ * @returns {Promise}
+ */
+export const previewImportEquipment = (file) => {
+  const formData = new FormData();
+  formData.append('file', file);
+  return request.post('/equipment/import-preview', formData, {
+    headers: {
+      'Content-Type': 'multipart/form-data'
+    }
+  });
+};

@@ -3,25 +3,17 @@
     <div class="page-header">
       <h3>安全检查项目管理</h3>
       <div class="header-actions">
+        <el-button v-if="isSimpleMode" @click="simpleShowTable = !simpleShowTable">
+          {{ simpleShowTable ? '切换卡片' : '切换表格' }}
+        </el-button>
         <el-button type="info" @click="downloadTemplate">
           <el-icon><Download /></el-icon>
           下载模板
         </el-button>
-        <BaseUpload
-          ref="uploadRef"
-          :action="importUrl"
-          :headers="uploadHeaders"
-          :on-success="handleImportSuccess"
-          :on-error="handleImportError"
-          :show-file-list="false"
-          :before-upload="beforeUpload"
-          accept=".xlsx,.xls"
-        >
-          <el-button type="success">
-            <el-icon><Download /></el-icon>
-            批量导入
-          </el-button>
-        </BaseUpload>
+        <el-button type="success" :loading="importPreviewLoading" @click="triggerImport">
+          <el-icon><Download /></el-icon>
+          批量导入
+        </el-button>
         <el-button type="primary" @click="addWorkType">
           <el-icon><Plus /></el-icon>
           新增工作性质
@@ -33,8 +25,28 @@
       </div>
     </div>
 
+    <input
+      ref="importFileInputRef"
+      type="file"
+      accept=".xlsx,.xls"
+      style="display: none"
+      @change="handleImportFileSelected"
+    />
+
+    <ImportPreviewDialog
+      v-model="importPreviewVisible"
+      title="安全检查项目管理 - 导入预览"
+      :rows="importPreviewRows"
+      :summary="importPreviewSummary"
+      :truncated="importPreviewTruncated"
+      :max-rows="importPreviewMaxRows"
+      :confirm-loading="importSubmitting"
+      :columns="importPreviewColumns"
+      @confirm="confirmImport"
+    />
+
     <!-- 工作性质列表（分组展示） -->
-    <div class="work-type-list" v-loading="loading">
+    <div v-if="!isSimpleMode || !simpleShowTable" class="work-type-list" v-loading="loading">
       <el-empty v-if="workTypes.length === 0" description="暂无工作性质，请添加" />
 
       <el-card
@@ -104,6 +116,25 @@
         <div class="collapsed-summary" v-else>{{ getWorkTypeItemCount(workType) }}项</div>
       </el-card>
     </div>
+    <TableWrapper v-else>
+      <el-table :data="simpleTableRows" stripe border v-loading="loading">
+        <el-table-column prop="workTypeName" label="工作性质" min-width="180" />
+        <el-table-column prop="workTypePoints" label="积分" width="100" align="center" />
+        <el-table-column prop="workTypeStatus" label="状态" width="90" align="center" />
+        <el-table-column prop="itemType" label="类型" width="110" />
+        <el-table-column prop="itemName" label="检查项目" min-width="180" />
+        <el-table-column prop="itemStandard" label="检查标准" min-width="220" />
+        <el-table-column prop="parentName" label="父项" min-width="140" />
+        <el-table-column prop="triggerValueText" label="触发值" width="90" align="center" />
+        <el-table-column prop="itemStatus" label="项目状态" width="90" align="center" />
+        <el-table-column label="操作" width="140" fixed="right">
+          <template #default="{ row }">
+            <el-button link type="primary" @click="editWorkType(row.workType)">编辑</el-button>
+            <el-button link type="danger" @click="deleteWorkType(row.workType)">删除</el-button>
+          </template>
+        </el-table-column>
+      </el-table>
+    </TableWrapper>
 
     <!-- 工作性质对话框 -->
     <FormDialog
@@ -241,19 +272,13 @@ import { ElMessage, ElMessageBox } from 'element-plus';
 import { Plus, Download, ArrowRight } from '@element-plus/icons-vue';
 import { useRoute } from 'vue-router';
 import { useUserStore } from '@/store/modules/user';
-import { useUpload } from '@/composables/useUpload';
 import request from '@/api/request';
 import FormDialog from '@/components/system/FormDialog.vue';
+import ImportPreviewDialog from '@/components/common/ImportPreviewDialog.vue';
 import { buildExportFileName, exportRowsToXlsx } from '@/utils/tableExport';
 
 const userStore = useUserStore();
 const route = useRoute();
-
-const { apiBaseUrl, uploadHeaders } = useUpload();
-
-// 导入配置
-const importUrl = computed(() => `${apiBaseUrl}/safety-check-items/import`);
-const uploadRef = ref();
 
 // 工作性质列表（包含检查项目）
 const workTypes = ref([]);
@@ -261,6 +286,27 @@ const loading = ref(false);
 const saving = ref(false);
 const exporting = ref(false);
 const expandedWorkTypes = ref({});
+
+// ==================== 批量导入（预览 -> 确认导入） ====================
+const importFileInputRef = ref(null);
+const importPreviewLoading = ref(false);
+const importSubmitting = ref(false);
+const importFile = ref(null);
+const importPreviewVisible = ref(false);
+const importPreviewSummary = ref({});
+const importPreviewRows = ref([]);
+const importPreviewTruncated = ref(false);
+const importPreviewMaxRows = ref(0);
+
+const importPreviewColumns = computed(() => ([
+  { prop: 'workTypeName', label: '工作性质', minWidth: 140 },
+  { prop: 'itemName', label: '检查项目', minWidth: 180 },
+  { prop: 'parentItemName', label: '父项', minWidth: 140 },
+  { prop: 'itemStandard', label: '检查标准', minWidth: 220, diffKey: 'itemStandard' },
+  { prop: 'enableChildren', label: '联动(父项)', width: 110, diffKey: 'enableChildren' },
+  { prop: 'triggerValue', label: '触发值(子项)', width: 120, diffKey: 'triggerValue' },
+  { prop: 'sortOrder', label: '排序', width: 90, diffKey: 'sortOrder' }
+]));
 
 // 工作性质对话框
 const workTypeDialogVisible = ref(false);
@@ -757,18 +803,7 @@ const deleteWorkType = async (row) => {
 // 下载模板
 const downloadTemplate = async () => {
   try {
-    const response = await fetch(`${apiBaseUrl}/safety-check-items/template`, {
-      method: 'GET',
-      headers: {
-        Authorization: `Bearer ${userStore.token}`
-      }
-    });
-
-    if (!response.ok) {
-      throw new Error('下载失败');
-    }
-
-    const blob = await response.blob();
+    const blob = await request.get('/safety-check-items/template', { responseType: 'blob' });
     const url = window.URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
@@ -783,33 +818,82 @@ const downloadTemplate = async () => {
   }
 };
 
-// 上传前检查
-const beforeUpload = (file) => {
-  const isExcel = file.type === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' ||
-                  file.type === 'application/vnd.ms-excel' ||
-                  file.name.endsWith('.xlsx') ||
-                  file.name.endsWith('.xls');
-  if (!isExcel) {
-    ElMessage.error('只能上传 Excel 文件！');
-    return false;
-  }
-  return true;
+const triggerImport = () => {
+  if (importPreviewLoading.value) return;
+  if (!importFileInputRef.value) return;
+  importFileInputRef.value.click();
 };
 
-// 导入成功
-const handleImportSuccess = (response) => {
-  if (response.code === 200) {
-    ElMessage.success(response.message);
+const isExcelFile = (file) => {
+  const mime = file?.type;
+  return mime === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' || mime === 'application/vnd.ms-excel';
+};
+
+const handleImportFileSelected = async (event) => {
+  const file = event?.target?.files?.[0];
+  if (event?.target) event.target.value = '';
+  if (!file) return;
+
+  if (!isExcelFile(file)) {
+    ElMessage.error('只能上传 Excel 文件');
+    return;
+  }
+  if (file.size / 1024 / 1024 >= 5) {
+    ElMessage.error('文件大小不能超过 5MB');
+    return;
+  }
+
+  importFile.value = file;
+  importPreviewLoading.value = true;
+  try {
+    const formData = new FormData();
+    formData.append('file', file);
+    const res = await request.post('/safety-check-items/import-preview', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    });
+
+    importPreviewSummary.value = res?.summary ?? {};
+    importPreviewRows.value = Array.isArray(res?.rows) ? res.rows : [];
+    importPreviewTruncated.value = !!res?.truncated;
+    importPreviewMaxRows.value = typeof res?.maxRows === 'number' ? res.maxRows : 0;
+    importPreviewVisible.value = true;
+  } finally {
+    importPreviewLoading.value = false;
+  }
+};
+
+const confirmImport = async () => {
+  if (!importFile.value) {
+    ElMessage.warning('请选择文件');
+    return;
+  }
+
+  importSubmitting.value = true;
+  try {
+    const formData = new FormData();
+    formData.append('file', importFile.value);
+    const res = await request.post('/safety-check-items/import', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    });
+
+    const created = typeof res?.success === 'number' ? res.success : 0;
+    const updated = typeof res?.updated === 'number' ? res.updated : 0;
+    const skipped = typeof res?.skipped === 'number' ? res.skipped : 0;
+    const missingParent = typeof res?.missingParent === 'number' ? res.missingParent : 0;
+    const totalSkipped = skipped + missingParent;
+
+    if (missingParent > 0) {
+      ElMessage.warning(`导入完成：新增${created}条，更新${updated}条，跳过${totalSkipped}条（含${missingParent}条父项缺失）`);
+    } else {
+      ElMessage.success(`导入完成：新增${created}条，更新${updated}条，跳过${totalSkipped}条`);
+    }
+
+    importPreviewVisible.value = false;
+    importFile.value = null;
     loadWorkTypes();
-  } else {
-    ElMessage.error(response.message || '导入失败');
+  } finally {
+    importSubmitting.value = false;
   }
-};
-
-// 导入失败
-const handleImportError = (error) => {
-  
-  ElMessage.error('导入失败，请检查文件格式');
 };
 
 onMounted(() => {

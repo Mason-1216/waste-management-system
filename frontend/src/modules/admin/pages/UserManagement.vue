@@ -3,20 +3,15 @@
     <div class="page-header">
       <h2>用户管理</h2>
       <div v-if="canEditUser" class="header-actions">
+        <el-button v-if="isSimpleMode" @click="simpleShowTable = !simpleShowTable">
+          {{ simpleShowTable ? '切换卡片' : '切换表格' }}
+        </el-button>
         <el-button type="info" @click="downloadTemplate">
           <el-icon><Download /></el-icon>下载模板
         </el-button>
-        <BaseUpload
-          ref="uploadRef"
-          :auto-upload="false"
-          :show-file-list="false"
-          accept=".xlsx,.xls"
-          :on-change="handleFileChange"
-        >
-          <el-button type="success">
-            <el-icon><Download /></el-icon>批量导入
-          </el-button>
-        </BaseUpload>
+        <el-button type="success" :loading="importPreviewLoading" @click="triggerImport">
+          <el-icon><Download /></el-icon>批量导入
+        </el-button>
         <el-button type="primary" @click="showAddDialog">
           <el-icon><Plus /></el-icon>新增用户
         </el-button>
@@ -26,8 +21,33 @@
       </div>
     </div>
 
+    <input
+      ref="importFileInputRef"
+      type="file"
+      accept=".xlsx,.xls"
+      style="display: none"
+      @change="handleImportFileSelected"
+    />
+
+    <ImportPreviewDialog
+      v-model="importPreviewVisible"
+      title="用户管理 - 导入预览"
+      :rows="importPreviewRows"
+      :summary="importPreviewSummary"
+      :truncated="importPreviewTruncated"
+      :max-rows="importPreviewMaxRows"
+      :confirm-loading="importSubmitting"
+      :columns="importPreviewColumns"
+      @confirm="confirmImport"
+    />
+
     <el-card class="filter-card">
-      <FilterBar>
+      <SimpleFilterBar
+        :enabled="isSimpleMode"
+        v-model:expanded="simpleFilterExpanded"
+        :summary-text="simpleFilterSummaryText"
+      >
+        <FilterBar>
         <div class="filter-item">
           <span class="filter-label">姓名</span>
           <FilterAutocomplete
@@ -90,10 +110,11 @@
             <el-option label="禁用" :value="0" />
           </FilterSelect>
         </div>
-      </FilterBar>
+        </FilterBar>
+      </SimpleFilterBar>
     </el-card>
 
-    <el-table ref="tableRef" :data="userList" stripe border v-loading="loading">
+    <el-table v-if="!isSimpleMode || simpleShowTable" ref="tableRef" :data="userList" stripe border v-loading="loading">
         <el-table-column prop="username" label="用户名" width="120" />
         <el-table-column label="密码" width="120">
           <template #default>
@@ -145,6 +166,23 @@
           </template>
         </el-table-column>
     </el-table>
+    <div v-else class="simple-card-list" v-loading="loading">
+      <el-empty v-if="userList.length === 0" description="暂无数据" />
+      <div v-for="row in userList" :key="row.id" class="simple-card-item">
+        <div class="card-title">{{ row.realName || row.username || '-' }}</div>
+        <div class="card-meta">用户名：{{ row.username || '-' }}</div>
+        <div class="card-meta">角色：{{ getPositionLabel(row.roleCode) }}</div>
+        <div class="card-meta">部门：{{ row.departmentName || row.department_name || '-' }}</div>
+        <div class="card-meta">公司：{{ row.companyName || row.company_name || '-' }}</div>
+        <div class="card-meta">手机号：{{ row.phone || '-' }}</div>
+        <div class="card-meta">状态：{{ row.status === 1 ? '启用' : '禁用' }}</div>
+        <div class="card-actions" v-if="canEditUser">
+          <el-button link type="primary" @click="editUser(row)">编辑</el-button>
+          <el-button link type="warning" @click="resetPassword(row)">重置密码</el-button>
+          <el-button link type="danger" @click="deleteUser(row)">删除</el-button>
+        </div>
+      </div>
+    </div>
 
     <div class="pagination-wrapper">
       <el-pagination
@@ -218,55 +256,6 @@
         </el-form-item>
       </el-form>
     </FormDialog>
-
-    <FormDialog
-      v-model="importDialogVisible"
-      title="导入预览"
-      width="900px"
-      :show-confirm="false"
-      :show-cancel="false"
-    >
-      <el-alert
-        v-if="importErrors.length > 0"
-        type="error"
-        :closable="false"
-        style="margin-bottom: 16px;"
-      >
-        <template #title>
-          <span>发现 {{ importErrors.length }} 条数据有问题，请修正后重新导入</span>
-        </template>
-      </el-alert>
-
-      <el-table :data="importPreviewData" border max-height="400">
-        <el-table-column prop="username" label="用户名" width="120" />
-        <el-table-column prop="realName" label="姓名" width="100" />
-        <el-table-column prop="companyName" label="公司" width="120" />
-        <el-table-column prop="departmentName" label="部门" width="120" />
-        <el-table-column prop="positionName" label="角色" width="140" />
-        <el-table-column prop="phone" label="手机号" width="130" />
-        <el-table-column prop="email" label="邮箱" width="180" show-overflow-tooltip />
-        <el-table-column prop="stationName" label="所属场站" width="150" />
-        <el-table-column label="状态" width="120">
-          <template #default="{ row }">
-            <el-tag :type="row.error ? 'danger' : 'success'" size="small">
-              {{ row.error || '可导入' }}
-            </el-tag>
-          </template>
-        </el-table-column>
-      </el-table>
-
-      <template #footer>
-        <el-button @click="importDialogVisible = false">取消</el-button>
-        <el-button
-          type="primary"
-          @click="confirmImport"
-          :loading="importing"
-          :disabled="importErrors.length > 0"
-        >
-          确认导入 ({{ importPreviewData.filter(d => !d.error).length }} 条)
-        </el-button>
-      </template>
-    </FormDialog>
   </div>
 </template>
 
@@ -284,32 +273,54 @@ import roleApi from '@/api/role';
 import permissionApi from '@/api/permission';
 import ModulePermissionConfig from '@/modules/admin/components/ModulePermissionConfig.vue';
 import FormDialog from '@/components/system/FormDialog.vue';
+import ImportPreviewDialog from '@/components/common/ImportPreviewDialog.vue';
+import SimpleFilterBar from '@/components/common/SimpleFilterBar.vue';
 import { useUserStore } from '@/store/modules/user';
+import { useSimpleMode } from '@/composables/useSimpleMode';
 
 const route = useRoute();
 const userStore = useUserStore();
 const DEV_TEST_USERNAME = 'sum';
+const { isSimpleMode, simpleShowTable, simpleFilterExpanded } = useSimpleMode();
 
 // 权限检查
 const hasPermission = (code) => userStore.permissionCodes.includes(code);
 const canEditUser = computed(() => hasPermission('module:user:edit'));
 
 const formRef = ref(null);
-const uploadRef = ref(null);
 const tableRef = ref(null);
 const userList = ref([]);
 const stationList = ref([]);
 const departmentList = ref([]);
 const dialogVisible = ref(false);
-const importDialogVisible = ref(false);
 const isEdit = ref(false);
 const saving = ref(false);
 const loading = ref(false);
 const detailLoading = ref(false);
-const importing = ref(false);
 const exporting = ref(false);
-const importPreviewData = ref([]);
-const importErrors = ref([]);
+
+// ==================== 批量导入（预览 -> 确认导入） ====================
+const importFileInputRef = ref(null);
+const importPreviewLoading = ref(false);
+const importSubmitting = ref(false);
+const importFile = ref(null);
+const importPayloadUsers = ref([]);
+const importPreviewVisible = ref(false);
+const importPreviewSummary = ref({});
+const importPreviewRows = ref([]);
+const importPreviewTruncated = ref(false);
+const importPreviewMaxRows = ref(0);
+
+const importPreviewColumns = computed(() => ([
+  { prop: 'username', label: '用户名', width: 120 },
+  { prop: 'realName', label: '姓名', width: 100, diffKey: 'realName' },
+  { prop: 'roleCode', label: '角色', width: 140, diffKey: 'roleCode' },
+  { prop: 'stationName', label: '所属场站', width: 150, diffKey: 'stationName' },
+  { prop: 'companyName', label: '公司', width: 140, diffKey: 'companyName' },
+  { prop: 'departmentName', label: '部门', width: 120, diffKey: 'departmentName' },
+  { prop: 'phone', label: '手机号', width: 130, diffKey: 'phone' },
+  { prop: 'email', label: '邮箱', minWidth: 180, diffKey: 'email' }
+]));
 
  const roleList = ref([]);
  const allPermissions = ref([]);
@@ -448,6 +459,18 @@ const defaultFilters = {
   status: 'all'
 };
 const filters = ref({ ...defaultFilters });
+const simpleFilterSummaryText = computed(() => {
+  const parts = [];
+  const keyword = String(filters.value.keyword || '').trim();
+  const companyName = String(filters.value.companyName || '').trim();
+  if (keyword) parts.push(`姓名=${keyword}`);
+  if (companyName) parts.push(`公司=${companyName}`);
+  if (filters.value.roleCode !== 'all') parts.push(`角色=${filters.value.roleCode}`);
+  if (filters.value.departmentName !== 'all') parts.push(`部门=${filters.value.departmentName}`);
+  if (filters.value.stationId !== 'all') parts.push(`场站=${filters.value.stationId}`);
+  if (filters.value.status !== 'all') parts.push(`状态=${Number(filters.value.status) === 1 ? '启用' : '禁用'}`);
+  return parts.length ? `当前筛选：${parts.join('，')}` : '当前筛选：全部';
+});
 
 const pagination = ref({
   page: 1,
@@ -859,99 +882,99 @@ const downloadTemplate = () => {
   ElMessage.success('模板已下载');
 };
 
-const handleFileChange = (file) => {
-  const reader = new FileReader();
-  reader.onload = (e) => {
-    try {
-      const data = new Uint8Array(e.target.result);
-      const workbook = XLSX.read(data, { type: 'array' });
-      const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
-      const jsonData = XLSX.utils.sheet_to_json(firstSheet, { header: 1 });
-
-      const rows = jsonData.slice(1).filter(row => row.length > 0 && row[0]);
-      if (rows.length === 0) {
-        ElMessage.warning('没有找到有效数据');
-        return;
-      }
-      if (rows.length > 100) {
-        ElMessage.warning('一次最多导入100条数据');
-        return;
-      }
-
-      const positionNameToCode = buildPositionNameToCode();
-
-      const previewData = rows.map((row, index) => {
-        const item = {
-          rowIndex: index + 2,
-          username: row[0]?.toString().trim() || '',
-          realName: row[1]?.toString().trim() || '',
-          companyName: row[2]?.toString().trim() || '',
-          departmentName: row[3]?.toString().trim() || '',
-          positionName: row[4]?.toString().trim() || '',
-          phone: row[5]?.toString().trim() || '',
-          email: row[6]?.toString().trim() || '',
-          stationName: row[7]?.toString().trim() || '',
-          error: null
-        };
-
-        if (!item.realName) {
-          item.error = '姓名不能为空';
-        } else if (!item.username) {
-          item.error = '用户名不能为空';
-        } else if (item.username.length < 3 || item.username.length > 20) {
-          item.error = '用户名长度应为3-20';
-        } else if (!item.positionName || !positionNameToCode[item.positionName]) {
-          item.error = '岗位无效';
-        } else if (item.phone && !/^1[3-9]\d{9}$/.test(item.phone)) {
-          item.error = '手机号格式错误';
-        }
-
-        item.roleCode = positionNameToCode[item.positionName];
-
-        return item;
-      });
-
-      importPreviewData.value = previewData;
-      importErrors.value = previewData.filter(d => d.error);
-      importDialogVisible.value = true;
-    } catch (err) {
-      
-      ElMessage.error('文件解析失败，请检查文件格式');
-    }
-  };
-  reader.readAsArrayBuffer(file.raw);
+const triggerImport = () => {
+  if (importPreviewLoading.value) return;
+  if (!importFileInputRef.value) return;
+  importFileInputRef.value.click();
 };
 
-const confirmImport = async () => {
-  const validData = importPreviewData.value.filter(d => !d.error);
-  if (validData.length === 0) {
-    ElMessage.warning('没有可导入的有效数据');
+const isExcelFile = (file) => {
+  const mime = file?.type;
+  return mime === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' || mime === 'application/vnd.ms-excel';
+};
+
+const handleImportFileSelected = async (event) => {
+  const file = event?.target?.files?.[0];
+  if (event?.target) event.target.value = '';
+  if (!file) return;
+
+  if (!isExcelFile(file)) {
+    ElMessage.error('只能上传 Excel 文件');
+    return;
+  }
+  if (file.size / 1024 / 1024 >= 5) {
+    ElMessage.error('文件大小不能超过 5MB');
     return;
   }
 
-  importing.value = true;
-  try {
-    const importList = validData.map(item => ({
-      realName: item.realName,
-      username: item.username,
-      roleCode: item.roleCode,
-      departmentName: item.departmentName,
-      companyName: item.companyName,
-      stationName: item.stationName,
-      phone: item.phone,
-      email: item.email,
-      password: '123456'
-    }));
+  importFile.value = file;
+  importPreviewLoading.value = true;
 
-    await request.post('/users/batch-import', { users: importList });
-    ElMessage.success(`成功导入 ${validData.length} 条数据`);
-    importDialogVisible.value = false;
-    loadList();
-  } catch (e) {
-    
-    ElMessage.error('导入失败: ' + (e.response?.data?.message || e.message));
+  try {
+    const data = await file.arrayBuffer();
+    const workbook = XLSX.read(data, { type: 'array' });
+    const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+    const jsonData = XLSX.utils.sheet_to_json(firstSheet, { header: 1 });
+
+    const rows = jsonData.slice(1).filter(row => row.length > 0 && row[0]);
+    if (rows.length === 0) {
+      ElMessage.warning('没有找到有效数据');
+      return;
+    }
+    if (rows.length > 100) {
+      ElMessage.warning('一次最多导入 100 条数据');
+      return;
+    }
+
+    const positionNameToCode = buildPositionNameToCode();
+    const users = rows.map((row) => {
+      const positionName = row[4]?.toString().trim() || '';
+      const roleCode = positionNameToCode[positionName] || '';
+
+      return {
+        username: row[0]?.toString().trim() || '',
+        realName: row[1]?.toString().trim() || '',
+        companyName: row[2]?.toString().trim() || '',
+        departmentName: row[3]?.toString().trim() || '',
+        roleCode,
+        phone: row[5]?.toString().trim() || '',
+        email: row[6]?.toString().trim() || '',
+        stationName: row[7]?.toString().trim() || ''
+      };
+    });
+
+    importPayloadUsers.value = users;
+    const res = await request.post('/users/batch-import-preview', { users });
+    importPreviewSummary.value = res?.summary ?? {};
+    importPreviewRows.value = Array.isArray(res?.rows) ? res.rows : [];
+    importPreviewTruncated.value = !!res?.truncated;
+    importPreviewMaxRows.value = typeof res?.maxRows === 'number' ? res.maxRows : 0;
+    importPreviewVisible.value = true;
+  } catch (err) {
+    ElMessage.error(err?.message || '文件解析失败，请检查文件格式');
   } finally {
-    importing.value = false;
+    importPreviewLoading.value = false;
+  }
+};
+
+const confirmImport = async () => {
+  const users = Array.isArray(importPayloadUsers.value) ? importPayloadUsers.value : [];
+  if (users.length === 0) {
+    ElMessage.warning('没有可导入的数据');
+    return;
+  }
+
+  importSubmitting.value = true;
+  try {
+    const res = await request.post('/users/batch-import', { users });
+    const count = typeof res?.count === 'number' ? res.count : users.length;
+    ElMessage.success(`导入完成：处理${count}条（密码不覆盖，仅对新增生效）`);
+    importPreviewVisible.value = false;
+    importPayloadUsers.value = [];
+    importFile.value = null;
+    loadList();
+  } finally {
+    importSubmitting.value = false;
   }
 };
 
@@ -1030,6 +1053,37 @@ onActivated(async () => {
     background: #fff;
     padding: 16px;
     border-radius: 8px;
+  }
+
+  .simple-card-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .simple-card-item {
+    border: 1px solid #ebeef5;
+    border-radius: 8px;
+    background: #fff;
+    padding: 12px;
+  }
+
+  .card-title {
+    font-weight: 600;
+    margin-bottom: 8px;
+  }
+
+  .card-meta {
+    font-size: 13px;
+    color: #606266;
+    margin-bottom: 4px;
+  }
+
+  .card-actions {
+    margin-top: 8px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
   }
 }
 

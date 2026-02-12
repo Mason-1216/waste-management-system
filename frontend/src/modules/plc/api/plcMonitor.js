@@ -42,6 +42,10 @@ export const importConfigFile = (formData) => {
   return request.post('/plc-monitor/configs/import', formData);
 };
 
+export const previewImportConfigFile = (formData) => {
+  return request.post('/plc-monitor/configs/import-preview', formData);
+};
+
 export const downloadConfigTemplate = () => {
   return request.get('/plc-monitor/configs/template', { responseType: 'blob' });
 };
@@ -114,6 +118,10 @@ export const downloadHistoryTemplate = () => {
 
 export const importHistoryData = (formData) => {
   return request.post('/plc-monitor/history/import', formData);
+};
+
+export const previewImportHistoryData = (formData) => {
+  return request.post('/plc-monitor/history/import-preview', formData);
 };
 
 // ============================================

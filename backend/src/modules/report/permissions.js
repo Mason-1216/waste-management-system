@@ -56,6 +56,20 @@ export const modulePermissions = [
         "name": "积分统计-编辑"
       }
     ]
+  },
+  {
+    "code": "module:quarterly-award",
+    "name": "季度积分奖",
+    "children": [
+      {
+        "code": "module:quarterly-award:view",
+        "name": "季度积分奖-查看"
+      },
+      {
+        "code": "module:quarterly-award:edit",
+        "name": "季度积分奖-编辑"
+      }
+    ]
   }
 ];
 

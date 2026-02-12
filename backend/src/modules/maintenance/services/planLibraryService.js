@@ -1,5 +1,6 @@
 ﻿import { Op } from 'sequelize';
 import dayjs from 'dayjs';
+import sequelize from '../../../config/database.js';
 import { MaintenancePlanLibrary, MaintenanceAssignment, MaintenancePositionPlan, MaintenanceWorkRecord, Station, User } from '../../../models/index.js';
 import { createError } from '../../../middlewares/error.js';
 import { getPagination, formatPaginationResponse, getOrderBy, generateRecordCode } from '../../../utils/helpers.js';
@@ -102,17 +103,48 @@ const normalizeMaintenanceStandards = (value) => {
     .filter((item) => item.name || item.specification);
 };
 
-const inferCycleTypeFromSchedule = (record) => {
-  if (record?.weekly_day !== null && record?.weekly_day !== undefined) return 'weekly';
-  if (record?.monthly_day !== null && record?.monthly_day !== undefined) return 'monthly';
-  if (record?.yearly_month !== null && record?.yearly_month !== undefined) return 'yearly';
-  if (record?.yearly_day !== null && record?.yearly_day !== undefined) return 'yearly';
-  return 'monthly';
-};
+const inferCycleTypeFromSchedule = (record) => { 
+  if (record?.weekly_day !== null && record?.weekly_day !== undefined) return 'weekly'; 
+  if (record?.monthly_day !== null && record?.monthly_day !== undefined) return 'monthly'; 
+  if (record?.yearly_month !== null && record?.yearly_month !== undefined) return 'yearly'; 
+  if (record?.yearly_day !== null && record?.yearly_day !== undefined) return 'yearly'; 
+  return 'monthly'; 
+}; 
 
-// ============================================
-// 淇濆吇璁″垝搴?
-// ============================================
+const syncPositionAssignmentsForNewPlan = async ({ stationId, planId, equipmentCode }) => {
+  if (!stationId || !planId || !equipmentCode) return;
+
+  const [rows] = await sequelize.query(
+    `
+      SELECT DISTINCT mpp.position_name
+      FROM maintenance_position_plans mpp
+      INNER JOIN maintenance_plan_library mpl ON mpl.id = mpp.plan_id
+      WHERE mpp.station_id = ?
+        AND mpl.equipment_code = ?
+        AND mpp.plan_id <> ?
+    `,
+    { replacements: [stationId, equipmentCode, planId] }
+  );
+
+  const positionNames = (Array.isArray(rows) ? rows : [])
+    .map((row) => row?.position_name)
+    .filter(Boolean);
+
+  if (positionNames.length === 0) return;
+
+  await MaintenancePositionPlan.bulkCreate(
+    positionNames.map((positionName) => ({
+      station_id: stationId,
+      position_name: positionName,
+      plan_id: planId
+    })),
+    { ignoreDuplicates: true }
+  );
+};
+ 
+// ============================================ 
+// 淇濆吇璁″垝搴? 
+// ============================================ 
 
 /**
  * 鑾峰彇淇濆吇璁″垝搴撳垪琛?
@@ -219,11 +251,11 @@ export const createMaintenancePlanLibrary = async (ctx) => {
     throw createError(400, '淇濆吇鍛ㄦ湡涓嶈兘涓虹┖');
   }
 
-  const record = await MaintenancePlanLibrary.create({
-    station_id: stationId ? parseInt(stationId) : null,
-    equipment_code: equipmentCode,
-    equipment_name: equipmentName,
-    install_location: installLocation,
+  const record = await MaintenancePlanLibrary.create({ 
+    station_id: stationId ? parseInt(stationId) : null, 
+    equipment_code: equipmentCode, 
+    equipment_name: equipmentName, 
+    install_location: installLocation, 
     cycle_type: cycleType,
     weekly_day: weeklyDay || null,
     monthly_day: monthlyDay || null,
@@ -231,13 +263,19 @@ export const createMaintenancePlanLibrary = async (ctx) => {
     yearly_day: yearlyDay || null,
     maintenance_standards: normalizeMaintenanceStandards(maintenanceStandards),
     created_by: user.id,
-    created_by_name: user.realName
-  });
+    created_by_name: user.realName 
+  }); 
 
-  ctx.body = {
-    code: 200,
-    message: '鍒涘缓鎴愬姛',
-    data: { id: record.id }
+  await syncPositionAssignmentsForNewPlan({
+    stationId: record.station_id,
+    planId: record.id,
+    equipmentCode: record.equipment_code
+  });
+ 
+  ctx.body = { 
+    code: 200, 
+    message: '鍒涘缓鎴愬姛', 
+    data: { id: record.id } 
   };
 };
 
@@ -336,6 +374,8 @@ export const batchImportMaintenancePlanLibrary = async (ctx) => {
 
   const results = {
     success: 0,
+    updated: 0,
+    skipped: 0,
     failed: 0,
     errors: []
   };
@@ -344,18 +384,18 @@ export const batchImportMaintenancePlanLibrary = async (ctx) => {
     const plan = plans[i];
     const rowNum = i + 2;
 
-    try {
-      if (!plan.equipmentCode || !plan.equipmentCode.trim()) {
-        results.failed++;
-        results.errors.push(`绗?{rowNum}琛? 璁惧缂栧彿涓嶈兘涓虹┖`);
-        continue;
-      }
+      try {
+        if (!plan.equipmentCode || !plan.equipmentCode.trim()) {
+          results.failed++;
+          results.errors.push(`第${rowNum}行：设备编号不能为空`);
+          continue;
+        }
 
-      if (!plan.equipmentName || !plan.equipmentName.trim()) {
-        results.failed++;
-        results.errors.push(`绗?{rowNum}琛? 璁惧鍚嶇О涓嶈兘涓虹┖`);
-        continue;
-      }
+        if (!plan.equipmentName || !plan.equipmentName.trim()) {
+          results.failed++;
+          results.errors.push(`第${rowNum}行：设备名称不能为空`);
+          continue;
+        }
 
       // 鏌ユ壘鍦虹珯ID
       let stationId = parseOptionalInt(plan.stationId ?? plan.station_id);
@@ -370,11 +410,11 @@ export const batchImportMaintenancePlanLibrary = async (ctx) => {
       if (!stationId && scopedStationId) {
         stationId = scopedStationId;
       }
-      if (!stationId) {
-        results.failed++;
-        results.errors.push(`第${rowNum}行 场站不存在或未绑定`);
-        continue;
-      }
+        if (!stationId) {
+          results.failed++;
+          results.errors.push(`第${rowNum}行 场站不存在或未绑定`);
+          continue;
+        }
 
       let resolvedCycleType = normalizeCycleType(plan.cycleType ?? plan.cycle_type ?? plan.cycle ?? plan.cycleLabel ?? plan.cycle_label);
       const parsedWeeklyDay = parseOptionalInt(plan.weeklyDay ?? plan.weekly_day);
@@ -390,38 +430,251 @@ export const batchImportMaintenancePlanLibrary = async (ctx) => {
       if (!resolvedCycleType && (parsedYearlyMonth !== null || parsedYearlyDay !== null)) {
         resolvedCycleType = 'yearly';
       }
-      const finalCycleType = resolvedCycleType ? resolvedCycleType : 'monthly';
-      const weeklyDay = finalCycleType === 'weekly' ? parsedWeeklyDay : null;
-      const monthlyDay = finalCycleType === 'monthly' ? parsedMonthlyDay : null;
-      const yearlyMonth = finalCycleType === 'yearly' ? parsedYearlyMonth : null;
-      const yearlyDay = finalCycleType === 'yearly' ? parsedYearlyDay : null;
+        const finalCycleType = resolvedCycleType ? resolvedCycleType : 'monthly';
+        const weeklyDay = finalCycleType === 'weekly' ? parsedWeeklyDay : null;
+        const monthlyDay = finalCycleType === 'monthly' ? parsedMonthlyDay : null;
+        const yearlyMonth = finalCycleType === 'yearly' ? parsedYearlyMonth : null;
+        const yearlyDay = finalCycleType === 'yearly' ? parsedYearlyDay : null;
 
-      await MaintenancePlanLibrary.create({
+        const equipmentCode = plan.equipmentCode.trim();
+        const equipmentName = plan.equipmentName.trim();
+        const installLocation = typeof plan.installLocation === 'string' ? plan.installLocation.trim() : '';
+        const incomingStandards = normalizeMaintenanceStandards(plan.maintenanceStandards ?? plan.maintenance_standards);
+
+        const existing = await MaintenancePlanLibrary.findOne({
+          where: {
+            station_id: stationId,
+            equipment_code: equipmentCode,
+            cycle_type: finalCycleType,
+            weekly_day: weeklyDay,
+            monthly_day: monthlyDay,
+            yearly_month: yearlyMonth,
+            yearly_day: yearlyDay
+          }
+        });
+
+        if (!existing) {
+          const record = await MaintenancePlanLibrary.create({
+            station_id: stationId,
+            equipment_code: equipmentCode,
+            equipment_name: equipmentName,
+            install_location: installLocation,
+            cycle_type: finalCycleType,
+            weekly_day: weeklyDay,
+            monthly_day: monthlyDay,
+            yearly_month: yearlyMonth,
+            yearly_day: yearlyDay,
+            maintenance_standards: incomingStandards,
+            created_by: user.id,
+            created_by_name: user.realName
+          });
+
+          await syncPositionAssignmentsForNewPlan({
+            stationId: record.station_id,
+            planId: record.id,
+            equipmentCode: record.equipment_code
+          });
+
+          results.success++;
+          continue;
+        }
+
+        const patch = {};
+        if (equipmentName && equipmentName !== existing.equipment_name) {
+          patch.equipment_name = equipmentName;
+        }
+        if (installLocation && installLocation !== (existing.install_location ?? '')) {
+          patch.install_location = installLocation;
+        }
+        if (Array.isArray(incomingStandards) && incomingStandards.length > 0) {
+          const nextJson = JSON.stringify(incomingStandards);
+          const prevJson = JSON.stringify(existing.maintenance_standards ?? []);
+          if (nextJson !== prevJson) {
+            patch.maintenance_standards = incomingStandards;
+          }
+        }
+        if (existing.is_deleted) {
+          patch.is_deleted = false;
+        }
+
+        if (Object.keys(patch).length === 0) {
+          results.skipped++;
+          continue;
+        }
+
+        await existing.update(patch);
+        results.updated++;
+      } catch (err) { 
+        results.failed++; 
+        results.errors.push(`第${rowNum}行：${err.message}`);
+      }
+    }
+
+    ctx.body = {
+      code: 200,
+      message: `导入完成：新增${results.success}条，更新${results.updated}条，跳过${results.skipped}条，失败${results.failed}条`,
+      data: results
+    };
+  };
+
+export const previewBatchImportMaintenancePlanLibrary = async (ctx) => {
+  const { plans } = await validateBody(ctx, batchImportMaintenancePlanLibraryBodySchema);
+  const user = ctx.state.user;
+  const scopedStationId = resolveScopedStationId(user, ctx.headers['x-station-id']);
+
+  if (!plans || !Array.isArray(plans) || plans.length === 0) {
+    throw createError(400, '导入数据不能为空');
+  }
+
+  const stations = await Station.findAll({ attributes: ['id', 'station_name'] });
+  const stationMap = new Map();
+  const stationNormalizedMap = new Map();
+  stations.forEach((station) => {
+    const name = normalizeText(station.station_name);
+    if (!name) return;
+    stationMap.set(name, station.id);
+    stationNormalizedMap.set(normalizeStationKey(name), station.id);
+  });
+
+  const summary = { total: plans.length, create: 0, update: 0, skip: 0, error: 0 };
+  const rows = [];
+
+  for (let i = 0; i < plans.length; i += 1) {
+    const plan = plans[i];
+    const rowNum = i + 2;
+
+    const equipmentCode = typeof plan.equipmentCode === 'string' ? plan.equipmentCode.trim() : '';
+    const equipmentName = typeof plan.equipmentName === 'string' ? plan.equipmentName.trim() : '';
+    const installLocation = typeof plan.installLocation === 'string' ? plan.installLocation.trim() : '';
+
+    let stationId = parseOptionalInt(plan.stationId ?? plan.station_id);
+    const stationName = normalizeText(plan.stationName ?? plan.station_name ?? plan.station);
+    if (!stationId && stationName) {
+      let resolvedStationId = stationMap.get(stationName);
+      if (!resolvedStationId) {
+        resolvedStationId = stationNormalizedMap.get(normalizeStationKey(stationName));
+      }
+      stationId = resolvedStationId ? resolvedStationId : null;
+    }
+    if (!stationId && scopedStationId) {
+      stationId = scopedStationId;
+    }
+
+    let resolvedCycleType = normalizeCycleType(plan.cycleType ?? plan.cycle_type ?? plan.cycle ?? plan.cycleLabel ?? plan.cycle_label);
+    const parsedWeeklyDay = parseOptionalInt(plan.weeklyDay ?? plan.weekly_day);
+    const parsedMonthlyDay = parseOptionalInt(plan.monthlyDay ?? plan.monthly_day);
+    const parsedYearlyMonth = parseOptionalInt(plan.yearlyMonth ?? plan.yearly_month);
+    const parsedYearlyDay = parseOptionalInt(plan.yearlyDay ?? plan.yearly_day);
+    if (!resolvedCycleType && parsedWeeklyDay !== null) {
+      resolvedCycleType = 'weekly';
+    }
+    if (!resolvedCycleType && parsedMonthlyDay !== null) {
+      resolvedCycleType = 'monthly';
+    }
+    if (!resolvedCycleType && (parsedYearlyMonth !== null || parsedYearlyDay !== null)) {
+      resolvedCycleType = 'yearly';
+    }
+    const finalCycleType = resolvedCycleType ? resolvedCycleType : 'monthly';
+    const weeklyDay = finalCycleType === 'weekly' ? parsedWeeklyDay : null;
+    const monthlyDay = finalCycleType === 'monthly' ? parsedMonthlyDay : null;
+    const yearlyMonth = finalCycleType === 'yearly' ? parsedYearlyMonth : null;
+    const yearlyDay = finalCycleType === 'yearly' ? parsedYearlyDay : null;
+
+    const incomingStandards = normalizeMaintenanceStandards(plan.maintenanceStandards ?? plan.maintenance_standards);
+
+    const previewRow = {
+      rowNum,
+      action: 'error',
+      message: '',
+      diff: {},
+      stationId,
+      stationName: stationName ?? '',
+      equipmentCode,
+      equipmentName,
+      installLocation,
+      cycleType: finalCycleType,
+      weeklyDay,
+      monthlyDay,
+      yearlyMonth,
+      yearlyDay,
+      maintenanceStandardsCount: Array.isArray(incomingStandards) ? incomingStandards.length : 0
+    };
+
+    if (!equipmentCode) {
+      previewRow.message = '设备编号不能为空';
+      summary.error += 1;
+      rows.push(previewRow);
+      continue;
+    }
+    if (!equipmentName) {
+      previewRow.message = '设备名称不能为空';
+      summary.error += 1;
+      rows.push(previewRow);
+      continue;
+    }
+    if (!stationId) {
+      previewRow.message = '场站不存在或未绑定';
+      summary.error += 1;
+      rows.push(previewRow);
+      continue;
+    }
+
+    const existing = await MaintenancePlanLibrary.findOne({
+      where: {
         station_id: stationId,
-        equipment_code: plan.equipmentCode.trim(),
-        equipment_name: plan.equipmentName.trim(),
-        install_location: (plan.installLocation || '').trim(),
+        equipment_code: equipmentCode,
         cycle_type: finalCycleType,
         weekly_day: weeklyDay,
         monthly_day: monthlyDay,
         yearly_month: yearlyMonth,
-        yearly_day: yearlyDay,
-        maintenance_standards: normalizeMaintenanceStandards(plan.maintenanceStandards ?? plan.maintenance_standards),
-        created_by: user.id,
-        created_by_name: user.realName
-      });
+        yearly_day: yearlyDay
+      }
+    });
 
-      results.success++;
-    } catch (err) {
-      results.failed++;
-      results.errors.push(`绗?{rowNum}琛? ${err.message}`);
+    if (!existing) {
+      previewRow.action = 'create';
+      previewRow.message = '将新增';
+      summary.create += 1;
+      rows.push(previewRow);
+      continue;
     }
+
+    const diff = {};
+    if (equipmentName && equipmentName !== existing.equipment_name) {
+      diff.equipmentName = { from: existing.equipment_name, to: equipmentName };
+    }
+    if (installLocation && installLocation !== (existing.install_location ?? '')) {
+      diff.installLocation = { from: existing.install_location ?? '', to: installLocation };
+    }
+    if (Array.isArray(incomingStandards) && incomingStandards.length > 0) {
+      const nextJson = JSON.stringify(incomingStandards);
+      const prevJson = JSON.stringify(existing.maintenance_standards ?? []);
+      if (nextJson !== prevJson) {
+        diff.maintenanceStandards = { from: existing.maintenance_standards ?? [], to: incomingStandards };
+      }
+    }
+    if (existing.is_deleted) {
+      diff.isDeleted = { from: true, to: false };
+    }
+
+    previewRow.diff = diff;
+    if (Object.keys(diff).length === 0) {
+      previewRow.action = 'skip';
+      previewRow.message = '无变更，跳过';
+      summary.skip += 1;
+    } else {
+      previewRow.action = 'update';
+      previewRow.message = '将更新';
+      summary.update += 1;
+    }
+
+    rows.push(previewRow);
   }
 
   ctx.body = {
     code: 200,
-    message: `Import done: success ${results.success}, failed ${results.failed}`,
-    data: results
+    message: 'success',
+    data: { summary, rows }
   };
 };
 

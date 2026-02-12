@@ -9,6 +9,7 @@ export const registerWorkHoursReportRoutes = (router) => {
   router.get('/reports/applied-hourly-points', reportController.getAppliedHourlyPointsReport);
   router.post('/reports/applied-hourly-points/adjust', checkRole(managerRoles), reportController.saveAdjustedHourlyPoints);
   router.get('/reports/applied-hourly-points/history', reportController.getAdjustedHourlyPointsHistory);
+
   router.get('/reports/work-hours-manual-template', checkRole(managerRoles), reportController.downloadManualWorkHoursTemplate);
   router.post(
     '/reports/work-hours-manual-import',
@@ -16,8 +17,16 @@ export const registerWorkHoursReportRoutes = (router) => {
     upload.single('file'),
     reportController.importManualWorkHours
   );
+  router.post(
+    '/reports/work-hours-manual-import-preview',
+    checkRole(managerRoles),
+    upload.single('file'),
+    reportController.previewImportManualWorkHours
+  );
+
   // 工时记录列表/编辑/删除
   router.get('/reports/work-hours-list', reportController.getManualWorkHoursList);
   router.put('/reports/work-hours/:id', checkRole(managerRoles), reportController.updateManualWorkHour);
   router.delete('/reports/work-hours/:id', checkRole(managerRoles), reportController.deleteManualWorkHour);
 };
+

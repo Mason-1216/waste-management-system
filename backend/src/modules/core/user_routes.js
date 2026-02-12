@@ -19,6 +19,7 @@ export const registerUserRoutes = (router) => {
   );
   router.get('/users/:id', userController.getUserById);
   router.post('/users', checkRole(['admin']), userController.createUser);
+  router.post('/users/batch-import-preview', checkRole(['admin']), userController.previewBatchImportUsers);
   router.post('/users/batch-import', checkRole(['admin']), userController.batchImportUsers);
   router.put('/users/:id', checkRole(['admin']), userController.updateUser);
   router.delete('/users/:id', checkRole(['admin']), userController.deleteUser);

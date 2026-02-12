@@ -35,6 +35,12 @@ export const registerPlcRoutes = (router) => {
     upload.single('file'),
     plcMonitorController.importConfigs
   );
+  router.post(
+    '/plc-monitor/configs/import-preview',
+    checkRole(['admin', 'station_manager', 'department_manager', 'deputy_manager']),
+    upload.single('file'),
+    plcMonitorController.previewImportConfigs
+  );
   router.get(
     '/plc-monitor/configs/template',
     checkRole(['admin', 'station_manager', 'department_manager', 'deputy_manager']),
@@ -74,5 +80,11 @@ export const registerPlcRoutes = (router) => {
     checkRole(['admin', 'station_manager', 'department_manager', 'deputy_manager']),
     upload.single('file'),
     plcMonitorController.importHistoryData
+  );
+  router.post(
+    '/plc-monitor/history/import-preview',
+    checkRole(['admin', 'station_manager', 'department_manager', 'deputy_manager']),
+    upload.single('file'),
+    plcMonitorController.previewImportHistoryData
   );
 };

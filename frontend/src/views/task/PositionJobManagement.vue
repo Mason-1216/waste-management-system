@@ -12,26 +12,36 @@
           新增工作项目
         </el-button>
         <!-- 导入和下载模板按钮 -->
-        <BaseUpload
-          :action="`${apiBaseUrl}/position-jobs/import`"
-          :headers="uploadHeaders"
-          :on-success="handleImportSuccess"
-          :on-error="handleImportError"
-          :show-file-list="false"
-          accept=".xlsx,.xls"
-          :before-upload="beforeUpload"
-        >
-          <el-button type="success">
-            <el-icon><Download /></el-icon>
-            批量导入
-          </el-button>
-        </BaseUpload>
+        <el-button type="success" :loading="importPreviewLoading" @click="triggerImport">
+          <el-icon><Download /></el-icon>
+          批量导入
+        </el-button>
         <el-button @click="downloadTemplate" type="info">
           <el-icon><Download /></el-icon>
           下载模板
         </el-button>
       </div>
     </div>
+
+    <input
+      ref="importFileInputRef"
+      type="file"
+      accept=".xlsx,.xls"
+      style="display: none"
+      @change="handleImportFileSelected"
+    />
+
+    <ImportPreviewDialog
+      v-model="importPreviewVisible"
+      title="岗位工作任务汇总表 - 导入预览"
+      :rows="importPreviewRows"
+      :summary="importPreviewSummary"
+      :truncated="importPreviewTruncated"
+      :max-rows="importPreviewMaxRows"
+      :confirm-loading="importSubmitting"
+      :columns="importPreviewColumns"
+      @confirm="confirmImport"
+    />
 
     <!-- 搜索表单 -->
     <el-card class="filter-card">
@@ -295,9 +305,10 @@ import { useRoute } from 'vue-router';
 
 import FilterBar from '@/components/common/FilterBar.vue';
 import { addTemplateInstructionSheet, applyTemplateHeaderStyle } from '@/utils/excelTemplate';
-import { positionJobApi } from '@/api/positionJob';
+import positionJobApi from '@/api/positionJob';
 import { useUserStore } from '@/store/modules/user';
 import FormDialog from '@/components/system/FormDialog.vue';
+import ImportPreviewDialog from '@/components/common/ImportPreviewDialog.vue';
 import { createListSuggestionFetcher } from '@/utils/filterAutocomplete';
 import { buildExportFileName, exportRowsToXlsx, fetchAllPaged } from '@/utils/tableExport';
 
@@ -306,11 +317,6 @@ const route = useRoute();
 
 // API基础URL
 const apiBaseUrl = computed(() => import.meta.env.VITE_API_BASE_URL || '/api');
-
-// 上传文件的请求头
-const uploadHeaders = computed(() => ({
-  Authorization: `Bearer ${userStore.token}`
-}));
 
 // 响应式数据
 const loading = ref(false);
@@ -407,6 +413,34 @@ const pagination = reactive({
   pageSize: 5,
   total: 0
 });
+
+// ==================== 批量导入（预览 -> 确认导入） ====================
+const importFileInputRef = ref(null);
+const importPreviewLoading = ref(false);
+const importSubmitting = ref(false);
+const importFile = ref(null);
+const importPreviewVisible = ref(false);
+const importPreviewSummary = ref({});
+const importPreviewRows = ref([]);
+const importPreviewTruncated = ref(false);
+const importPreviewMaxRows = ref(0);
+
+const importPreviewColumns = computed(() => ([
+  { prop: 'stationName', label: '场站', minWidth: 120 },
+  { prop: 'positionName', label: '岗位', minWidth: 120 },
+  { prop: 'jobName', label: '任务名称', minWidth: 160 },
+  { prop: 'resultDefinition', label: '结果定义', minWidth: 180, diffKey: 'result_definition' },
+  { prop: 'taskCategory', label: '任务类别', width: 100, diffKey: 'task_category' },
+  { prop: 'scoreMethod', label: '给分方式', width: 100, diffKey: 'score_method' },
+  { prop: 'standardHours', label: '标准工时(h/d)', width: 130, diffKey: 'standard_hours' },
+  { prop: 'points', label: '单位积分', width: 110, diffKey: 'points' },
+  { prop: 'quantity', label: '数量', width: 90, diffKey: 'quantity' },
+  { prop: 'pointsRule', label: '积分规则', minWidth: 160, diffKey: 'points_rule' },
+  { prop: 'quantityEditable', label: '数量可修改', width: 110, diffKey: 'quantity_editable' },
+  { prop: 'pointsEditable', label: '积分可修改', width: 110, diffKey: 'points_editable' },
+  { prop: 'dispatchReviewRequired', label: '派发强审', width: 100, diffKey: 'dispatch_review_required' },
+  { prop: 'sortOrder', label: '排序', width: 90, diffKey: 'sort_order' }
+]));
 
 // 对话框控制
 const dialogVisible = ref(false);
@@ -785,42 +819,71 @@ const downloadTemplate = async () => {
   }
 };
 
-// 上传前检查
-const beforeUpload = (file) => {
-  const isExcel = file.type === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' || 
-                  file.type === 'application/vnd.ms-excel';
-  const isLt5M = file.size / 1024 / 1024 < 5;
-
-  if (!isExcel) {
-    ElMessage.error('只能上传Excel文件!');
-    return false;
-  }
-  if (!isLt5M) {
-    ElMessage.error('文件大小不能超过5MB!');
-    return false;
-  }
-
-  return true;
+const triggerImport = () => {
+  if (importPreviewLoading.value) return;
+  if (!importFileInputRef.value) return;
+  importFileInputRef.value.click();
 };
 
-// 上传成功回调
-const handleImportSuccess = (response) => {
-  if (response && response.code === 200) {
-    ElMessage.success(response.message || '导入成功');
-    getList();
-  } else {
-    ElMessage.error(response.message || '导入失败');
-  }
+const isExcelFile = (file) => {
+  const mime = file?.type;
+  return mime === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' || mime === 'application/vnd.ms-excel';
 };
 
-// 上传失败回调
-const handleImportError = (error) => {
-  
+const handleImportFileSelected = async (event) => {
+  const file = event?.target?.files?.[0];
+  if (event?.target) event.target.value = '';
+  if (!file) return;
+
+  if (!isExcelFile(file)) {
+    ElMessage.error('只能上传 Excel 文件');
+    return;
+  }
+  if (file.size / 1024 / 1024 >= 5) {
+    ElMessage.error('文件大小不能超过 5MB');
+    return;
+  }
+
+  importFile.value = file;
+  importPreviewLoading.value = true;
   try {
-    const errorData = JSON.parse(error.message);
-    ElMessage.error(errorData.message || '导入失败');
-  } catch {
-    ElMessage.error('导入失败');
+    const res = await positionJobApi.previewImportPositionJobs(file);
+    importPreviewSummary.value = res?.summary ?? {};
+    importPreviewRows.value = Array.isArray(res?.rows) ? res.rows : [];
+    importPreviewTruncated.value = !!res?.truncated;
+    importPreviewMaxRows.value = typeof res?.maxRows === 'number' ? res.maxRows : 0;
+    importPreviewVisible.value = true;
+  } finally {
+    importPreviewLoading.value = false;
+  }
+};
+
+const confirmImport = async () => {
+  if (!importFile.value) {
+    ElMessage.warning('请选择文件');
+    return;
+  }
+
+  importSubmitting.value = true;
+  try {
+    const results = await positionJobApi.importPositionJobs(importFile.value);
+    const list = Array.isArray(results) ? results : [];
+    const created = list.filter(r => r?.status === 'success').length;
+    const updated = list.filter(r => r?.status === 'updated').length;
+    const skipped = list.filter(r => r?.status === 'skip' || r?.status === 'duplicate').length;
+    const failed = list.filter(r => r?.status === 'error').length;
+
+    if (failed > 0) {
+      ElMessage.warning(`导入完成：新增${created}条，更新${updated}条，跳过${skipped}条，失败${failed}条`);
+    } else {
+      ElMessage.success(`导入完成：新增${created}条，更新${updated}条，跳过${skipped}条`);
+    }
+
+    importPreviewVisible.value = false;
+    importFile.value = null;
+    getList();
+  } finally {
+    importSubmitting.value = false;
   }
 };
 

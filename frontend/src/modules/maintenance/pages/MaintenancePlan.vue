@@ -3,6 +3,9 @@
     <div class="page-header">
       <h2>保养计划</h2>
       <div class="header-actions">
+        <el-button v-if="isSimpleMode" @click="simpleShowTable = !simpleShowTable">
+          {{ simpleShowTable ? '切换卡片' : '切换表格' }}
+        </el-button>
         <el-button type="primary" :loading="exporting" @click="handleExport">
           <el-icon><Upload /></el-icon>批量导出
         </el-button>
@@ -13,10 +16,16 @@
     </div>
 
     <el-card class="filter-card">
-      <FilterBar />
+      <SimpleFilterBar
+        :enabled="isSimpleMode"
+        v-model:expanded="simpleFilterExpanded"
+        summary-text="当前筛选：全部"
+      >
+        <FilterBar />
+      </SimpleFilterBar>
     </el-card>
 
-    <el-table :data="planTableRows" stripe border>
+    <el-table v-if="!isSimpleMode || simpleShowTable" :data="planTableRows" stripe border>
       <el-table-column prop="equipmentName" label="设备名称" min-width="150" />
       <el-table-column prop="planType" label="计划类型" width="120">
         <template #default="{ row }">
@@ -39,6 +48,20 @@
         </template>
       </el-table-column>
     </el-table>
+    <div v-else class="simple-card-list">
+      <el-empty v-if="planTableRows.length === 0" description="暂无数据" />
+      <div v-for="row in planTableRows" :key="row.id" class="simple-card-item">
+        <div class="card-title">{{ row.equipmentName || '-' }}</div>
+        <div class="card-meta">计划类型：{{ getPlanTypeLabel(row.planType) }}</div>
+        <div class="card-meta">下次保养日期：{{ row.nextDate || '-' }}</div>
+        <div class="card-meta">负责人：{{ row.assignee?.realName || '-' }}</div>
+        <div class="card-meta">状态：{{ row.status === 'active' ? '启用' : '停用' }}</div>
+        <div class="card-actions">
+          <el-button link type="primary" @click="editPlan(row)">编辑</el-button>
+          <el-button link type="danger" @click="deletePlan(row)">删除</el-button>
+        </div>
+      </div>
+    </div>
 
     <div class="pagination-wrapper">
       <el-pagination
@@ -84,13 +107,15 @@
 <script setup>
 import { ref, onMounted, computed, watch } from 'vue';
 import { ElMessage } from 'element-plus';
-import { Upload } from '@element-plus/icons-vue';
+import { Upload, Plus } from '@element-plus/icons-vue';
 import { useRoute } from 'vue-router';
 
 import FilterBar from '@/components/common/FilterBar.vue';
+import SimpleFilterBar from '@/components/common/SimpleFilterBar.vue';
 import request from '@/api/request';
 import FormDialog from '@/components/system/FormDialog.vue';
 import { buildExportFileName, exportRowsToXlsx } from '@/utils/tableExport';
+import { useSimpleMode } from '@/composables/useSimpleMode';
 
 const planList = ref([]);
 const exporting = ref(false);
@@ -99,6 +124,7 @@ const dialogVisible = ref(false);
 const isEdit = ref(false);
 const form = ref({ equipmentName: '', planType: 'monthly', nextDate: '' });
 const route = useRoute();
+const { isSimpleMode, simpleShowTable, simpleFilterExpanded } = useSimpleMode();
 
 const getPlanTypeLabel = (type) => {
   const labels = { daily: '日常保养', weekly: '周保养', monthly: '月保养', quarterly: '季度保养', yearly: '年度保养' };
@@ -218,6 +244,36 @@ watch(
     align-items: center;
     margin-bottom: 20px;
     h2 { margin: 0; font-size: 20px; }
+  }
+
+  .simple-card-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .simple-card-item {
+    border: 1px solid #ebeef5;
+    border-radius: 8px;
+    background: #fff;
+    padding: 12px;
+  }
+
+  .card-title {
+    font-weight: 600;
+    margin-bottom: 8px;
+  }
+
+  .card-meta {
+    font-size: 13px;
+    color: #606266;
+    margin-bottom: 4px;
+  }
+
+  .card-actions {
+    margin-top: 8px;
+    display: flex;
+    gap: 8px;
   }
 }
 </style>

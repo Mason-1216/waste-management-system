@@ -31,6 +31,18 @@ export const createMaintenancePositionPlanBodySchema = Joi.object({
   planIds: Joi.array().items(intOrEmpty).optional()
 });
 
+export const batchImportMaintenancePositionPlansBodySchema = Joi.object({
+  rows: Joi.array().items(
+    Joi.object({
+      rowNum: intOrEmpty.optional(),
+      stationId: intOrEmpty.optional(),
+      stationName: Joi.string().allow('').max(200).optional(),
+      positionName: Joi.string().allow('').max(200).optional(),
+      equipmentCode: Joi.string().allow('').max(200).optional()
+    })
+  ).min(1).required()
+});
+
 export const getTodayMaintenanceTasksQuerySchema = Joi.object({
   userId: intOrEmpty.optional(),
   stationId: intOrEmpty.optional(),
@@ -79,9 +91,9 @@ export default {
   idParamSchema,
   getMaintenancePositionPlansQuerySchema,
   createMaintenancePositionPlanBodySchema,
+  batchImportMaintenancePositionPlansBodySchema,
   getTodayMaintenanceTasksQuerySchema,
   submitMaintenanceWorkRecordBodySchema,
   getMaintenanceWorkRecordsQuerySchema,
   verifyMaintenanceWorkRecordBodySchema
 };
-

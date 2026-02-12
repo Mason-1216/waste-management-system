@@ -3,14 +3,22 @@
     <div class="page-header">
       <h2>{{ pageTitle }}</h2>
       <div class="header-actions">
+        <el-button v-if="isSimpleMode" @click="simpleShowTable = !simpleShowTable">
+          {{ simpleShowTable ? '切换卡片' : '切换表格' }}
+        </el-button>
         <el-button type="primary" :loading="exporting" @click="handleExport">
           <el-icon><Upload /></el-icon>批量导出
         </el-button>
       </div>
     </div>
 
-    <el-card class="filter-card">
-      <FilterBar>
+    <SimpleFilterBar
+      :enabled="isSimpleMode"
+      v-model:expanded="simpleFilterExpanded"
+      :summary-text="simpleFilterSummary"
+    >
+      <el-card class="filter-card">
+        <FilterBar>
         <div class="filter-item">
           <span class="filter-label">任务名称</span>
           <FilterAutocomplete
@@ -61,10 +69,11 @@
             @change="handleSearch"
           />
         </div>
-      </FilterBar>
-    </el-card>
+        </FilterBar>
+      </el-card>
+    </SimpleFilterBar>
 
-    <TableWrapper>
+    <TableWrapper v-if="!isSimpleMode || simpleShowTable">
       <el-table :data="taskList" border stripe v-loading="loading">
         <el-table-column prop="assigneeName" label="用户名" width="120" />
         <el-table-column prop="stationName" label="场站" width="140" />
@@ -179,6 +188,105 @@
       </el-table>
     </TableWrapper>
 
+    <div v-else class="simple-card-list" v-loading="loading">
+      <el-empty v-if="simpleTaskList.length === 0" description="暂无数据" />
+      <el-card v-for="row in simpleTaskList" :key="row.id || `${row.taskName}-${row.deadline}`" class="simple-task-card">
+        <template #header>
+          <div class="card-header">
+            <span class="task-name">{{ row.taskName || '-' }}</span>
+            <el-tag :type="statusTagType(row.status)">{{ statusText(row.status) }}</el-tag>
+          </div>
+        </template>
+        <div class="card-body">
+          <div class="card-line">
+            <span>执行人：{{ row.assigneeName || '-' }}</span>
+            <span>场站：{{ row.stationName || '-' }}</span>
+          </div>
+          <div class="card-line">
+            <span>任务来源：{{ taskSourceLabel(row.source) }}</span>
+            <span>截止时间：{{ formatTime(row.deadline) }}</span>
+          </div>
+          <div class="card-line card-line-edit">
+            <div class="edit-item">
+              <span class="label">单位积分</span>
+              <template v-if="isFillMode && canSubmit(row)">
+                <el-input-number
+                  v-model="row.unitPoints"
+                  :min="0"
+                  :max="9999"
+                  :step="1"
+                  :precision="0"
+                  size="small"
+                  controls-position="right"
+                  :disabled="Number(row.unitPointsEditable) !== 1"
+                  class="table-input-number"
+                />
+              </template>
+              <span v-else>{{ row.unitPoints ?? '-' }}</span>
+            </div>
+            <div class="edit-item">
+              <span class="label">数量</span>
+              <template v-if="isFillMode && canSubmit(row)">
+                <el-input-number
+                  v-model="row.quantity"
+                  :min="1"
+                  :max="1000"
+                  :step="1"
+                  :precision="0"
+                  size="small"
+                  controls-position="right"
+                  class="table-input-number"
+                />
+              </template>
+              <span v-else>{{ row.quantity ?? 1 }}</span>
+            </div>
+          </div>
+          <div class="card-line card-line-edit">
+            <div class="edit-item full">
+              <span class="label">完成情况</span>
+              <template v-if="isFillMode && canSubmit(row)">
+                <el-radio-group v-model="row.isCompleted" size="small">
+                  <el-radio :label="1">完成</el-radio>
+                  <el-radio :label="0">未完成</el-radio>
+                </el-radio-group>
+              </template>
+              <el-tag v-else :type="Number(row.isCompleted) === 1 ? 'success' : 'info'">
+                {{ Number(row.isCompleted) === 1 ? '完成' : '未完成' }}
+              </el-tag>
+            </div>
+          </div>
+          <div class="card-line card-line-edit">
+            <div class="edit-item full">
+              <span class="label">备注</span>
+              <template v-if="isFillMode && canSubmit(row)">
+                <el-input v-model="row.remark" size="small" maxlength="200" placeholder="填写备注" />
+              </template>
+              <span v-else>{{ row.remark || '-' }}</span>
+            </div>
+          </div>
+          <div v-if="isHistoryMode" class="card-line">
+            <span>提交时间：{{ formatTime(row.submitTime) }}</span>
+            <span>审核人：{{ row.approverName || '-' }}</span>
+          </div>
+          <div v-if="isHistoryMode" class="card-line">
+            <span>审核时间：{{ formatTime(row.approveTime) }}</span>
+            <span>扣分值：{{ row.deductionPoints ?? '-' }}</span>
+          </div>
+          <div v-if="isHistoryMode" class="card-line">
+            <span>扣分原因：{{ row.deductionReason || '-' }}</span>
+          </div>
+          <div class="card-actions">
+            <el-button v-if="isFillMode && canSubmit(row)" type="primary" size="small" @click="submitTask(row)">
+              提交
+            </el-button>
+            <el-button v-else-if="isHistoryMode && canReview(row)" type="primary" link @click="openReview(row)">
+              审核
+            </el-button>
+          </div>
+        </div>
+      </el-card>
+    </div>
+
     <div class="pagination-wrapper">
       <el-pagination
         v-model:current-page="pagination.page"
@@ -233,7 +341,9 @@ import { Upload } from '@element-plus/icons-vue';
 import { createListSuggestionFetcher } from '@/utils/filterAutocomplete';
 import request from '@/api/request';
 import FormDialog from '@/components/system/FormDialog.vue';
+import SimpleFilterBar from '@/components/common/SimpleFilterBar.vue';
 import { useUserStore } from '@/store/modules/user';
+import { useUiModeStore } from '@/store/modules/uiMode';
 import { buildExportFileName, exportRowsToXlsx, fetchAllPaged } from '@/utils/tableExport';
 
 const props = defineProps({
@@ -241,10 +351,15 @@ const props = defineProps({
 });
 
 const userStore = useUserStore();
+const uiModeStore = useUiModeStore();
 const isFillMode = computed(() => props.mode !== 'history');
 const isHistoryMode = computed(() => props.mode === 'history');
 const pageTitle = computed(() => (isFillMode.value ? '临时任务填报' : '临时任务完成情况记录'));
 const effectiveRole = computed(() => userStore.baseRoleCode || userStore.roleCode);
+const canUseSimpleMode = computed(() => userStore.roleCode === 'dev_test' || userStore.baseRoleCode === 'dev_test');
+const isSimpleMode = computed(() => canUseSimpleMode.value && uiModeStore.isSimpleMode);
+const simpleShowTable = ref(false);
+const simpleFilterExpanded = ref(false);
 const exporting = ref(false);
 
 const loading = ref(false);
@@ -277,6 +392,28 @@ const reviewForm = ref({
   status: 'approved',
   deductionReason: '',
   deductionPoints: 0
+});
+
+const simpleTaskList = computed(() => {
+  if (!isSimpleMode.value || simpleShowTable.value) return taskList.value;
+  if (!isHistoryMode.value) return taskList.value;
+  return [...taskList.value].sort((a, b) => {
+    const aPending = a.status === 'processing' ? 1 : 0;
+    const bPending = b.status === 'processing' ? 1 : 0;
+    return bPending - aPending;
+  });
+});
+
+const simpleFilterSummary = computed(() => {
+  const parts = [];
+  if (filters.value.taskName) parts.push(`任务=${filters.value.taskName}`);
+  if (filters.value.assigneeName) parts.push(`执行人=${filters.value.assigneeName}`);
+  if (filters.value.startDate || filters.value.endDate) {
+    const start = filters.value.startDate || '不限';
+    const end = filters.value.endDate || '不限';
+    parts.push(`日期=${start}~${end}`);
+  }
+  return parts.length > 0 ? parts.join(' | ') : '当前筛选：全部';
 });
 
 const statusText = (status) => {
@@ -541,6 +678,12 @@ watch(
   }
 );
 
+watch(isSimpleMode, (enabled) => {
+  if (enabled) return;
+  simpleShowTable.value = false;
+  simpleFilterExpanded.value = false;
+});
+
 onMounted(() => {
   loadTasks();
 });
@@ -560,8 +703,78 @@ onMounted(() => {
     }
   }
 
+  .header-actions {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
   .filter-card {
     margin-bottom: 16px;
+  }
+
+  .simple-card-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .simple-task-card {
+    border-left: 4px solid #409eff;
+
+    .card-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .task-name {
+      font-size: 16px;
+      font-weight: 600;
+      color: #303133;
+    }
+
+    .card-body {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .card-line {
+      display: flex;
+      gap: 12px;
+      justify-content: space-between;
+      color: #606266;
+      font-size: 14px;
+      flex-wrap: wrap;
+    }
+
+    .card-line-edit {
+      align-items: center;
+    }
+
+    .edit-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-width: 180px;
+      flex: 1;
+
+      &.full {
+        width: 100%;
+      }
+
+      .label {
+        color: #909399;
+        white-space: nowrap;
+      }
+    }
+
+    .card-actions {
+      display: flex;
+      justify-content: flex-end;
+    }
   }
 
   :deep(.table-input-number) {

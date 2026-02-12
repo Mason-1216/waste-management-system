@@ -18,7 +18,7 @@
           <el-button type="primary" @click="showDialog()">
             <el-icon><Plus /></el-icon>新增任务
           </el-button>
-          <el-button type="success" @click="triggerImport">
+          <el-button type="success" :loading="importPreviewLoading" @click="triggerImport">
             <el-icon><Download /></el-icon>批量导入
           </el-button>
           <el-button type="info" @click="downloadTemplate">
@@ -34,6 +34,18 @@
       accept=".xlsx,.xls"
       style="display: none;"
       @change="handleImport"
+    />
+
+    <ImportPreviewDialog
+      v-model="importPreviewVisible"
+      title="临时工作任务汇总表 - 导入预览"
+      :rows="importPreviewRows"
+      :summary="importPreviewSummary"
+      :truncated="importPreviewTruncated"
+      :max-rows="importPreviewMaxRows"
+      :confirm-loading="importSubmitting"
+      :columns="importPreviewColumns"
+      @confirm="confirmImport"
     />
 
     <el-card class="filter-card">
@@ -495,12 +507,17 @@ import { Plus, Search, Download, Edit, Delete, Clock, Star, InfoFilled, Upload }
 import { useRoute } from 'vue-router';
 
 import FilterBar from '@/components/common/FilterBar.vue';
+import ImportPreviewDialog from '@/components/common/ImportPreviewDialog.vue';
 import { addTemplateInstructionSheet, applyTemplateHeaderStyle } from '@/utils/excelTemplate';
 import request from '@/api/request';
 import { useUserStore } from '@/store/modules/user';
 import FormDialog from '@/components/system/FormDialog.vue';
 import { createListSuggestionFetcher } from '@/utils/filterAutocomplete';
 import { buildExportFileName, exportRowsToXlsx, fetchAllPaged } from '@/utils/tableExport';
+import {
+  batchImportTemporaryTaskLibrary,
+  previewBatchImportTemporaryTaskLibrary
+} from '@/modules/task/api/temporaryTaskLibrary';
 
 const userStore = useUserStore();
 const route = useRoute();
@@ -517,6 +534,14 @@ const formRef = ref(null);
 const tableRef = ref(null);
 const currentId = ref(null);
 const fileInputRef = ref(null);
+const importPreviewLoading = ref(false);
+const importSubmitting = ref(false);
+const importTasksPayload = ref([]);
+const importPreviewVisible = ref(false);
+const importPreviewSummary = ref({});
+const importPreviewRows = ref([]);
+const importPreviewTruncated = ref(false);
+const importPreviewMaxRows = ref(0);
 const stationOptions = ref([]);
 const selectedRows = ref([]);
 const assigning = ref(false);
@@ -534,6 +559,39 @@ const fetchTaskCategorySuggestions = createListSuggestionFetcher(
   () => taskSuggestionList.value,
   (row) => row.taskCategory
 );
+
+const importPreviewColumns = computed(() => ([
+  { prop: 'stationName', label: '场站', minWidth: 140 },
+  { prop: 'taskName', label: '任务名称', minWidth: 160 },
+  { prop: 'taskCategory', label: '任务类别', width: 100, diffKey: 'task_category' },
+  { prop: 'scoreMethod', label: '给分方式', width: 110, diffKey: 'score_method' },
+  { prop: 'taskContent', label: '具体工作内容', minWidth: 220, diffKey: 'task_content' },
+  { prop: 'standardHours', label: '标准工时(h/d)', width: 130, diffKey: 'standard_hours' },
+  { prop: 'unitPoints', label: '单位积分', width: 100, diffKey: 'unit_points' },
+  { prop: 'quantity', label: '数量', width: 90, diffKey: 'quantity' },
+  { prop: 'pointsRule', label: '积分规则', minWidth: 160, diffKey: 'points_rule' },
+  {
+    prop: 'unitPointsEditable',
+    label: '积分可修改',
+    width: 110,
+    diffKey: 'unit_points_editable',
+    formatter: (row) => (Number(row?.unitPointsEditable) === 1 ? '是' : '否')
+  },
+  {
+    prop: 'quantityEditable',
+    label: '数量可修改',
+    width: 110,
+    diffKey: 'quantity_editable',
+    formatter: (row) => (Number(row?.quantityEditable) === 1 ? '是' : '否')
+  },
+  {
+    prop: 'dispatchReviewRequired',
+    label: '派发强审',
+    width: 110,
+    diffKey: 'dispatch_review_required',
+    formatter: (row) => (Number(row?.dispatchReviewRequired) === 1 ? '是' : '否')
+  }
+]));
 
 // 扁平化表格数据，按场站分组
 const flattenedTableData = computed(() => {
@@ -1173,86 +1231,120 @@ const downloadTemplate = async () => {
 
 // 触发导入
 const triggerImport = () => {
+  if (importPreviewLoading.value) return;
   fileInputRef.value?.click();
+};
+
+const resolveErrorMessage = (error, fallback = '导入失败') => {
+  const responseMessage = typeof error?.response?.data?.message === 'string' ? error.response.data.message.trim() : '';
+  if (responseMessage) return responseMessage;
+  const message = typeof error?.message === 'string' ? error.message.trim() : '';
+  return message || fallback;
+};
+
+const parseImportTasksFromFile = async (file) => {
+  const XLSX = await import('xlsx');
+  const readFile = () => new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (e) => resolve(e.target.result);
+    reader.onerror = reject;
+    reader.readAsArrayBuffer(file);
+  });
+
+  const arrayBuffer = await readFile();
+  const data = new Uint8Array(arrayBuffer);
+  const workbook = XLSX.read(data, { type: 'array' });
+  const sheetName = workbook.SheetNames[0];
+  const worksheet = workbook.Sheets[sheetName];
+  const jsonData = XLSX.utils.sheet_to_json(worksheet);
+
+  if (!Array.isArray(jsonData) || jsonData.length === 0) return [];
+
+  const normalizeYesNo = (value) => {
+    const raw = String(value ?? '').trim();
+    if (!raw) return 0;
+    return raw === '是' || raw.toLowerCase() === 'yes' || raw === '1' ? 1 : 0;
+  };
+  const resolveStationId = (value) => {
+    const raw = String(value ?? '').trim();
+    if (!raw || raw === '通用') return null;
+    const matched = stationOptions.value.find((item) => item.name === raw);
+    return matched ? matched.id : (userStore.currentStationId ?? null);
+  };
+
+  return jsonData.map((row) => ({
+    taskName: String(row['任务名称'] ?? '').trim(),
+    taskCategory: normalizeTaskCategory(String(row['任务类别'] ?? '').trim()),
+    scoreMethod: String(row['给分方式'] ?? '').trim(),
+    taskContent: String(row['具体工作内容'] ?? '').trim(),
+    standardHours: parseFloat(row['标准工时']) || 1,
+    unitPoints: parseInt(row['单位积分'], 10) || 0,
+    unitPointsEditable: normalizeYesNo(row['填报时单位积分是否可修改'] ?? row['单位积分是否可修改']),
+    quantity: parseInt(row['数量'], 10) || 1,
+    pointsRule: String(row['积分规则'] ?? '').trim(),
+    quantityEditable: normalizeYesNo(row['填报时数量是否可修改'] ?? row['数量是否可修改']),
+    dispatchReviewRequired: normalizeYesNo(row['派发任务是否强制审核']),
+    stationId: resolveStationId(row['场站'])
+  }));
 };
 
 // 处理导入
 const handleImport = async (event) => {
   const file = event.target.files?.[0];
   if (!file) return;
+  if (event?.target) event.target.value = '';
 
+  importPreviewLoading.value = true;
   try {
-    const XLSX = await import('xlsx');
-
-    const readFile = () => new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = (e) => resolve(e.target.result);
-      reader.onerror = reject;
-      reader.readAsArrayBuffer(file);
-    });
-
-    const arrayBuffer = await readFile();
-    const data = new Uint8Array(arrayBuffer);
-    const workbook = XLSX.read(data, { type: 'array' });
-    const sheetName = workbook.SheetNames[0];
-    const worksheet = workbook.Sheets[sheetName];
-    const jsonData = XLSX.utils.sheet_to_json(worksheet);
-
-    if (jsonData.length === 0) {
-      ElMessage.warning('未找到有效数据，请检查文件格式');
-      return;
-    }
-
-    // 解析数据
-    const normalizeYesNo = (value) => {
-      const raw = String(value ?? '').trim();
-      if (!raw) return 0;
-      return raw === '是' || raw.toLowerCase() === 'yes' || raw === '1' ? 1 : 0;
-    };
-    const resolveStationId = (value) => {
-      const raw = String(value ?? '').trim();
-      if (!raw || raw === '通用') return null;
-      const matched = stationOptions.value.find(item => item.name === raw);
-      return matched ? matched.id : (userStore.currentStationId ?? null);
-    };
-    const tasks = jsonData.map(row => ({
-      taskName: String(row['任务名称'] || '').trim(),
-      taskCategory: normalizeTaskCategory(String(row['任务类别'] || '').trim()),
-      scoreMethod: String(row['给分方式'] || '').trim(),
-      taskContent: String(row['具体工作内容'] || '').trim(),
-      standardHours: parseFloat(row['标准工时']) || 1,
-      unitPoints: parseInt(row['单位积分']) || 0,
-      unitPointsEditable: normalizeYesNo(row['填报时单位积分是否可修改'] ?? row['单位积分是否可修改']),
-      quantity: parseInt(row['数量']) || 1,
-      pointsRule: String(row['积分规则'] || '').trim(),
-      quantityEditable: normalizeYesNo(row['填报时数量是否可修改'] ?? row['数量是否可修改']),
-      dispatchReviewRequired: normalizeYesNo(row['派发任务是否强制审核']),
-      stationId: resolveStationId(row['场站'])
-    })).filter(task => task.taskName && task.taskContent);
-
+    const tasks = await parseImportTasksFromFile(file);
     if (tasks.length === 0) {
       ElMessage.warning('未找到有效数据，请检查文件格式');
       return;
     }
 
-    // 批量创建
-    let successCount = 0;
-    for (const task of tasks) {
-      try {
-        await request.post('/temporary-task-library', task);
-        successCount++;
-      } catch (e) {
-      }
+    importTasksPayload.value = tasks;
+    const previewRes = await previewBatchImportTemporaryTaskLibrary(tasks);
+    importPreviewSummary.value = previewRes?.summary ?? {};
+    importPreviewRows.value = Array.isArray(previewRes?.rows) ? previewRes.rows : [];
+    importPreviewTruncated.value = !!previewRes?.truncated;
+    importPreviewMaxRows.value = typeof previewRes?.maxRows === 'number' ? previewRes.maxRows : 0;
+    importPreviewVisible.value = true;
+  } catch (error) {
+    ElMessage.error(resolveErrorMessage(error, '导入失败，请检查文件格式'));
+  } finally {
+    importPreviewLoading.value = false;
+  }
+};
+
+const confirmImport = async () => {
+  if (importSubmitting.value) return;
+  if (!Array.isArray(importTasksPayload.value) || importTasksPayload.value.length === 0) {
+    ElMessage.warning('没有可导入的数据');
+    return;
+  }
+
+  importSubmitting.value = true;
+  try {
+    const result = await batchImportTemporaryTaskLibrary(importTasksPayload.value);
+    const success = Number(result?.success ?? 0);
+    const updated = Number(result?.updated ?? 0);
+    const skipped = Number(result?.skipped ?? 0);
+    const failed = Number(result?.failed ?? 0);
+    const firstError = Array.isArray(result?.errors) && result.errors.length > 0 ? result.errors[0] : '';
+
+    if (failed > 0) {
+      ElMessage.warning(`导入完成：新增${success}条，更新${updated}条，跳过${skipped}条，失败${failed}条${firstError ? `，例如：${firstError}` : ''}`);
+    } else {
+      ElMessage.success(`导入完成：新增${success}条，更新${updated}条，跳过${skipped}条`);
     }
 
-    ElMessage.success(`导入完成: 成功${successCount}条`);
-    loadTaskLibrary();
-  } catch (err) {
-    ElMessage.error(err.message || '导入失败，请检查文件格式');
+    importPreviewVisible.value = false;
+    importTasksPayload.value = [];
+    await loadTaskLibrary();
+  } catch (error) {
+    ElMessage.error(resolveErrorMessage(error, '导入失败'));
   } finally {
-    if (fileInputRef.value) {
-      fileInputRef.value.value = '';
-    }
+    importSubmitting.value = false;
   }
 };
 

@@ -6,6 +6,7 @@ export const getEquipmentTemplate = equipmentService.getEquipmentTemplate;
 export const createEquipment = equipmentService.createEquipment;
 export const batchCreateEquipment = equipmentService.batchCreateEquipment;
 export const importEquipment = equipmentService.importEquipment;
+export const previewImportEquipment = equipmentService.previewImportEquipment;
 export const updateEquipment = equipmentService.updateEquipment;
 export const deleteEquipment = equipmentService.deleteEquipment;
 
@@ -16,6 +17,7 @@ export default {
   createEquipment,
   batchCreateEquipment,
   importEquipment,
+  previewImportEquipment,
   updateEquipment,
   deleteEquipment
 };

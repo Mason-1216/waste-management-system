@@ -1,6 +1,7 @@
 import { createRouter, createWebHistory } from 'vue-router';
 import { useUserStore } from '@/store/modules/user';
 import { usePermissionCatalogStore } from '@/store/modules/permissionCatalog';
+import { UI_MODES, useUiModeStore } from '@/store/modules/uiMode';
 import { routes } from './modules';
 
 const router = createRouter({
@@ -67,6 +68,21 @@ router.beforeEach(async (to, from, next) => {
     // - allow user-granted menu permissions to override hard-coded role guards.
     if (userStore.isLoggedIn) {
       await permissionCatalogStore.ensureLoaded();
+
+      const uiModeStore = useUiModeStore();
+      const canUseSimpleMode = userStore.roleCode === 'dev_test' || userStore.baseRoleCode === 'dev_test';
+      uiModeStore.ensureAllowed(canUseSimpleMode);
+
+      const requestedUiMode = typeof to.query.uiMode === 'string' ? to.query.uiMode : '';
+      if (!canUseSimpleMode && requestedUiMode === UI_MODES.SIMPLE) {
+        next({
+          path: to.path,
+          query: { ...to.query, uiMode: UI_MODES.STANDARD },
+          hash: to.hash,
+          replace: true
+        });
+        return;
+      }
     }
 
     const requiredMenuCode = permissionCatalogStore.loaded

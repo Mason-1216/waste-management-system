@@ -15,12 +15,37 @@ const AdjustedHourlyPoints = sequelize.define('AdjustedHourlyPoints', {
   end_month: {
     type: DataTypes.STRING(10),
     allowNull: false,
-    comment: '统计截止月（YYYY-MM）'
+    comment: '记录月份（YYYY-MM）'
+  },
+  actual_points: {
+    type: DataTypes.DECIMAL(10, 4),
+    allowNull: true,
+    comment: '实际应用小时积分'
   },
   adjusted_points: {
     type: DataTypes.DECIMAL(10, 2),
-    allowNull: false,
+    allowNull: true,
     comment: '修正应用小时积分'
+  },
+  total_points: {
+    type: DataTypes.DECIMAL(12, 2),
+    allowNull: true,
+    comment: '统计窗口累计积分'
+  },
+  total_hours: {
+    type: DataTypes.DECIMAL(12, 2),
+    allowNull: true,
+    comment: '统计窗口累计工时'
+  },
+  range_start_month: {
+    type: DataTypes.STRING(10),
+    allowNull: true,
+    comment: '统计窗口起始月（YYYY-MM）'
+  },
+  range_end_month: {
+    type: DataTypes.STRING(10),
+    allowNull: true,
+    comment: '统计窗口结束月（YYYY-MM）'
   },
   created_by_id: {
     type: DataTypes.INTEGER,

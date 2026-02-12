@@ -70,6 +70,19 @@ export const importPositionJobs = (file) => {
   });
 };
 
+/**
+ * 导入岗位工作项目预览
+ */
+export const previewImportPositionJobs = (file) => {
+  const formData = new FormData();
+  formData.append('file', file);
+  return request.post('/position-jobs/import-preview', formData, {
+    headers: {
+      'Content-Type': 'multipart/form-data'
+    }
+  });
+};
+
 export default {
   getPositionJobs,
   getPositionJobsByPosition,
@@ -77,5 +90,6 @@ export default {
   updatePositionJob,
   deletePositionJob,
   downloadTemplate,
-  importPositionJobs
+  importPositionJobs,
+  previewImportPositionJobs
 };

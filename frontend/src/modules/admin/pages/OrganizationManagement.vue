@@ -8,6 +8,9 @@
       <!-- 场站管理 -->
       <el-tab-pane v-if="canViewStation" label="场站管理" name="station">
         <div class="tab-header">
+          <el-button v-if="isSimpleMode" @click="simpleShowTable = !simpleShowTable">
+            {{ simpleShowTable ? '切换卡片' : '切换表格' }}
+          </el-button>
           <el-button v-if="canEditStation" type="primary" @click="showAddStationDialog">
             <el-icon><Plus /></el-icon>新增场站
           </el-button>
@@ -30,25 +33,31 @@
           </el-button>
         </div>
         <el-card class="filter-card">
-          <FilterBar>
-            <div class="filter-item">
-              <span class="filter-label">场站名称</span>
-              <FilterAutocomplete
-                v-model="stationFilters.keyword"
-                :fetch-suggestions="fetchStationKeywordSuggestions"
-                trigger-on-focus
-                placeholder="全部"
-                clearable
-                @select="loadStations"
-                @input="loadStations"
-                @clear="loadStations"
-                @keyup.enter="loadStations"
-              />
-            </div>
-          </FilterBar>
+          <SimpleFilterBar
+            :enabled="isSimpleMode"
+            v-model:expanded="simpleFilterExpanded"
+            :summary-text="stationFilterSummaryText"
+          >
+            <FilterBar>
+              <div class="filter-item">
+                <span class="filter-label">场站名称</span>
+                <FilterAutocomplete
+                  v-model="stationFilters.keyword"
+                  :fetch-suggestions="fetchStationKeywordSuggestions"
+                  trigger-on-focus
+                  placeholder="全部"
+                  clearable
+                  @select="loadStations"
+                  @input="loadStations"
+                  @clear="loadStations"
+                  @keyup.enter="loadStations"
+                />
+              </div>
+            </FilterBar>
+          </SimpleFilterBar>
         </el-card>
 
-        <el-table :data="stationList" stripe border v-loading="stationLoading">
+        <el-table v-if="!isSimpleMode || simpleShowTable" :data="stationList" stripe border v-loading="stationLoading">
           <el-table-column prop="id" label="ID" width="80" />
           <el-table-column label="场站名称" min-width="150">
             <template #default="{ row }">
@@ -74,6 +83,18 @@
             </template>
           </el-table-column>
         </el-table>
+        <div v-else class="simple-card-list" v-loading="stationLoading">
+          <el-empty v-if="stationList.length === 0" description="暂无数据" />
+          <div v-for="row in stationList" :key="row.id" class="simple-card-item">
+            <div class="card-title">{{ row.stationName || row.station_name || '-' }}</div>
+            <div class="card-meta">状态：{{ row.status === 'active' ? '启用' : '禁用' }}</div>
+            <div class="card-meta">描述：{{ row.location || row.description || '-' }}</div>
+            <div v-if="canEditStation" class="card-actions">
+              <el-button link type="primary" @click="editStation(row)">编辑</el-button>
+              <el-button link type="danger" @click="deleteStation(row)">删除</el-button>
+            </div>
+          </div>
+        </div>
 
         <div class="pagination-wrapper">
           <el-pagination
@@ -91,6 +112,9 @@
       <!-- 部门管理 -->
       <el-tab-pane v-if="canViewDepartment" label="部门管理" name="department">
         <div class="tab-header">
+          <el-button v-if="isSimpleMode" @click="simpleShowTable = !simpleShowTable">
+            {{ simpleShowTable ? '切换卡片' : '切换表格' }}
+          </el-button>
           <el-button v-if="canEditDepartment" type="primary" @click="showAddDeptDialog">
             <el-icon><Plus /></el-icon>新增部门
           </el-button>
@@ -113,25 +137,31 @@
           </el-button>
         </div>
         <el-card class="filter-card">
-          <FilterBar>
-            <div class="filter-item">
-              <span class="filter-label">部门名称</span>
-              <FilterAutocomplete
-                v-model="deptFilters.keyword"
-                :fetch-suggestions="fetchDeptKeywordSuggestions"
-                trigger-on-focus
-                placeholder="全部"
-                clearable
-                @select="loadDepartments"
-                @input="loadDepartments"
-                @clear="loadDepartments"
-                @keyup.enter="loadDepartments"
-              />
-            </div>
-          </FilterBar>
+          <SimpleFilterBar
+            :enabled="isSimpleMode"
+            v-model:expanded="simpleFilterExpanded"
+            :summary-text="deptFilterSummaryText"
+          >
+            <FilterBar>
+              <div class="filter-item">
+                <span class="filter-label">部门名称</span>
+                <FilterAutocomplete
+                  v-model="deptFilters.keyword"
+                  :fetch-suggestions="fetchDeptKeywordSuggestions"
+                  trigger-on-focus
+                  placeholder="全部"
+                  clearable
+                  @select="loadDepartments"
+                  @input="loadDepartments"
+                  @clear="loadDepartments"
+                  @keyup.enter="loadDepartments"
+                />
+              </div>
+            </FilterBar>
+          </SimpleFilterBar>
         </el-card>
 
-        <el-table :data="deptList" stripe border v-loading="deptLoading">
+        <el-table v-if="!isSimpleMode || simpleShowTable" :data="deptList" stripe border v-loading="deptLoading">
           <el-table-column prop="id" label="ID" width="80" />
           <el-table-column label="部门名称" min-width="150">
             <template #default="{ row }">
@@ -162,6 +192,19 @@
             </template>
           </el-table-column>
         </el-table>
+        <div v-else class="simple-card-list" v-loading="deptLoading">
+          <el-empty v-if="deptList.length === 0" description="暂无数据" />
+          <div v-for="row in deptList" :key="row.id" class="simple-card-item">
+            <div class="card-title">{{ row.dept_name || '-' }}</div>
+            <div class="card-meta">部门编码：{{ row.dept_code || '-' }}</div>
+            <div class="card-meta">状态：{{ row.status === 'active' ? '启用' : '禁用' }}</div>
+            <div class="card-meta">描述：{{ row.description || '-' }}</div>
+            <div v-if="canEditDepartment" class="card-actions">
+              <el-button link type="primary" @click="editDept(row)">编辑</el-button>
+              <el-button link type="danger" @click="deleteDept(row)">删除</el-button>
+            </div>
+          </div>
+        </div>
 
         <div class="pagination-wrapper">
           <el-pagination
@@ -179,6 +222,9 @@
       <!-- 公司管理 -->
       <el-tab-pane v-if="canViewCompany" label="公司管理" name="company">
         <div class="tab-header">
+          <el-button v-if="isSimpleMode" @click="simpleShowTable = !simpleShowTable">
+            {{ simpleShowTable ? '切换卡片' : '切换表格' }}
+          </el-button>
           <el-button v-if="canEditCompany" type="primary" @click="showAddCompanyDialog">
             <el-icon><Plus /></el-icon>新增公司
           </el-button>
@@ -201,25 +247,31 @@
           </el-button>
         </div>
         <el-card class="filter-card">
-          <FilterBar>
-            <div class="filter-item">
-              <span class="filter-label">公司名称</span>
-              <FilterAutocomplete
-                v-model="companyFilters.keyword"
-                :fetch-suggestions="fetchCompanyKeywordSuggestions"
-                trigger-on-focus
-                placeholder="全部"
-                clearable
-                @select="loadCompanies"
-                @input="loadCompanies"
-                @clear="loadCompanies"
-                @keyup.enter="loadCompanies"
-              />
-            </div>
-          </FilterBar>
+          <SimpleFilterBar
+            :enabled="isSimpleMode"
+            v-model:expanded="simpleFilterExpanded"
+            :summary-text="companyFilterSummaryText"
+          >
+            <FilterBar>
+              <div class="filter-item">
+                <span class="filter-label">公司名称</span>
+                <FilterAutocomplete
+                  v-model="companyFilters.keyword"
+                  :fetch-suggestions="fetchCompanyKeywordSuggestions"
+                  trigger-on-focus
+                  placeholder="全部"
+                  clearable
+                  @select="loadCompanies"
+                  @input="loadCompanies"
+                  @clear="loadCompanies"
+                  @keyup.enter="loadCompanies"
+                />
+              </div>
+            </FilterBar>
+          </SimpleFilterBar>
         </el-card>
 
-        <el-table :data="companyList" stripe border v-loading="companyLoading">
+        <el-table v-if="!isSimpleMode || simpleShowTable" :data="companyList" stripe border v-loading="companyLoading">
           <el-table-column prop="id" label="ID" width="80" />
           <el-table-column label="公司名称" min-width="200">
             <template #default="{ row }">
@@ -250,6 +302,19 @@
             </template>
           </el-table-column>
         </el-table>
+        <div v-else class="simple-card-list" v-loading="companyLoading">
+          <el-empty v-if="companyList.length === 0" description="暂无数据" />
+          <div v-for="row in companyList" :key="row.id" class="simple-card-item">
+            <div class="card-title">{{ row.company_name || '-' }}</div>
+            <div class="card-meta">公司编码：{{ row.company_code || '-' }}</div>
+            <div class="card-meta">状态：{{ row.status === 'active' ? '启用' : '禁用' }}</div>
+            <div class="card-meta">描述：{{ row.description || '-' }}</div>
+            <div v-if="canEditCompany" class="card-actions">
+              <el-button link type="primary" @click="editCompany(row)">编辑</el-button>
+              <el-button link type="danger" @click="deleteCompanyRow(row)">删除</el-button>
+            </div>
+          </div>
+        </div>
 
         <div class="pagination-wrapper">
           <el-pagination
@@ -267,6 +332,9 @@
       <!-- 角色管理 -->
       <el-tab-pane v-if="canViewRole" label="角色管理" name="role">
         <div class="tab-header">
+          <el-button v-if="isSimpleMode" @click="simpleShowTable = !simpleShowTable">
+            {{ simpleShowTable ? '切换卡片' : '切换表格' }}
+          </el-button>
           <el-button v-if="canEditRole" type="primary" @click="showAddRoleDialog">
             <el-icon><Plus /></el-icon>新增角色
           </el-button>
@@ -289,21 +357,27 @@
           </el-button>
         </div>
         <el-card class="filter-card">
-          <FilterBar>
-            <div class="filter-item">
-              <span class="filter-label">角色名称</span>
-              <FilterAutocomplete
-                v-model="roleFilters.keyword"
-                :fetch-suggestions="fetchRoleKeywordSuggestions"
-                trigger-on-focus
-                placeholder="全部"
-                clearable
-              />
-            </div>
-          </FilterBar>
+          <SimpleFilterBar
+            :enabled="isSimpleMode"
+            v-model:expanded="simpleFilterExpanded"
+            :summary-text="roleFilterSummaryText"
+          >
+            <FilterBar>
+              <div class="filter-item">
+                <span class="filter-label">角色名称</span>
+                <FilterAutocomplete
+                  v-model="roleFilters.keyword"
+                  :fetch-suggestions="fetchRoleKeywordSuggestions"
+                  trigger-on-focus
+                  placeholder="全部"
+                  clearable
+                />
+              </div>
+            </FilterBar>
+          </SimpleFilterBar>
         </el-card>
 
-        <el-table :data="filteredRoleList" stripe border v-loading="roleLoading">
+        <el-table v-if="!isSimpleMode || simpleShowTable" :data="filteredRoleList" stripe border v-loading="roleLoading">
           <el-table-column prop="id" label="ID" width="80" />
           <el-table-column prop="roleName" label="角色名称" min-width="140" />
           <el-table-column prop="roleCode" label="角色编码" min-width="140" />
@@ -327,70 +401,40 @@
             </template>
           </el-table-column>
         </el-table>
+        <div v-else class="simple-card-list" v-loading="roleLoading">
+          <el-empty v-if="filteredRoleList.length === 0" description="暂无数据" />
+          <div v-for="row in filteredRoleList" :key="row.id" class="simple-card-item">
+            <div class="card-title">{{ row.roleName || '-' }}</div>
+            <div class="card-meta">角色编码：{{ row.roleCode || '-' }}</div>
+            <div class="card-meta">基准角色：{{ row.baseRoleName || '-' }}</div>
+            <div class="card-meta">描述：{{ row.description || '-' }}</div>
+            <div v-if="canEditRole" class="card-actions">
+              <el-button link type="primary" @click="editRole(row)">编辑</el-button>
+              <el-button
+                link
+                type="danger"
+                :disabled="systemRoleCodes.has(row.roleCode)"
+                @click="deleteRole(row)"
+              >
+                删除
+              </el-button>
+            </div>
+          </div>
+        </div>
       </el-tab-pane>
     </el-tabs>
 
-    <FormDialog
+    <ImportPreviewDialog
       v-model="importDialogVisible"
       :title="importDialogTitle"
-      width="900px"
-      :show-confirm="false"
-      :show-cancel="false"
-    >
-      <el-alert
-        v-if="importErrors.length > 0"
-        type="error"
-        :closable="false"
-        style="margin-bottom: 16px;"
-      >
-        <template #title>
-          <span>发现 {{ importErrors.length }} 条数据有问题，请修正后重新导入</span>
-        </template>
-      </el-alert>
-
-      <el-alert
-        v-else-if="importSkipCount > 0"
-        type="warning"
-        :closable="false"
-        style="margin-bottom: 16px;"
-      >
-        <template #title>
-          <span>发现 {{ importSkipCount }} 条已存在数据，导入时将自动跳过</span>
-        </template>
-      </el-alert>
-
-      <el-table :data="importPreviewData" border max-height="400">
-        <el-table-column prop="rowIndex" label="行号" width="80" />
-        <el-table-column
-          v-for="col in importPreviewColumns"
-          :key="col.prop"
-          :prop="col.prop"
-          :label="col.label"
-          :width="col.width"
-          :min-width="col.minWidth"
-          show-overflow-tooltip
-        />
-        <el-table-column label="状态" width="160">
-          <template #default="{ row }">
-            <el-tag :type="importRowTagType(row)" size="small">
-              {{ importRowStatusText(row) }}
-            </el-tag>
-          </template>
-        </el-table-column>
-      </el-table>
-
-      <template #footer>
-        <el-button @click="importDialogVisible = false">取消</el-button>
-        <el-button
-          type="primary"
-          :loading="importing"
-          :disabled="importErrors.length > 0 || importOkCount === 0"
-          @click="confirmImport"
-        >
-          确认导入 ({{ importOkCount }} 条)
-        </el-button>
-      </template>
-    </FormDialog>
+      width="980px"
+      :rows="importPreviewData"
+      :summary="importPreviewSummary"
+      :confirm-loading="importing"
+      :confirm-text="`确认导入（${importOkCount}条）`"
+      :columns="importPreviewColumns"
+      @confirm="confirmImport"
+    />
 
     <!-- 场站编辑对话框 -->
     <FormDialog
@@ -533,6 +577,7 @@ import { useRoute } from 'vue-router'
 import * as XLSX from 'xlsx'
 
 import FilterBar from '@/components/common/FilterBar.vue'
+import SimpleFilterBar from '@/components/common/SimpleFilterBar.vue'
 import BaseUpload from '@/components/common/BaseUpload.vue'
 import { addTemplateInstructionSheet, applyTemplateHeaderStyle } from '@/utils/excelTemplate'
 import { buildExportFileName, exportRowsToXlsx, fetchAllPaged } from '@/utils/tableExport'
@@ -543,11 +588,14 @@ import roleApi from '@/api/role'
 import permissionApi from '@/api/permission'
 import ModulePermissionConfig from '@/modules/admin/components/ModulePermissionConfig.vue'
 import FormDialog from '@/components/system/FormDialog.vue'
+import ImportPreviewDialog from '@/components/common/ImportPreviewDialog.vue'
 import { useUserStore } from '@/store/modules/user'
 import { createListSuggestionFetcher } from '@/utils/filterAutocomplete'
+import { useSimpleMode } from '@/composables/useSimpleMode'
 
 const route = useRoute()
 const userStore = useUserStore()
+const { isSimpleMode, simpleShowTable, simpleFilterExpanded } = useSimpleMode()
 
 // 权限检查
 const hasPermission = (code) => userStore.permissionCodes.includes(code)
@@ -587,7 +635,7 @@ const importDialogVisible = ref(false)
 const importing = ref(false)
 const importType = ref('')
 const importPreviewData = ref([])
-const importErrors = ref([])
+const importPreviewSummary = ref({})
 
 const resolveImportTypeLabel = (type) => {
   if (type === 'station') return '场站管理'
@@ -602,63 +650,49 @@ const importDialogTitle = computed(() => {
   return label ? `${label} - 导入预览` : '导入预览'
 })
 
-const importOkCount = computed(() => importPreviewData.value.filter(row => row.status === 'ok').length)
-const importSkipCount = computed(() => importPreviewData.value.filter(row => row.status === 'skip').length)
+const importOkCount = computed(() => importPreviewData.value.filter(row => row.action === 'create' || row.action === 'update').length)
+const importSkipCount = computed(() => importPreviewData.value.filter(row => row.action === 'skip').length)
 
 const importPreviewColumns = computed(() => {
   if (importType.value === 'station') {
     return [
       { prop: 'stationName', label: '场站名称', minWidth: 180 },
-      { prop: 'location', label: '描述', minWidth: 220 },
-      { prop: 'statusText', label: '状态', width: 120 }
+      { prop: 'location', label: '描述', minWidth: 220, diffKey: 'location' },
+      { prop: 'statusText', label: '状态', width: 120, diffKey: 'status' }
     ]
   }
   if (importType.value === 'department') {
     return [
-      { prop: 'deptName', label: '部门名称', minWidth: 180 },
+      { prop: 'deptName', label: '部门名称', minWidth: 180, diffKey: 'dept_name' },
       { prop: 'deptCode', label: '部门编码', width: 160 },
-      { prop: 'description', label: '描述', minWidth: 220 },
-      { prop: 'statusText', label: '状态', width: 120 }
+      { prop: 'description', label: '描述', minWidth: 220, diffKey: 'description' },
+      { prop: 'statusText', label: '状态', width: 120, diffKey: 'status' }
     ]
   }
   if (importType.value === 'company') {
     return [
-      { prop: 'companyName', label: '公司名称', minWidth: 180 },
+      { prop: 'companyName', label: '公司名称', minWidth: 180, diffKey: 'company_name' },
       { prop: 'companyCode', label: '公司编码', width: 160 },
-      { prop: 'description', label: '描述', minWidth: 220 },
-      { prop: 'statusText', label: '状态', width: 120 }
+      { prop: 'description', label: '描述', minWidth: 220, diffKey: 'description' },
+      { prop: 'statusText', label: '状态', width: 120, diffKey: 'status' }
     ]
   }
   if (importType.value === 'role') {
     return [
-      { prop: 'roleName', label: '角色名称', minWidth: 180 },
+      { prop: 'roleName', label: '角色名称', minWidth: 180, diffKey: 'roleName' },
       { prop: 'roleCode', label: '角色编码', width: 180 },
       { prop: 'baseRoleCode', label: '基准角色编码', width: 180 },
-      { prop: 'description', label: '描述', minWidth: 220 }
+      { prop: 'description', label: '描述', minWidth: 220, diffKey: 'description' }
     ]
   }
   return []
 })
 
-const importRowTagType = (row) => {
-  const status = row?.status
-  if (status === 'error') return 'danger'
-  if (status === 'skip') return 'info'
-  return 'success'
-}
-
-const importRowStatusText = (row) => {
-  const status = row?.status
-  if (status === 'error') return row?.error || '数据错误'
-  if (status === 'skip') return '已存在（跳过）'
-  return '可导入'
-}
-
 const normalizeText = (value) => (value === undefined || value === null ? '' : String(value).trim())
 
 const normalizeStatus = (value) => {
   const text = normalizeText(value)
-  if (!text) return 'active'
+  if (!text) return null
   if (text === '启用' || text === 'active' || text === '1') return 'active'
   if (text === '禁用' || text === 'inactive' || text === '0') return 'inactive'
   return null
@@ -726,43 +760,87 @@ const parseStationImport = async ({ headerMap, rows }) => {
   const statusCol = headerMap.get('状态') ?? 2
 
   const existingRows = await loadAllStations()
-  const existingNames = new Set(existingRows.map(r => normalizeText(r.station_name ?? r.stationName ?? r.name)).filter(Boolean))
+  const existingByName = new Map()
+  existingRows.forEach((r) => {
+    const name = normalizeText(r.station_name ?? r.stationName ?? r.name)
+    if (name && !existingByName.has(name)) existingByName.set(name, r)
+  })
 
   return rows.map((row, idx) => {
-    const rowIndex = idx + 2
+    const rowNum = idx + 2
     const stationName = normalizeText(row[stationNameCol])
-    const location = normalizeText(row[descCol])
-    const resolvedStatus = normalizeStatus(row[statusCol])
-    const statusText = resolvedStatus === 'inactive' ? '禁用' : '启用'
+    const locationInput = normalizeText(row[descCol])
+    const statusRaw = normalizeText(row[statusCol])
+    const statusInput = normalizeStatus(row[statusCol])
 
-    const item = {
-      rowIndex,
+    const previewRow = {
+      rowNum,
+      action: 'error',
+      message: '',
+      diff: {},
       stationName,
-      location,
-      statusValue: resolvedStatus,
-      statusText,
-      status: 'ok',
-      error: null
+      location: '',
+      statusText: '',
+      statusValue: ''
     }
 
     if (!stationName) {
-      item.status = 'error'
-      item.error = '场站名称不能为空'
-      return item
+      previewRow.message = '场站名称不能为空'
+      return previewRow
     }
 
-    if (existingNames.has(stationName)) {
-      item.status = 'skip'
-      return item
+    const existing = existingByName.get(stationName) ?? null
+    const existingLocation = existing ? normalizeText(existing.location) : ''
+    const existingStatus = existing ? normalizeText(existing.status) : ''
+
+    if (!existing) {
+      if (statusRaw && statusInput === null) {
+        previewRow.message = '状态无效（可填 启用/禁用）'
+        return previewRow
+      }
+      const statusValue = statusInput ?? 'active'
+      previewRow.location = locationInput
+      previewRow.statusValue = statusValue
+      previewRow.statusText = statusValue === 'inactive' ? '禁用' : '启用'
+      previewRow.action = 'create'
+      previewRow.message = '将新增'
+      return previewRow
     }
 
-    if (!resolvedStatus) {
-      item.status = 'error'
-      item.error = '状态无效（可填 启用/禁用）'
-      return item
+    const patch = {}
+    const diff = {}
+
+    if (locationInput && locationInput !== existingLocation) {
+      patch.location = locationInput
+      diff.location = { from: existingLocation, to: locationInput }
+    }
+    if (statusRaw && statusInput === null) {
+      previewRow.message = '状态无效（可填 启用/禁用）'
+      return previewRow
     }
 
-    return item
+    if (statusInput !== null && statusInput !== existingStatus) {
+      patch.status = statusInput
+      diff.status = { from: existingStatus, to: statusInput }
+    }
+
+    previewRow.location = locationInput ? locationInput : existingLocation
+    const nextStatus = statusInput !== null ? statusInput : existingStatus
+    previewRow.statusValue = nextStatus
+    previewRow.statusText = nextStatus === 'inactive' ? '禁用' : '启用'
+    previewRow.diff = diff
+    previewRow.__existingId = existing.id
+    previewRow.__patch = patch
+
+    if (Object.keys(patch).length === 0) {
+      previewRow.action = 'skip'
+      previewRow.message = '无变更，跳过'
+    } else {
+      previewRow.action = 'update'
+      previewRow.message = '将更新'
+    }
+
+    return previewRow
   })
 }
 
@@ -773,46 +851,107 @@ const parseDepartmentImport = async ({ headerMap, rows }) => {
   const statusCol = headerMap.get('状态') ?? 3
 
   const existingRows = await loadAllDepartments()
-  const existingNames = new Set(existingRows.map(r => normalizeText(r.dept_name)).filter(Boolean))
-  const existingCodes = new Set(existingRows.map(r => normalizeText(r.dept_code)).filter(Boolean))
+  const existingByCode = new Map()
+  const existingByName = new Map()
+  existingRows.forEach((r) => {
+    const code = normalizeText(r.dept_code)
+    const name = normalizeText(r.dept_name)
+    if (code && !existingByCode.has(code)) existingByCode.set(code, r)
+    if (name) {
+      const list = existingByName.get(name) ?? []
+      list.push(r)
+      existingByName.set(name, list)
+    }
+  })
 
   return rows.map((row, idx) => {
-    const rowIndex = idx + 2
+    const rowNum = idx + 2
     const deptName = normalizeText(row[nameCol])
     const deptCode = normalizeText(row[codeCol])
-    const description = normalizeText(row[descCol])
-    const resolvedStatus = normalizeStatus(row[statusCol])
-    const statusText = resolvedStatus === 'inactive' ? '禁用' : '启用'
+    const descriptionInput = normalizeText(row[descCol])
+    const statusRaw = normalizeText(row[statusCol])
+    const statusInput = normalizeStatus(row[statusCol])
 
-    const item = {
-      rowIndex,
+    const previewRow = {
+      rowNum,
+      action: 'error',
+      message: '',
+      diff: {},
       deptName,
       deptCode,
-      description,
-      statusValue: resolvedStatus,
-      statusText,
-      status: 'ok',
-      error: null
+      description: '',
+      statusText: '',
+      statusValue: ''
     }
 
     if (!deptName) {
-      item.status = 'error'
-      item.error = '部门名称不能为空'
-      return item
+      previewRow.message = '部门名称不能为空'
+      return previewRow
     }
 
-    if (existingNames.has(deptName) || (deptCode && existingCodes.has(deptCode))) {
-      item.status = 'skip'
-      return item
+    if (statusRaw && statusInput === null) {
+      previewRow.message = '状态无效（可填 启用/禁用）'
+      return previewRow
     }
 
-    if (!resolvedStatus) {
-      item.status = 'error'
-      item.error = '状态无效（可填 启用/禁用）'
-      return item
+    let existing = null
+    if (deptCode) {
+      existing = existingByCode.get(deptCode) ?? null
+    } else {
+      const matched = existingByName.get(deptName) ?? []
+      if (matched.length > 1) {
+        previewRow.message = '部门名称重复，请填写部门编码后再导入'
+        return previewRow
+      }
+      existing = matched.length === 1 ? matched[0] : null
     }
 
-    return item
+    if (!existing) {
+      const statusValue = statusInput ?? 'active'
+      previewRow.description = descriptionInput
+      previewRow.statusValue = statusValue
+      previewRow.statusText = statusValue === 'inactive' ? '禁用' : '启用'
+      previewRow.action = 'create'
+      previewRow.message = '将新增'
+      return previewRow
+    }
+
+    const patch = {}
+    const diff = {}
+    const existingName = normalizeText(existing.dept_name)
+    const existingDescription = normalizeText(existing.description)
+    const existingStatus = normalizeText(existing.status)
+
+    if (deptName && deptName !== existingName) {
+      patch.dept_name = deptName
+      diff.dept_name = { from: existingName, to: deptName }
+    }
+    if (descriptionInput && descriptionInput !== existingDescription) {
+      patch.description = descriptionInput
+      diff.description = { from: existingDescription, to: descriptionInput }
+    }
+    if (statusInput !== null && statusInput !== existingStatus) {
+      patch.status = statusInput
+      diff.status = { from: existingStatus, to: statusInput }
+    }
+
+    previewRow.description = descriptionInput ? descriptionInput : existingDescription
+    const nextStatus = statusInput !== null ? statusInput : existingStatus
+    previewRow.statusValue = nextStatus
+    previewRow.statusText = nextStatus === 'inactive' ? '禁用' : '启用'
+    previewRow.diff = diff
+    previewRow.__existingId = existing.id
+    previewRow.__patch = patch
+
+    if (Object.keys(patch).length === 0) {
+      previewRow.action = 'skip'
+      previewRow.message = '无变更，跳过'
+    } else {
+      previewRow.action = 'update'
+      previewRow.message = '将更新'
+    }
+
+    return previewRow
   })
 }
 
@@ -823,46 +962,101 @@ const parseCompanyImport = async ({ headerMap, rows }) => {
   const statusCol = headerMap.get('状态') ?? 3
 
   const existingRows = await loadAllCompanies()
-  const existingNames = new Set(existingRows.map(r => normalizeText(r.company_name)).filter(Boolean))
-  const existingCodes = new Set(existingRows.map(r => normalizeText(r.company_code)).filter(Boolean))
+  const existingByCode = new Map()
+  const existingByName = new Map()
+  existingRows.forEach((r) => {
+    const code = normalizeText(r.company_code)
+    const name = normalizeText(r.company_name)
+    if (code && !existingByCode.has(code)) existingByCode.set(code, r)
+    if (name && !existingByName.has(name)) existingByName.set(name, r)
+  })
 
   return rows.map((row, idx) => {
-    const rowIndex = idx + 2
+    const rowNum = idx + 2
     const companyName = normalizeText(row[nameCol])
     const companyCode = normalizeText(row[codeCol])
-    const description = normalizeText(row[descCol])
-    const resolvedStatus = normalizeStatus(row[statusCol])
-    const statusText = resolvedStatus === 'inactive' ? '禁用' : '启用'
+    const descriptionInput = normalizeText(row[descCol])
+    const statusRaw = normalizeText(row[statusCol])
+    const statusInput = normalizeStatus(row[statusCol])
 
-    const item = {
-      rowIndex,
+    const previewRow = {
+      rowNum,
+      action: 'error',
+      message: '',
+      diff: {},
       companyName,
       companyCode,
-      description,
-      statusValue: resolvedStatus,
-      statusText,
-      status: 'ok',
-      error: null
+      description: '',
+      statusText: '',
+      statusValue: ''
     }
 
     if (!companyName) {
-      item.status = 'error'
-      item.error = '公司名称不能为空'
-      return item
+      previewRow.message = '公司名称不能为空'
+      return previewRow
     }
 
-    if (existingNames.has(companyName) || (companyCode && existingCodes.has(companyCode))) {
-      item.status = 'skip'
-      return item
+    if (statusRaw && statusInput === null) {
+      previewRow.message = '状态无效（可填 启用/禁用）'
+      return previewRow
     }
 
-    if (!resolvedStatus) {
-      item.status = 'error'
-      item.error = '状态无效（可填 启用/禁用）'
-      return item
+    const existingByCodeHit = companyCode ? (existingByCode.get(companyCode) ?? null) : null
+    const existingByNameHit = existingByName.get(companyName) ?? null
+
+    if (existingByCodeHit && existingByNameHit && existingByCodeHit.id !== existingByNameHit.id) {
+      previewRow.message = '公司编码与公司名称指向不同记录，请修正后再导入'
+      return previewRow
     }
 
-    return item
+    const existing = existingByCodeHit ?? existingByNameHit
+
+    if (!existing) {
+      const statusValue = statusInput ?? 'active'
+      previewRow.description = descriptionInput
+      previewRow.statusValue = statusValue
+      previewRow.statusText = statusValue === 'inactive' ? '禁用' : '启用'
+      previewRow.action = 'create'
+      previewRow.message = '将新增'
+      return previewRow
+    }
+
+    const patch = {}
+    const diff = {}
+    const existingName = normalizeText(existing.company_name)
+    const existingDescription = normalizeText(existing.description)
+    const existingStatus = normalizeText(existing.status)
+
+    if (companyName && companyName !== existingName) {
+      patch.company_name = companyName
+      diff.company_name = { from: existingName, to: companyName }
+    }
+    if (descriptionInput && descriptionInput !== existingDescription) {
+      patch.description = descriptionInput
+      diff.description = { from: existingDescription, to: descriptionInput }
+    }
+    if (statusInput !== null && statusInput !== existingStatus) {
+      patch.status = statusInput
+      diff.status = { from: existingStatus, to: statusInput }
+    }
+
+    previewRow.description = descriptionInput ? descriptionInput : existingDescription
+    const nextStatus = statusInput !== null ? statusInput : existingStatus
+    previewRow.statusValue = nextStatus
+    previewRow.statusText = nextStatus === 'inactive' ? '禁用' : '启用'
+    previewRow.diff = diff
+    previewRow.__existingId = existing.id
+    previewRow.__patch = patch
+
+    if (Object.keys(patch).length === 0) {
+      previewRow.action = 'skip'
+      previewRow.message = '无变更，跳过'
+    } else {
+      previewRow.action = 'update'
+      previewRow.message = '将更新'
+    }
+
+    return previewRow
   })
 }
 
@@ -874,63 +1068,93 @@ const parseRoleImport = async ({ headerMap, rows }) => {
   const baseCol = headerMap.get('基准角色编码') ?? 2
   const descCol = headerMap.get('描述') ?? 3
 
-  const existingNames = new Set(roleList.value.map(r => normalizeText(r.roleName)).filter(Boolean))
-  const existingCodes = new Set(roleList.value.map(r => normalizeText(r.roleCode)).filter(Boolean))
+  const existingByCode = new Map()
+  roleList.value.forEach((r) => {
+    const code = normalizeText(r.roleCode)
+    if (code && !existingByCode.has(code)) existingByCode.set(code, r)
+  })
   const allowedBaseRoleCodes = new Set(baseRoleOptions.value.map(r => normalizeText(r.roleCode)).filter(Boolean))
 
   return rows.map((row, idx) => {
-    const rowIndex = idx + 2
+    const rowNum = idx + 2
     const roleName = normalizeText(row[nameCol])
     const roleCode = normalizeText(row[codeCol])
     const baseRoleCode = normalizeText(row[baseCol])
     const description = normalizeText(row[descCol])
 
-    const item = {
-      rowIndex,
+    const previewRow = {
+      rowNum,
+      action: 'error',
+      message: '',
+      diff: {},
       roleName,
       roleCode,
       baseRoleCode,
-      description,
-      status: 'ok',
-      error: null
+      description
     }
 
     if (!roleName) {
-      item.status = 'error'
-      item.error = '角色名称不能为空'
-      return item
+      previewRow.message = '角色名称不能为空'
+      return previewRow
     }
 
     if (!roleCode) {
-      item.status = 'error'
-      item.error = '角色编码不能为空'
-      return item
-    }
-
-    if (!baseRoleCode) {
-      item.status = 'error'
-      item.error = '基准角色编码不能为空'
-      return item
+      previewRow.message = '角色编码不能为空'
+      return previewRow
     }
 
     if (roleCode === 'dev_test' || roleName === '开发测试') {
-      item.status = 'error'
-      item.error = '开发测试角色不允许导入'
-      return item
+      previewRow.message = '开发测试角色不允许导入'
+      return previewRow
     }
 
-    if (existingNames.has(roleName) || existingCodes.has(roleCode)) {
-      item.status = 'skip'
-      return item
+    const existing = existingByCode.get(roleCode) ?? null
+
+    if (!existing) {
+      if (!baseRoleCode) {
+        previewRow.message = '基准角色编码不能为空'
+        return previewRow
+      }
+
+      if (!allowedBaseRoleCodes.has(baseRoleCode)) {
+        previewRow.message = '基准角色编码无效'
+        return previewRow
+      }
+
+      previewRow.action = 'create'
+      previewRow.message = '将新增（将复制基准角色权限）'
+      return previewRow
     }
 
-    if (!allowedBaseRoleCodes.has(baseRoleCode)) {
-      item.status = 'error'
-      item.error = '基准角色编码无效'
-      return item
+    const patch = {}
+    const diff = {}
+    const existingRoleName = normalizeText(existing.roleName ?? existing.role_name)
+    const existingDescription = normalizeText(existing.description)
+
+    if (roleName && roleName !== existingRoleName) {
+      patch.roleName = roleName
+      diff.roleName = { from: existingRoleName, to: roleName }
+    }
+    if (description && description !== existingDescription) {
+      patch.description = description
+      diff.description = { from: existingDescription, to: description }
     }
 
-    return item
+    previewRow.baseRoleCode = baseRoleCode
+    previewRow.description = description ? description : existingDescription
+    previewRow.diff = diff
+    previewRow.__existingId = existing.id
+    previewRow.__patch = patch
+
+    if (Object.keys(patch).length === 0) {
+      previewRow.action = 'skip'
+      previewRow.message = '无变更，跳过（不覆盖权限）'
+    } else {
+      previewRow.action = 'update'
+      previewRow.message = '将更新（不覆盖权限）'
+    }
+
+    return previewRow
   })
 }
 
@@ -945,7 +1169,7 @@ const downloadImportTemplate = (type) => {
         ['示例场站B', '示例描述', '禁用']
       ],
       instructions: [
-        ['场站名称', '必填，唯一名称；若已存在则跳过。'],
+        ['场站名称', '必填，唯一名称；若已存在则更新（空值不覆盖）。'],
         ['描述', '选填，描述/地址信息。'],
         ['状态', '选填，启用/禁用；不填默认启用。'],
         ['导入数量', '一次最多导入 100 条数据。']
@@ -960,8 +1184,8 @@ const downloadImportTemplate = (type) => {
         ['维修部', 'MT', '示例描述', '禁用']
       ],
       instructions: [
-        ['部门名称', '必填；若已存在则跳过。'],
-        ['部门编码', '选填；若编码已存在则跳过。'],
+        ['部门名称', '必填；若已存在则更新（空值不覆盖）。'],
+        ['部门编码', '选填；若编码已存在则更新（空值不覆盖）。'],
         ['描述', '选填。'],
         ['状态', '选填，启用/禁用；不填默认启用。'],
         ['导入数量', '一次最多导入 100 条数据。']
@@ -976,8 +1200,8 @@ const downloadImportTemplate = (type) => {
         ['示例公司B', 'C002', '示例描述', '禁用']
       ],
       instructions: [
-        ['公司名称', '必填；若已存在则跳过。'],
-        ['公司编码', '选填；若编码已存在则跳过。'],
+        ['公司名称', '必填；若已存在则更新（空值不覆盖）。'],
+        ['公司编码', '选填；若编码已存在则更新（空值不覆盖）。'],
         ['描述', '选填。'],
         ['状态', '选填，启用/禁用；不填默认启用。'],
         ['导入数量', '一次最多导入 100 条数据。']
@@ -992,9 +1216,9 @@ const downloadImportTemplate = (type) => {
         ['示例角色B', 'sample_role_b', 'station_manager', '示例描述']
       ],
       instructions: [
-        ['角色名称', '必填；若已存在则跳过。'],
-        ['角色编码', '必填；若已存在则跳过。'],
-        ['基准角色编码', '必填；必须为系统已存在角色编码。导入时默认复制基准角色的权限。'],
+        ['角色名称', '必填；若已存在则更新（仅更新名称/描述，不覆盖权限）。'],
+        ['角色编码', '必填；若已存在则更新（仅更新名称/描述，不覆盖权限）。'],
+        ['基准角色编码', '新增时必填；必须为系统已存在角色编码。新增时将复制基准角色的权限。'],
         ['描述', '选填。'],
         ['导入数量', '一次最多导入 100 条数据。']
       ]
@@ -1019,7 +1243,7 @@ const handleImportFileChange = async (type, file) => {
   importType.value = type
   importing.value = false
   importPreviewData.value = []
-  importErrors.value = []
+  importPreviewSummary.value = {}
 
   try {
     const buffer = await readUploadFile(file)
@@ -1053,7 +1277,13 @@ const handleImportFileChange = async (type, file) => {
     }
 
     importPreviewData.value = preview
-    importErrors.value = preview.filter(row => row.status === 'error')
+    importPreviewSummary.value = {
+      total: preview.length,
+      create: preview.filter(r => r.action === 'create').length,
+      update: preview.filter(r => r.action === 'update').length,
+      skip: preview.filter(r => r.action === 'skip').length,
+      error: preview.filter(r => r.action === 'error').length
+    }
     importDialogVisible.value = true
   } catch (e) {
     ElMessage.error('文件解析失败，请检查文件格式')
@@ -1080,65 +1310,88 @@ const afterImportReload = async () => {
 }
 
 const confirmImport = async () => {
-  const okRows = importPreviewData.value.filter(row => row.status === 'ok')
-  if (okRows.length === 0) {
-    ElMessage.warning('没有可导入的有效数据')
+  const pendingRows = importPreviewData.value.filter(row => row.action === 'create' || row.action === 'update')
+  if (pendingRows.length === 0) {
+    ElMessage.warning('没有可导入的数据')
     return
   }
 
   importing.value = true
   try {
-    let success = 0
-    let skipped = importSkipCount.value
+    let created = 0
+    let updated = 0
+    const skipped = importSkipCount.value
     let failed = 0
 
-    for (const row of okRows) {
+    for (const row of pendingRows) {
       try {
         if (importType.value === 'station') {
-          await createStation({
-            stationName: row.stationName,
-            location: row.location,
-            status: row.statusValue
-          })
+          if (row.action === 'create') {
+            await createStation({
+              stationName: row.stationName,
+              location: row.location,
+              status: row.statusValue
+            })
+            created += 1
+          } else {
+            await updateStation(row.__existingId, row.__patch)
+            updated += 1
+          }
         } else if (importType.value === 'department') {
-          await createDepartment({
-            dept_name: row.deptName,
-            dept_code: row.deptCode,
-            description: row.description,
-            status: row.statusValue
-          })
+          if (row.action === 'create') {
+            await createDepartment({
+              dept_name: row.deptName,
+              dept_code: row.deptCode,
+              description: row.description,
+              status: row.statusValue
+            })
+            created += 1
+          } else {
+            await updateDepartment(row.__existingId, row.__patch)
+            updated += 1
+          }
         } else if (importType.value === 'company') {
-          await createCompany({
-            company_name: row.companyName,
-            company_code: row.companyCode,
-            description: row.description,
-            status: row.statusValue
-          })
+          if (row.action === 'create') {
+            await createCompany({
+              company_name: row.companyName,
+              company_code: row.companyCode,
+              description: row.description,
+              status: row.statusValue
+            })
+            created += 1
+          } else {
+            await updateCompany(row.__existingId, row.__patch)
+            updated += 1
+          }
         } else if (importType.value === 'role') {
-          await roleApi.createRole({
-            roleName: row.roleName,
-            roleCode: row.roleCode,
-            baseRoleCode: row.baseRoleCode,
-            description: row.description
-          })
+          if (row.action === 'create') {
+            await roleApi.createRole({
+              roleName: row.roleName,
+              roleCode: row.roleCode,
+              baseRoleCode: row.baseRoleCode,
+              description: row.description
+            })
+            created += 1
+          } else {
+            // 已存在角色：只更新名称/描述，不覆盖权限
+            await roleApi.updateRole(row.__existingId, row.__patch)
+            updated += 1
+          }
         }
-        success += 1
       } catch (e) {
         failed += 1
       }
     }
 
     if (failed === 0) {
-      const tip = skipped > 0 ? `导入完成：成功${success}条，跳过${skipped}条` : `导入完成：成功${success}条`
-      ElMessage.success(tip)
-      importDialogVisible.value = false
+      ElMessage.success(`导入完成：新增${created}条，更新${updated}条，跳过${skipped}条`)
     } else {
-      ElMessage.warning(`导入完成：成功${success}条，跳过${skipped}条，失败${failed}条`)
-      importDialogVisible.value = false
+      ElMessage.warning(`导入完成：新增${created}条，更新${updated}条，跳过${skipped}条，失败${failed}条`)
     }
 
+    importDialogVisible.value = false
     importPreviewData.value = []
-    importErrors.value = []
+    importPreviewSummary.value = {}
     await afterImportReload()
   } finally {
     importing.value = false
@@ -1626,6 +1879,10 @@ const roleSaving = ref(false)
 const roleFilters = ref({
   keyword: ''
 })
+const stationFilterSummaryText = computed(() => `当前筛选：场站名称=${(stationFilters.value.keyword || '').trim() || '全部'}`)
+const deptFilterSummaryText = computed(() => `当前筛选：部门名称=${(deptFilters.value.keyword || '').trim() || '全部'}`)
+const companyFilterSummaryText = computed(() => `当前筛选：公司名称=${(companyFilters.value.keyword || '').trim() || '全部'}`)
+const roleFilterSummaryText = computed(() => `当前筛选：角色名称=${(roleFilters.value.keyword || '').trim() || '全部'}`)
 
 const roleForm = ref({
   id: null,
@@ -1866,6 +2123,35 @@ onMounted(() => {
 
   .filter-card {
     margin-bottom: 20px;
+  }
+
+  .simple-card-list {
+    display: grid;
+    gap: 12px;
+  }
+
+  .simple-card-item {
+    background: #fff;
+    border: 1px solid #ebeef5;
+    border-radius: 8px;
+    padding: 12px;
+  }
+
+  .card-title {
+    font-weight: 600;
+    margin-bottom: 8px;
+  }
+
+  .card-meta {
+    color: #606266;
+    font-size: 14px;
+    margin-bottom: 6px;
+  }
+
+  .card-actions {
+    margin-top: 8px;
+    display: flex;
+    gap: 8px;
   }
 
   .el-table {

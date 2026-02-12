@@ -146,7 +146,8 @@ export const deleteDepartment = async (ctx) => {
   }
 
   // 检查是否有用户属于该部门
-  const usersInDept = await User.count({ where: { department_id: id } });
+  // User model stores department as department_name text, not department_id.
+  const usersInDept = await User.count({ where: { department_name: department.dept_name } });
   if (usersInDept > 0) {
     ctx.status = 400;
     ctx.body = { code: 400, message: `无法删除，该部门下还有 ${usersInDept} 名用户` };

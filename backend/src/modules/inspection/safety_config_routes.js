@@ -19,6 +19,12 @@ export const registerSafetyConfigRoutes = (router) => {
     uploadToDisk.single('file'),
     safetyCheckController.importCheckItems
   );
+  router.post(
+    '/safety-check-items/import-preview',
+    checkRole(['safety_inspector']),
+    uploadToDisk.single('file'),
+    safetyCheckController.previewImportCheckItems
+  );
   router.put('/safety-check-items/:id', checkRole(['safety_inspector']), safetyCheckController.updateCheckItem);
   router.delete('/safety-check-items/:id', checkRole(['safety_inspector']), safetyCheckController.deleteCheckItem);
 };

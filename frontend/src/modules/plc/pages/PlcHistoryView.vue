@@ -3,13 +3,16 @@
     <div class="page-header">
       <h2>历史数据</h2>
       <div class="header-actions">
+        <el-button v-if="isSimpleMode" @click="simpleShowTable = !simpleShowTable">
+          {{ simpleShowTable ? '切换卡片' : '切换表格' }}
+        </el-button>
         <el-button type="primary" :loading="exporting" @click="handleExport">
           <el-icon><Upload /></el-icon>批量导出
         </el-button>
         <el-button type="info" @click="handleDownloadTemplate">
           <el-icon><Download /></el-icon>下载模板
         </el-button>
-        <el-button type="success" @click="importDialogVisible = true">
+        <el-button type="success" :loading="importPreviewLoading" @click="triggerImport">
           <el-icon><Download /></el-icon>批量导入
         </el-button>
       </div>
@@ -24,90 +27,94 @@
     </section>
 
     <el-card class="filter-card">
-      <FilterBar>
-        <div class="filter-item">
-          <span class="filter-label">开始日期</span>
-          <el-date-picker
-            v-model="filterForm.startDate"
-            type="date"
-            placeholder="全部"
-            value-format="YYYY-MM-DD"
-            style="width: 140px"
-            @change="applyFilters"
-          />
-        </div>
-        <div class="filter-item">
-          <span class="filter-label">结束日期</span>
-          <el-date-picker
-            v-model="filterForm.endDate"
-            type="date"
-            placeholder="全部"
-            value-format="YYYY-MM-DD"
-            style="width: 140px"
-            @change="applyFilters"
-          />
-        </div>
-        <div class="filter-item">
-          <span class="filter-label">场站</span>
-          <FilterSelect v-model="filterForm.stationId" placeholder="全部" filterable clearable style="width: 180px" @change="applyFilters" @clear="applyFilters">
-            <el-option label="全部" value="all" />
-            <el-option
-              v-for="station in stations"
-              :key="station.id"
-              :label="station.station_name"
-              :value="station.id"
+      <SimpleFilterBar
+        :enabled="isSimpleMode"
+        v-model:expanded="simpleFilterExpanded"
+        :summary-text="simpleFilterSummary"
+      >
+        <FilterBar>
+          <div class="filter-item">
+            <span class="filter-label">开始日期</span>
+            <el-date-picker
+              v-model="filterForm.startDate"
+              type="date"
+              placeholder="全部"
+              value-format="YYYY-MM-DD"
+              style="width: 140px"
+              @change="applyFilters"
             />
-          </FilterSelect>
-        </div>
-        <div class="filter-item">
-          <span class="filter-label">分类</span>
-          <FilterSelect v-model="filterForm.categoryId" placeholder="全部" filterable clearable style="width: 180px" @change="applyFilters" @clear="applyFilters">
-            <el-option label="全部" value="all" />
-            <el-option
-              v-for="cat in categories"
-              :key="cat.id"
-              :label="cat.category_name"
-              :value="cat.id"
+          </div>
+          <div class="filter-item">
+            <span class="filter-label">结束日期</span>
+            <el-date-picker
+              v-model="filterForm.endDate"
+              type="date"
+              placeholder="全部"
+              value-format="YYYY-MM-DD"
+              style="width: 140px"
+              @change="applyFilters"
             />
-          </FilterSelect>
-        </div>
-        <div class="filter-item">
-          <span class="filter-label">汇总粒度</span>
-          <FilterSelect v-model="summaryGroup" placeholder="全部" filterable style="width: 180px" @change="applyFilters">
-            <el-option label="全部" value="all" />
-            <el-option label="按日" value="day" />
-            <el-option label="按月" value="month" />
-            <el-option label="按年" value="year" />
-          </FilterSelect>
-        </div>
-      </FilterBar>
+          </div>
+          <div class="filter-item">
+            <span class="filter-label">场站</span>
+            <FilterSelect v-model="filterForm.stationId" placeholder="全部" filterable clearable style="width: 180px" @change="applyFilters" @clear="applyFilters">
+              <el-option label="全部" value="all" />
+              <el-option
+                v-for="station in stations"
+                :key="station.id"
+                :label="station.station_name"
+                :value="station.id"
+              />
+            </FilterSelect>
+          </div>
+          <div class="filter-item">
+            <span class="filter-label">分类</span>
+            <FilterSelect v-model="filterForm.categoryId" placeholder="全部" filterable clearable style="width: 180px" @change="applyFilters" @clear="applyFilters">
+              <el-option label="全部" value="all" />
+              <el-option
+                v-for="cat in categories"
+                :key="cat.id"
+                :label="cat.category_name"
+                :value="cat.id"
+              />
+            </FilterSelect>
+          </div>
+          <div class="filter-item">
+            <span class="filter-label">汇总粒度</span>
+            <FilterSelect v-model="summaryGroup" placeholder="全部" filterable style="width: 180px" @change="applyFilters">
+              <el-option label="全部" value="all" />
+              <el-option label="按日" value="day" />
+              <el-option label="按月" value="month" />
+              <el-option label="按年" value="year" />
+            </FilterSelect>
+          </div>
+        </FilterBar>
+      </SimpleFilterBar>
     </el-card>
 
-    <el-dialog v-model="importDialogVisible" title="导入历史数据" width="500px">
-      <BaseUpload
-        ref="uploadRef"
-        :auto-upload="false"
-        :limit="1"
-        :on-change="handleFileChange"
-        :on-exceed="handleExceed"
-        accept=".xlsx,.xls"
-        drag
-      >
-        <el-icon class="el-icon--upload"><upload-filled /></el-icon>
-        <div class="el-upload__text">拖拽文件到此处或<em>点击上传</em></div>
-        <template #tip>
-          <div class="el-upload__tip">只支持 .xlsx 或 .xls 格式文件</div>
-        </template>
-      </BaseUpload>
-      <template #footer>
-        <el-button @click="importDialogVisible = false">取消</el-button>
-        <el-button type="primary" :loading="importing" @click="handleImport">确定导入</el-button>
-      </template>
-    </el-dialog>
+    <input
+      ref="importFileInputRef"
+      type="file"
+      accept=".xlsx,.xls"
+      style="display: none"
+      @change="handleImportFileSelected"
+    />
+
+    <ImportPreviewDialog
+      v-model="importPreviewVisible"
+      title="历史数据 - 导入预览"
+      :rows="importPreviewRows"
+      :summary="importPreviewSummary"
+      :truncated="importPreviewTruncated"
+      :max-rows="importPreviewMaxRows"
+      :confirm-loading="importSubmitting"
+      :columns="importPreviewColumns"
+      @confirm="confirmImport"
+    />
 
     <section class="section-block">
       <div class="section-title">场站分类汇总</div>
-      <TableWrapper>
+      <TableWrapper v-if="!isSimpleMode || simpleShowTable">
         <el-table :data="summaryData" stripe border style="width: 100%">
           <el-table-column prop="stationName" label="场站" min-width="120" />
           <el-table-column prop="categoryName" label="分类" min-width="100" />
@@ -130,6 +137,17 @@
           <el-table-column prop="sampleCount" label="样本数" min-width="100" align="center" />
         </el-table>
       </TableWrapper>
+      <div v-else class="simple-card-list">
+        <el-empty v-if="summaryData.length === 0" description="暂无数据" />
+        <div v-for="row in summaryData" :key="`${row.stationName}-${row.categoryName}-${row.time}-${row.valueType}`" class="simple-card-item">
+          <div class="card-title">{{ row.stationName || '-' }} / {{ row.categoryName || '-' }}</div>
+          <div class="card-meta">类型：{{ valueTypeLabel(row.valueType) }}</div>
+          <div class="card-meta">时间：{{ row.time || '-' }}</div>
+          <div class="card-meta" v-if="row.valueType === 'cumulative'">净增值：{{ formatNumber(row.netIncrease) }}</div>
+          <div class="card-meta" v-else>平均值：{{ formatNumber(row.avgValue) }}</div>
+          <div class="card-meta">样本数：{{ row.sampleCount ?? 0 }}</div>
+        </div>
+      </div>
       <div class="pagination-wrapper">
         <el-pagination
           v-model:current-page="summaryPagination.page"
@@ -148,7 +166,7 @@
         历史数据
         <span class="sub-info">共 {{ pagination.total }} 条</span>
       </div>
-      <TableWrapper>
+      <TableWrapper v-if="!isSimpleMode || simpleShowTable">
         <el-table :data="historyTable" stripe border style="width: 100%">
           <el-table-column prop="config.name" label="监控点名称" min-width="150">
             <template #default="{ row }">
@@ -178,6 +196,17 @@
           </el-table-column>
         </el-table>
       </TableWrapper>
+      <div v-else class="simple-card-list">
+        <el-empty v-if="historyTable.length === 0" description="暂无数据" />
+        <div v-for="row in historyTable" :key="row.id || `${row.config?.name}-${row.timestamp}`" class="simple-card-item">
+          <div class="card-title">{{ row.config?.name || '-' }}</div>
+          <div class="card-meta">场站：{{ row.station?.station_name || '-' }}</div>
+          <div class="card-meta">分类：{{ row.category?.category_name || '-' }}</div>
+          <div class="card-meta">地址：{{ row.address || '-' }}</div>
+          <div class="card-meta">数值：{{ formatNumber(row.value) }}</div>
+          <div class="card-meta">时间：{{ formatDateTime(row.timestamp) }}</div>
+        </div>
+      </div>
       <div class="pagination-wrapper">
         <el-pagination
           v-model:current-page="pagination.page"
@@ -199,9 +228,12 @@ import { ElMessage } from 'element-plus';
 import { UploadFilled, Upload } from '@element-plus/icons-vue';
 import { useRoute } from 'vue-router';
 import dayjs from 'dayjs';
-import { getHistoryData, getCategories, getHistorySummary, downloadHistoryTemplate, importHistoryData } from '@/api/plcMonitor';
+import SimpleFilterBar from '@/components/common/SimpleFilterBar.vue';
+import { useSimpleMode } from '@/composables/useSimpleMode';
+import { getHistoryData, getCategories, getHistorySummary, downloadHistoryTemplate, importHistoryData, previewImportHistoryData } from '@/api/plcMonitor';
 import request from '@/utils/request';
 import { buildExportFileName, exportSheetsToXlsx, fetchAllPaged } from '@/utils/tableExport';
+import ImportPreviewDialog from '@/components/common/ImportPreviewDialog.vue';
 
 const loading = ref(false);
 const exporting = ref(false);
@@ -210,10 +242,28 @@ const summaryData = ref([]);
 const stations = ref([]);
 const categories = ref([]);
 const summaryGroup = ref('all');
-const importDialogVisible = ref(false);
-const importing = ref(false);
-const uploadRef = ref(null);
-const uploadFile = ref(null);
+const { isSimpleMode, simpleShowTable, simpleFilterExpanded } = useSimpleMode();
+
+// ==================== 批量导入（预览 -> 确认导入） ====================
+const importFileInputRef = ref(null);
+const importPreviewLoading = ref(false);
+const importSubmitting = ref(false);
+const importFile = ref(null);
+const importPreviewVisible = ref(false);
+const importPreviewSummary = ref({});
+const importPreviewRows = ref([]);
+const importPreviewTruncated = ref(false);
+const importPreviewMaxRows = ref(0);
+
+const importPreviewColumns = computed(() => ([
+  { prop: 'stationName', label: '场站', width: 140 },
+  { prop: 'categoryName', label: '分类', width: 120 },
+  { prop: 'configName', label: '监控点', minWidth: 160 },
+  { prop: 'address', label: '地址', width: 140 },
+  { prop: 'value', label: '数值', width: 120 },
+  { prop: 'timestamp', label: '时间', minWidth: 180 },
+  { prop: 'quality', label: '质量', width: 90 }
+]));
 const stats = reactive({
   totalRecords: 0,
   category: {}
@@ -236,6 +286,25 @@ const filterForm = reactive({
   categoryId: 'all',
   startDate: dayjs().subtract(5, 'day').format('YYYY-MM-DD'),
   endDate: today
+});
+const resolveStationLabel = (id) => {
+  if (id === 'all') return '全部';
+  const matched = stations.value.find(item => item.id === id);
+  return matched?.station_name || String(id);
+};
+const resolveCategoryLabel = (id) => {
+  if (id === 'all') return '全部';
+  const matched = categories.value.find(item => item.id === id);
+  return matched?.category_name || String(id);
+};
+const summaryGroupLabel = computed(() => {
+  if (summaryGroup.value === 'day') return '按日';
+  if (summaryGroup.value === 'month') return '按月';
+  if (summaryGroup.value === 'year') return '按年';
+  return '全部';
+});
+const simpleFilterSummary = computed(() => {
+  return `当前筛选：开始=${filterForm.startDate} | 结束=${filterForm.endDate} | 场站=${resolveStationLabel(filterForm.stationId)} | 分类=${resolveCategoryLabel(filterForm.categoryId)} | 汇总=${summaryGroupLabel.value}`;
 });
 
 const route = useRoute();
@@ -502,44 +571,70 @@ const handleDownloadTemplate = async () => {
   }
 };
 
-const handleFileChange = (file) => {
-  uploadFile.value = file.raw;
+const triggerImport = () => {
+  if (importPreviewLoading.value) return;
+  if (!importFileInputRef.value) return;
+  importFileInputRef.value.click();
 };
 
-const handleExceed = () => {
-  ElMessage.warning('只能上传一个文件');
+const isExcelFile = (file) => {
+  const mime = file?.type;
+  return mime === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' || mime === 'application/vnd.ms-excel';
 };
 
-const handleImport = async () => {
-  if (!uploadFile.value) {
-    ElMessage.warning('请选择要上传的文件');
+const handleImportFileSelected = async (event) => {
+  const file = event?.target?.files?.[0];
+  if (event?.target) event.target.value = '';
+  if (!file) return;
+
+  if (!isExcelFile(file)) {
+    ElMessage.error('只能上传 Excel 文件');
+    return;
+  }
+  if (file.size / 1024 / 1024 >= 5) {
+    ElMessage.error('文件大小不能超过 5MB');
     return;
   }
 
-  importing.value = true;
+  importFile.value = file;
+  importPreviewLoading.value = true;
   try {
     const formData = new FormData();
-    formData.append('file', uploadFile.value);
-
-    const res = await importHistoryData(formData);
-    const payload = res || {};
-    const total = payload.total || 0;
-    const success = payload.success || 0;
-    const skipped = payload.skipped || 0;
-    const extra = skipped ? `, 跳过 ${skipped} 条重复` : '';
-    ElMessage.success(`导入成功，插入 ${success} 条，总计 ${total} 条${extra}`);
-    if (payload.errors) {
-      console.warn('导入警告:', payload.errors);
-    }
-    importDialogVisible.value = false;
-    uploadFile.value = null;
-    uploadRef.value?.clearFiles();
-    handleQuery();
-  } catch (error) {
-    console.error('导入失败:', error);
-    ElMessage.error(error.response?.data?.message || '导入失败');
+    formData.append('file', file);
+    const res = await previewImportHistoryData(formData);
+    importPreviewSummary.value = res?.summary ?? {};
+    importPreviewRows.value = Array.isArray(res?.rows) ? res.rows : [];
+    importPreviewTruncated.value = !!res?.truncated;
+    importPreviewMaxRows.value = typeof res?.maxRows === 'number' ? res.maxRows : 0;
+    importPreviewVisible.value = true;
   } finally {
-    importing.value = false;
+    importPreviewLoading.value = false;
+  }
+};
+
+const confirmImport = async () => {
+  if (!importFile.value) {
+    ElMessage.warning('请选择文件');
+    return;
+  }
+
+  importSubmitting.value = true;
+  try {
+    const formData = new FormData();
+    formData.append('file', importFile.value);
+    const res = await importHistoryData(formData);
+
+    const total = typeof res?.total === 'number' ? res.total : 0;
+    const success = typeof res?.success === 'number' ? res.success : 0;
+    const skipped = typeof res?.skipped === 'number' ? res.skipped : 0;
+    const extra = skipped > 0 ? `，跳过${skipped}条重复` : '';
+    ElMessage.success(`导入成功：插入${success}条，总计${total}条${extra}`);
+
+    importPreviewVisible.value = false;
+    importFile.value = null;
+    handleQuery();
+  } finally {
+    importSubmitting.value = false;
   }
 };
 
@@ -604,6 +699,29 @@ onMounted(() => {
     display: flex;
     gap: 12px;
     flex-wrap: wrap;
+  }
+
+  .simple-card-list {
+    display: grid;
+    gap: 12px;
+  }
+
+  .simple-card-item {
+    background: #fff;
+    border: 1px solid #ebeef5;
+    border-radius: 8px;
+    padding: 12px;
+  }
+
+  .card-title {
+    font-weight: 600;
+    margin-bottom: 8px;
+  }
+
+  .card-meta {
+    color: #606266;
+    font-size: 14px;
+    margin-bottom: 6px;
   }
 
   .pagination-wrapper {

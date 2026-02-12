@@ -36,6 +36,16 @@ export const importTasks = (file) => {
   });
 };
 
+export const previewImportTasks = (file) => {
+  const formData = new FormData();
+  formData.append('file', file);
+  return request.post('/repair-task-library/import-preview', formData, {
+    headers: {
+      'Content-Type': 'multipart/form-data'
+    }
+  });
+};
+
 export default {
   getRepairTaskLibrary,
   createRepairTask,
@@ -43,5 +53,6 @@ export default {
   deleteRepairTask,
   batchDeleteRepairTasks,
   downloadTemplate,
-  importTasks
+  importTasks,
+  previewImportTasks
 };

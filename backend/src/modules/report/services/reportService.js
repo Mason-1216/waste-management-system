@@ -9,6 +9,13 @@ import { addTemplateInstructionSheet } from '../../import_export/utils/excelTemp
 
 const resolveText = (value) => (typeof value === 'string' ? value.trim() : '');
 
+const isSameNumber = (a, b) => {
+  const na = Number(a);
+  const nb = Number(b);
+  if (!Number.isFinite(na) || !Number.isFinite(nb)) return false;
+  return na === nb;
+};
+
 const resolveDateRange = (startDate, endDate) => {
   const startText = resolveText(startDate);
   const endText = resolveText(endDate);
@@ -876,7 +883,7 @@ const buildPointsEvent = ({ userId, userName, categoryCode, taskName, unitPoints
   };
 };
 
-const loadManualPointsEvents = async ({ range, keywordText, dataFilter }) => {
+export const loadManualPointsEvents = async ({ range, keywordText, dataFilter }) => {
   const where = {
     entry_date: { [Op.between]: [range.startDate, range.endDate] }
   };
@@ -908,7 +915,7 @@ const loadManualPointsEvents = async ({ range, keywordText, dataFilter }) => {
     .filter(item => item.categoryCode);
 };
 
-const loadAutoPointsEvents = async ({ range, keywordText, dataFilter }) => {
+export const loadAutoPointsEvents = async ({ range, keywordText, dataFilter }) => {
   const events = [];
 
   // 固定/派发/申请/扣分（岗位工作汇总）
@@ -1505,6 +1512,230 @@ export const downloadManualPointsTemplate = async (ctx) => {
   ctx.body = buffer;
 };
 
+export const previewImportManualPoints = async (ctx) => {
+  const file = ctx.file || ctx.request?.file || ctx.request?.files?.file;
+  if (!file) {
+    throw createError(400, '请上传Excel文件');
+  }
+
+  const ExcelJS = (await import('exceljs')).default;
+  const workbook = new ExcelJS.Workbook();
+  await workbook.xlsx.load(file.buffer);
+  const worksheet = workbook.getWorksheet(1);
+  if (!worksheet) {
+    throw createError(400, 'Excel内容为空');
+  }
+
+  const normalizeCellValue = (value) => {
+    if (value && typeof value === 'object') {
+      if (value.text !== undefined) return value.text;
+      if (value.result !== undefined) return value.result;
+      if (Array.isArray(value.richText)) {
+        return value.richText.map(item => item.text ?? '').join('');
+      }
+    }
+    return value;
+  };
+
+  const parseText = (value) => {
+    const normalized = normalizeCellValue(value);
+    if (normalized === undefined || normalized === null) return '';
+    return String(normalized).trim();
+  };
+
+  const parseNumber = (value) => {
+    const normalized = normalizeCellValue(value);
+    if (normalized === undefined || normalized === null || normalized === '') return null;
+    const parsed = Number(normalized);
+    return Number.isFinite(parsed) ? parsed : null;
+  };
+
+  const parseInteger = (value) => {
+    const normalized = normalizeCellValue(value);
+    if (normalized === undefined || normalized === null || normalized === '') return null;
+    const parsed = Number.parseInt(normalized, 10);
+    return Number.isInteger(parsed) ? parsed : null;
+  };
+
+  const parseDate = (value) => {
+    const normalized = normalizeCellValue(value);
+    if (!normalized) return '';
+    if (normalized instanceof Date) {
+      return dayjs(normalized).format('YYYY-MM-DD');
+    }
+    const text = String(normalized).trim();
+    const parsed = dayjs(text);
+    return parsed.isValid() ? parsed.format('YYYY-MM-DD') : '';
+  };
+
+  const headerMap = new Map();
+  const headerRow = worksheet.getRow(1);
+  if (headerRow?.hasValues) {
+    headerRow.eachCell((cell, colNumber) => {
+      const headerText = parseText(cell.value);
+      if (headerText) headerMap.set(headerText, colNumber);
+    });
+  }
+
+  const colIndex = {
+    userName: headerMap.get('人员姓名') ?? 1,
+    date: headerMap.get('日期') ?? 2,
+    category: headerMap.get('得分大类') ?? headerMap.get('类别') ?? 3,
+    taskCategory: headerMap.get('任务类别') ?? 4,
+    taskName: headerMap.get('任务名称') ?? 5,
+    unitPoints: headerMap.get('单位积分') ?? 6,
+    quantity: headerMap.get('完成次数') ?? 7,
+    remark: headerMap.get('备注') ?? 8
+  };
+
+  const candidates = [];
+  const summary = { total: 0, create: 0, update: 0, skip: 0, error: 0 };
+
+  for (let i = 2; i <= worksheet.rowCount; i += 1) {
+    const row = worksheet.getRow(i);
+    if (!row.hasValues) continue;
+
+    summary.total += 1;
+
+    const userName = parseText(row.getCell(colIndex.userName).value);
+    const date = parseDate(row.getCell(colIndex.date).value);
+    const categoryText = parseText(row.getCell(colIndex.category).value);
+    const categoryCode = normalizePointsCategoryCode(categoryText);
+    const taskCategoryText = parseText(row.getCell(colIndex.taskCategory).value);
+    const taskName = parseText(row.getCell(colIndex.taskName).value);
+    const unitPoints = parseNumber(row.getCell(colIndex.unitPoints).value);
+    const quantity = parseInteger(row.getCell(colIndex.quantity).value);
+    const remark = parseText(row.getCell(colIndex.remark).value);
+
+    const item = {
+      rowNum: i,
+      userName,
+      date,
+      categoryCode,
+      categoryText,
+      taskCategory: normalizeTaskCategory(taskCategoryText),
+      taskCategoryText,
+      taskName,
+      unitPoints,
+      quantity,
+      remark: remark ? remark : ''
+    };
+
+    const errorMessages = [];
+    if (!userName) errorMessages.push('人员姓名不能为空');
+    if (!date) errorMessages.push('日期格式不正确');
+    if (!categoryCode) errorMessages.push('得分大类不正确');
+    if (!taskName) errorMessages.push('任务名称不能为空');
+    if (unitPoints === null) errorMessages.push('单位积分必须为数字');
+    if (!quantity || quantity < 1) errorMessages.push('完成次数必须为整数且>=1');
+
+    candidates.push({ ...item, error: errorMessages.length ? errorMessages.join('；') : '' });
+  }
+
+  const uniqueNames = Array.from(
+    new Set(candidates.map(item => resolveText(item.userName)).filter(Boolean))
+  );
+  const users = uniqueNames.length > 0
+    ? await User.findAll({
+      where: {
+        [Op.or]: [
+          { real_name: { [Op.in]: uniqueNames } },
+          { username: { [Op.in]: uniqueNames } }
+        ]
+      },
+      attributes: ['id', 'real_name', 'username']
+    })
+    : [];
+
+  const userIdMap = new Map();
+  users.forEach((u) => {
+    const realName = resolveText(u.real_name);
+    const username = resolveText(u.username);
+    if (realName) userIdMap.set(realName, u.id);
+    if (username) userIdMap.set(username, u.id);
+  });
+
+  const rows = [];
+  for (const item of candidates) {
+    const previewRow = {
+      rowNum: item.rowNum,
+      action: 'error',
+      message: '',
+      diff: {},
+      userName: item.userName,
+      date: item.date,
+      category: item.categoryText,
+      taskCategory: item.taskCategoryText,
+      taskName: item.taskName,
+      unitPoints: item.unitPoints,
+      quantity: item.quantity,
+      remark: item.remark
+    };
+
+    if (item.error) {
+      previewRow.message = item.error;
+      summary.error += 1;
+      rows.push(previewRow);
+      continue;
+    }
+
+    const uid = userIdMap.get(resolveText(item.userName)) ?? null;
+    if (!uid) {
+      previewRow.message = `未找到用户：${item.userName}`;
+      summary.error += 1;
+      rows.push(previewRow);
+      continue;
+    }
+
+    const where = {
+      user_id: uid,
+      entry_date: item.date,
+      category_code: item.categoryCode,
+      task_category: item.taskCategory ?? null,
+      task_name: item.taskName
+    };
+
+    const existing = await ManualPointsEntry.findOne({ where });
+    if (!existing) {
+      previewRow.action = 'create';
+      previewRow.message = '将新增';
+      summary.create += 1;
+      rows.push(previewRow);
+      continue;
+    }
+
+    const diff = {};
+    if (!isSameNumber(existing.unit_points, item.unitPoints)) {
+      diff.unitPoints = { from: existing.unit_points, to: item.unitPoints };
+    }
+    if (existing.quantity !== item.quantity) {
+      diff.quantity = { from: existing.quantity, to: item.quantity };
+    }
+    if (item.remark && item.remark !== existing.remark) {
+      diff.remark = { from: existing.remark ?? '', to: item.remark };
+    }
+
+    previewRow.diff = diff;
+    if (Object.keys(diff).length === 0) {
+      previewRow.action = 'skip';
+      previewRow.message = '无变更，跳过';
+      summary.skip += 1;
+    } else {
+      previewRow.action = 'update';
+      previewRow.message = '将更新';
+      summary.update += 1;
+    }
+
+    rows.push(previewRow);
+  }
+
+  ctx.body = {
+    code: 200,
+    message: 'success',
+    data: { summary, rows }
+  };
+};
+
 export const importManualPoints = async (ctx) => {
   const file = ctx.file || ctx.request?.file || ctx.request?.files?.file;
   if (!file) {
@@ -1684,30 +1915,117 @@ export const importManualPoints = async (ctx) => {
     throw createError(400, errors.length > 0 ? errors[0] : '导入失败');
   }
 
-  await ManualPointsEntry.bulkCreate(toCreate);
+  let created = 0;
+  let updated = 0;
+  let skipped = 0;
 
-  ctx.body = { code: 200, message: 'success', data: { imported: toCreate.length, errors } };
+  for (const row of toCreate) {
+    const where = {
+      user_id: row.user_id,
+      entry_date: row.entry_date,
+      category_code: row.category_code,
+      task_category: row.task_category ?? null,
+      task_name: row.task_name
+    };
+
+    const existing = await ManualPointsEntry.findOne({ where });
+    if (!existing) {
+      await ManualPointsEntry.create(row);
+      created += 1;
+      continue;
+    }
+
+    const patch = {};
+    if (!isSameNumber(existing.unit_points, row.unit_points)) {
+      patch.unit_points = row.unit_points;
+    }
+    if (existing.quantity !== row.quantity) {
+      patch.quantity = row.quantity;
+    }
+    if (row.remark && row.remark !== existing.remark) {
+      patch.remark = row.remark;
+    }
+    if (row.user_name && row.user_name !== existing.user_name) {
+      patch.user_name = row.user_name;
+    }
+
+    if (Object.keys(patch).length === 0) {
+      skipped += 1;
+      continue;
+    }
+
+    await existing.update(patch);
+    updated += 1;
+  }
+
+  ctx.body = {
+    code: 200,
+    message: 'success',
+    data: { created, updated, skipped, errors }
+  };
 };
 
 /**
- * 应用小时积分（近6个月：累计积分 / 工时）
+ * 应用小时积分（滚动窗口：记录月往前6个整月的累计积分 / 累计工时）
  * GET /api/reports/applied-hourly-points
  */
+const buildRecentMonths = (endMonthBase, count) => {
+  const resolved = endMonthBase && endMonthBase.isValid ? endMonthBase : dayjs().startOf('month');
+  const total = Number.isInteger(count) && count > 0 ? count : 12;
+  const months = [];
+  for (let i = total - 1; i >= 0; i -= 1) {
+    months.push(resolved.subtract(i, 'month').format('YYYY-MM'));
+  }
+  return months;
+};
+
+const buildMonthSequence = (startMonth, endMonth) => {
+  const startText = resolveText(startMonth);
+  const endText = resolveText(endMonth);
+  if (!startText || !endText) return [];
+
+  const startBase = dayjs(`${startText}-01`);
+  const endBase = dayjs(`${endText}-01`);
+  if (!startBase.isValid() || !endBase.isValid()) return [];
+  if (startBase.isAfter(endBase)) return [];
+
+  const months = [];
+  let cursor = startBase.startOf('month');
+  const end = endBase.startOf('month');
+  while (cursor.isSame(end) || cursor.isBefore(end)) {
+    months.push(cursor.format('YYYY-MM'));
+    cursor = cursor.add(1, 'month');
+  }
+  return months;
+};
+
+const resolveAppliedHourlyRangeByRecordMonth = (recordMonthBase) => {
+  const base = recordMonthBase.startOf('month');
+  const rangeStartBase = base.subtract(6, 'month').startOf('month');
+  const rangeEndBase = base.subtract(1, 'month').endOf('month');
+
+  return {
+    recordMonth: base.format('YYYY-MM'),
+    rangeStartMonth: rangeStartBase.format('YYYY-MM'),
+    rangeEndMonth: base.subtract(1, 'month').format('YYYY-MM'),
+    startDate: rangeStartBase.format('YYYY-MM-DD'),
+    endDate: rangeEndBase.format('YYYY-MM-DD')
+  };
+};
+
 export const getAppliedHourlyPointsReport = async (ctx) => {
   await validateQuery(ctx, appliedHourlyPointsQuerySchema);
   const dataFilter = ctx.state.dataFilter ?? {};
 
-  const endMonthText = resolveText(ctx.query.endMonth);
-  const endMonthBase = endMonthText ? dayjs(`${endMonthText}-01`) : dayjs().startOf('month');
-  if (!endMonthBase.isValid()) {
-    throw createError(400, '统计截止月格式不正确（YYYY-MM）');
+  const recordMonthText = resolveText(ctx.query.endMonth);
+  const recordMonthBase = recordMonthText ? dayjs(`${recordMonthText}-01`) : dayjs().startOf('month');
+  if (!recordMonthBase.isValid()) {
+    throw createError(400, '记录月份格式不正确（YYYY-MM）');
   }
 
-  const endMonth = endMonthBase.format('YYYY-MM');
-  const range = {
-    startDate: endMonthBase.subtract(5, 'month').startOf('month').format('YYYY-MM-DD'),
-    endDate: endMonthBase.endOf('month').format('YYYY-MM-DD')
-  };
+  const resolvedRange = resolveAppliedHourlyRangeByRecordMonth(recordMonthBase);
+  const recordMonth = resolvedRange.recordMonth;
+  const range = { startDate: resolvedRange.startDate, endDate: resolvedRange.endDate };
 
   const [autoEvents, manualEvents] = await Promise.all([
     loadAutoPointsEvents({ range, keywordText: '', dataFilter }),
@@ -1769,7 +2087,7 @@ export const getAppliedHourlyPointsReport = async (ctx) => {
 
   // 查询已保存的修正值
   const adjustedRecords = await AdjustedHourlyPoints.findAll({
-    where: { end_month: endMonth }
+    where: { end_month: recordMonth }
   });
   const adjustedMap = new Map();
   adjustedRecords.forEach((rec) => {
@@ -1787,9 +2105,9 @@ export const getAppliedHourlyPointsReport = async (ctx) => {
     // 如果有保存的修正值则使用，否则返回 null（前端会根据规则计算默认值）
     const adjustedPoints = adjustedMap.has(key) ? adjustedMap.get(key) : null;
     return {
-      endMonth,
-      startDate: range.startDate,
-      endDate: range.endDate,
+      recordMonth,
+      rangeStartMonth: resolvedRange.rangeStartMonth,
+      rangeEndMonth: resolvedRange.rangeEndMonth,
       userId,
       userName,
       totalPoints,
@@ -1819,7 +2137,42 @@ export const getAppliedHourlyPointsReport = async (ctx) => {
   const startIndex = (page - 1) * pageSize;
   const list = rows.slice(startIndex, startIndex + pageSize);
 
-  ctx.body = { code: 200, message: 'success', data: { list, total, page, pageSize, range } };
+  // 保存实际值快照（覆盖更新），修正值不在此处写入
+  const snapshotRows = rows
+    .filter(row => row.userId !== null && row.userId !== undefined && row.userId !== '')
+    .map(row => ({
+      user_id: row.userId,
+      end_month: recordMonth,
+      actual_points: row.appliedHourlyPoints,
+      total_points: row.totalPoints,
+      total_hours: row.totalHours,
+      range_start_month: resolvedRange.rangeStartMonth,
+      range_end_month: resolvedRange.rangeEndMonth
+    }));
+
+  if (snapshotRows.length > 0) {
+    await AdjustedHourlyPoints.bulkCreate(snapshotRows, {
+      updateOnDuplicate: ['actual_points', 'total_points', 'total_hours', 'range_start_month', 'range_end_month']
+    });
+  }
+
+  ctx.body = {
+    code: 200,
+    message: 'success',
+    data: {
+      list,
+      total,
+      page,
+      pageSize,
+      recordMonth,
+      range: {
+        startDate: resolvedRange.startDate,
+        endDate: resolvedRange.endDate,
+        rangeStartMonth: resolvedRange.rangeStartMonth,
+        rangeEndMonth: resolvedRange.rangeEndMonth
+      }
+    }
+  };
 };
 
 /**
@@ -2017,17 +2370,19 @@ export const downloadManualWorkHoursTemplate = async (ctx) => {
     { header: '备注', key: 'remark', width: 24 }
   ];
 
-  sheet.addRow({
+  const sampleRow = sheet.addRow({
     userName: '示例员工',
     month: dayjs().format('YYYY-MM'),
-    workHours: 176,
+    workHours: 176.0,
     remark: ''
   });
+  sheet.getColumn('workHours').numFmt = '0.00';
+  sampleRow.getCell('workHours').numFmt = '0.00';
 
   addTemplateInstructionSheet(workbook, [
     ['人员姓名', '必填，必须能匹配系统用户姓名/账号。'],
     ['月份', '必填，格式 YYYY-MM（如 2026-01）。'],
-    ['工时(小时)', '必填，数字，该月总工时。'],
+    ['工时(小时)', '必填，数字，该月总工时，保留2位小数。'],
     ['备注', '选填。']
   ]);
 
@@ -2035,6 +2390,187 @@ export const downloadManualWorkHoursTemplate = async (ctx) => {
   ctx.set('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
   ctx.set('Content-Disposition', `attachment; filename=\"template.xlsx\"; filename*=UTF-8''${encodeURIComponent('工时导入模板.xlsx')}`);
   ctx.body = buffer;
+};
+
+export const previewImportManualWorkHours = async (ctx) => {
+  const file = ctx.file || ctx.request?.file || ctx.request?.files?.file;
+  if (!file) {
+    throw createError(400, '请上传Excel文件');
+  }
+
+  const ExcelJS = (await import('exceljs')).default;
+  const workbook = new ExcelJS.Workbook();
+  await workbook.xlsx.load(file.buffer);
+  const worksheet = workbook.getWorksheet(1);
+  if (!worksheet) {
+    throw createError(400, 'Excel内容为空');
+  }
+
+  const normalizeCellValue = (value) => {
+    if (value && typeof value === 'object') {
+      if (value.text !== undefined) return value.text;
+      if (value.result !== undefined) return value.result;
+      if (Array.isArray(value.richText)) {
+        return value.richText.map(item => item.text ?? '').join('');
+      }
+    }
+    return value;
+  };
+
+  const parseText = (value) => {
+    const normalized = normalizeCellValue(value);
+    if (normalized === undefined || normalized === null) return '';
+    return String(normalized).trim();
+  };
+
+  const parseNumber = (value) => {
+    const normalized = normalizeCellValue(value);
+    if (normalized === undefined || normalized === null || normalized === '') return null;
+    const parsed = Number(normalized);
+    return Number.isFinite(parsed) ? parsed : null;
+  };
+
+  const headerMap = new Map();
+  const headerRow = worksheet.getRow(1);
+  if (headerRow?.hasValues) {
+    headerRow.eachCell((cell, colNumber) => {
+      const headerText = parseText(cell.value);
+      if (headerText) headerMap.set(headerText, colNumber);
+    });
+  }
+
+  const colIndex = {
+    userName: headerMap.get('人员姓名') ?? 1,
+    month: headerMap.get('月份') ?? headerMap.get('记录月份') ?? 2,
+    workHours: headerMap.get('工时') ?? 3,
+    remark: headerMap.get('备注') ?? 4
+  };
+
+  const candidates = [];
+  const summary = { total: 0, create: 0, update: 0, skip: 0, error: 0 };
+
+  for (let i = 2; i <= worksheet.rowCount; i += 1) {
+    const row = worksheet.getRow(i);
+    if (!row.hasValues) continue;
+
+    summary.total += 1;
+
+    const userName = parseText(row.getCell(colIndex.userName).value);
+    const monthText = parseText(row.getCell(colIndex.month).value);
+    const month = monthText ? (monthText.length <= 2 ? `${dayjs().year()}-${String(monthText).padStart(2, '0')}` : monthText) : '';
+    const workHours = parseNumber(row.getCell(colIndex.workHours).value);
+    const remark = parseText(row.getCell(colIndex.remark).value);
+
+    const errorMessages = [];
+    if (!userName) errorMessages.push('人员姓名不能为空');
+    if (!month || !dayjs(`${month}-01`).isValid()) errorMessages.push('月份格式不正确（应为 YYYY-MM）');
+    if (workHours === null) errorMessages.push('工时必须为数字');
+    if (workHours !== null && workHours < 0) errorMessages.push('工时不能为负数');
+
+    candidates.push({
+      rowNum: i,
+      userName,
+      month,
+      workDate: month ? `${month}-01` : '',
+      workHours,
+      remark: remark ? remark : '',
+      error: errorMessages.length ? errorMessages.join('；') : ''
+    });
+  }
+
+  const uniqueNames = Array.from(
+    new Set(candidates.map(item => resolveText(item.userName)).filter(Boolean))
+  );
+  const users = uniqueNames.length > 0
+    ? await User.findAll({
+      where: {
+        [Op.or]: [
+          { real_name: { [Op.in]: uniqueNames } },
+          { username: { [Op.in]: uniqueNames } }
+        ]
+      },
+      attributes: ['id', 'real_name', 'username']
+    })
+    : [];
+
+  const userIdMap = new Map();
+  users.forEach((u) => {
+    const realName = resolveText(u.real_name);
+    const username = resolveText(u.username);
+    if (realName) userIdMap.set(realName, u.id);
+    if (username) userIdMap.set(username, u.id);
+  });
+
+  const rows = [];
+  for (const item of candidates) {
+    const previewRow = {
+      rowNum: item.rowNum,
+      action: 'error',
+      message: '',
+      diff: {},
+      userName: item.userName,
+      month: item.month,
+      workHours: item.workHours,
+      remark: item.remark
+    };
+
+    if (item.error) {
+      previewRow.message = item.error;
+      summary.error += 1;
+      rows.push(previewRow);
+      continue;
+    }
+
+    const uid = userIdMap.get(resolveText(item.userName)) ?? null;
+    if (!uid) {
+      previewRow.message = `未找到用户：${item.userName}`;
+      summary.error += 1;
+      rows.push(previewRow);
+      continue;
+    }
+
+    const existing = await ManualWorkHour.findOne({
+      where: {
+        user_id: uid,
+        work_date: item.workDate
+      }
+    });
+
+    if (!existing) {
+      previewRow.action = 'create';
+      previewRow.message = '将新增';
+      summary.create += 1;
+      rows.push(previewRow);
+      continue;
+    }
+
+    const diff = {};
+    if (!isSameNumber(existing.work_hours, item.workHours)) {
+      diff.workHours = { from: existing.work_hours, to: item.workHours };
+    }
+    if (item.remark && item.remark !== existing.remark) {
+      diff.remark = { from: existing.remark ?? '', to: item.remark };
+    }
+
+    previewRow.diff = diff;
+    if (Object.keys(diff).length === 0) {
+      previewRow.action = 'skip';
+      previewRow.message = '无变更，跳过';
+      summary.skip += 1;
+    } else {
+      previewRow.action = 'update';
+      previewRow.message = '将更新';
+      summary.update += 1;
+    }
+
+    rows.push(previewRow);
+  }
+
+  ctx.body = {
+    code: 200,
+    message: 'success',
+    data: { summary, rows }
+  };
 };
 
 export const importManualWorkHours = async (ctx) => {
@@ -2195,9 +2731,48 @@ export const importManualWorkHours = async (ctx) => {
     throw createError(400, errors.length > 0 ? errors[0] : '导入失败');
   }
 
-  await ManualWorkHour.bulkCreate(toCreate);
+  let created = 0;
+  let updated = 0;
+  let skipped = 0;
 
-  ctx.body = { code: 200, message: 'success', data: { imported: toCreate.length, errors } };
+  for (const row of toCreate) {
+    const where = {
+      user_id: row.user_id,
+      work_date: row.work_date
+    };
+
+    const existing = await ManualWorkHour.findOne({ where });
+    if (!existing) {
+      await ManualWorkHour.create(row);
+      created += 1;
+      continue;
+    }
+
+    const patch = {};
+    if (!isSameNumber(existing.work_hours, row.work_hours)) {
+      patch.work_hours = row.work_hours;
+    }
+    if (row.remark && row.remark !== existing.remark) {
+      patch.remark = row.remark;
+    }
+    if (row.user_name && row.user_name !== existing.user_name) {
+      patch.user_name = row.user_name;
+    }
+
+    if (Object.keys(patch).length === 0) {
+      skipped += 1;
+      continue;
+    }
+
+    await existing.update(patch);
+    updated += 1;
+  }
+
+  ctx.body = {
+    code: 200,
+    message: 'success',
+    data: { created, updated, skipped, errors }
+  };
 };
 
 /**
@@ -3225,88 +3800,237 @@ export const saveAdjustedHourlyPoints = async (ctx) => {
   };
 };
 
-// 获取应用小时积分历史记录
+// 获取应用小时积分历史记录（实际值 + 修正值，分开展示）
 export const getAdjustedHourlyPointsHistory = async (ctx) => {
-  const { userName, page = 1, pageSize = 20 } = ctx.query;
+  const dataFilter = ctx.state.dataFilter ?? {};
 
-  // 获取所有有记录的月份（降序排列，最近12个月）
-  const monthsResult = await AdjustedHourlyPoints.findAll({
-    attributes: [[fn('DISTINCT', col('end_month')), 'end_month']],
-    order: [[col('end_month'), 'DESC']],
-    limit: 12
-  });
-  const months = monthsResult.map(r => r.get('end_month')).sort();
+  const page = resolvePageValue(ctx.query.page, 1);
+  const pageSize = resolvePageSize(ctx.query.pageSize, 20);
+  const keywordText = resolveText(ctx.query.userName);
 
-  if (months.length === 0) {
-    ctx.body = { code: 200, message: 'success', data: { list: [], months: [], total: 0, page: Number(page), pageSize: Number(pageSize) } };
-    return;
+  const endMonthText = resolveText(ctx.query.endMonth);
+  const endMonthBase = endMonthText ? dayjs(`${endMonthText}-01`) : dayjs().startOf('month');
+  if (!endMonthBase.isValid()) {
+    throw createError(400, '记录月份格式不正确（YYYY-MM）');
   }
 
-  // 获取所有用户的记录
-  const where = {};
-  if (userName) {
-    // 先查找匹配的用户ID
+  const months = buildRecentMonths(endMonthBase, 12);
+
+  // userName 过滤：先定位用户ID（用于最终结果过滤与 DB 读取）
+  let userIdFilter = null;
+  if (keywordText) {
     const users = await User.findAll({
       where: {
         [Op.or]: [
-          { real_name: { [Op.like]: `%${userName}%` } },
-          { username: { [Op.like]: `%${userName}%` } }
+          { real_name: { [Op.like]: `%${keywordText}%` } },
+          { username: { [Op.like]: `%${keywordText}%` } }
         ]
       },
       attributes: ['id']
     });
-    const userIds = users.map(u => u.id);
-    if (userIds.length === 0) {
-      ctx.body = { code: 200, message: 'success', data: { list: [], months, total: 0, page: Number(page), pageSize: Number(pageSize) } };
+    const ids = users.map(u => u.id).filter(Boolean);
+    if (ids.length === 0) {
+      ctx.body = { code: 200, message: 'success', data: { list: [], months, total: 0, page, pageSize } };
       return;
     }
-    where.user_id = { [Op.in]: userIds };
+    userIdFilter = ids;
   }
 
-  // 获取所有记录
-  const records = await AdjustedHourlyPoints.findAll({
-    where: { ...where, end_month: { [Op.in]: months } },
+  if (!dataFilter.all && dataFilter.userId) {
+    if (userIdFilter && !userIdFilter.includes(dataFilter.userId)) {
+      ctx.body = { code: 200, message: 'success', data: { list: [], months, total: 0, page, pageSize } };
+      return;
+    }
+    userIdFilter = [dataFilter.userId];
+  }
+
+  const firstRecordMonthBase = dayjs(`${months[0]}-01`).startOf('month');
+  const lastRecordMonthBase = dayjs(`${months[months.length - 1]}-01`).startOf('month');
+  const calcStartBase = firstRecordMonthBase.subtract(6, 'month').startOf('month');
+  const calcEndBase = lastRecordMonthBase.subtract(1, 'month').endOf('month');
+  const range = {
+    startDate: calcStartBase.format('YYYY-MM-DD'),
+    endDate: calcEndBase.format('YYYY-MM-DD')
+  };
+
+  const [autoEvents, manualEvents] = await Promise.all([
+    loadAutoPointsEventsWithDate({ range, keywordText, dataFilter }),
+    loadManualPointsEventsWithDate({ range, keywordText, dataFilter })
+  ]);
+
+  const pointsByUserMonth = new Map();
+  const ensureMonthMap = (uid) => {
+    const key = String(uid);
+    if (!pointsByUserMonth.has(key)) pointsByUserMonth.set(key, new Map());
+    return pointsByUserMonth.get(key);
+  };
+
+  const events = [...autoEvents, ...manualEvents];
+  events.forEach((event) => {
+    const uid = event?.userId;
+    if (uid === undefined || uid === null || uid === '') return;
+    if (userIdFilter && !userIdFilter.includes(uid)) return;
+    const dateText = resolveText(event?.date);
+    const dateBase = dateText ? dayjs(dateText) : null;
+    if (!dateBase || !dateBase.isValid()) return;
+    const monthKey = dateBase.format('YYYY-MM');
+
+    const monthMap = ensureMonthMap(uid);
+    const current = toNumber(monthMap.get(monthKey), 0);
+    monthMap.set(monthKey, current + toNumber(event?.points, 0));
+  });
+
+  const hoursByUserMonth = new Map();
+  const hoursWhere = {
+    work_date: { [Op.between]: [range.startDate, range.endDate] }
+  };
+  if (userIdFilter) {
+    hoursWhere.user_id = { [Op.in]: userIdFilter };
+  }
+
+  const hoursRows = await ManualWorkHour.findAll({
+    where: hoursWhere,
+    attributes: [
+      'user_id',
+      'user_name',
+      [fn('DATE_FORMAT', col('work_date'), '%Y-%m'), 'work_month'],
+      [fn('SUM', col('work_hours')), 'total_hours']
+    ],
+    group: ['user_id', 'user_name', 'work_month']
+  });
+
+  hoursRows.forEach((row) => {
+    const uid = row.user_id;
+    if (uid === undefined || uid === null || uid === '') return;
+    const monthKey = resolveText(row.get('work_month'));
+    if (!monthKey) return;
+    const hours = toNumber(row.get('total_hours'), 0);
+
+    const key = String(uid);
+    if (!hoursByUserMonth.has(key)) hoursByUserMonth.set(key, new Map());
+    hoursByUserMonth.get(key).set(monthKey, hours);
+  });
+
+  // 读取修正值（以及已存在的实际值记录）
+  const adjustedWhere = { end_month: { [Op.in]: months } };
+  if (userIdFilter) {
+    adjustedWhere.user_id = { [Op.in]: userIdFilter };
+  }
+  const savedRecords = await AdjustedHourlyPoints.findAll({
+    where: adjustedWhere,
+    attributes: [
+      'user_id',
+      'end_month',
+      'actual_points',
+      'adjusted_points'
+    ],
     order: [['user_id', 'ASC'], ['end_month', 'ASC']]
   });
 
-  // 按用户分组
-  const userMap = new Map();
-  records.forEach((rec) => {
+  const adjustedByUserMonth = new Map();
+  const userIdSet = new Set();
+
+  const ensureAdjustedMonthMap = (uid) => {
+    const key = String(uid);
+    if (!adjustedByUserMonth.has(key)) adjustedByUserMonth.set(key, new Map());
+    return adjustedByUserMonth.get(key);
+  };
+
+  savedRecords.forEach((rec) => {
     const uid = rec.user_id;
-    if (!userMap.has(uid)) {
-      userMap.set(uid, { userId: uid, userName: '' });
-    }
-    const row = userMap.get(uid);
-    row[rec.end_month] = Number(rec.adjusted_points);
+    if (uid === undefined || uid === null || uid === '') return;
+    userIdSet.add(String(uid));
+    ensureAdjustedMonthMap(uid).set(String(rec.end_month), rec.adjusted_points === null || rec.adjusted_points === undefined ? null : Number(rec.adjusted_points));
   });
 
-  // 获取用户姓名
-  const userIds = Array.from(userMap.keys());
+  // 其他来源出现过的用户也要展示（实际值）
+  pointsByUserMonth.forEach((_, uidKey) => userIdSet.add(uidKey));
+  hoursByUserMonth.forEach((_, uidKey) => userIdSet.add(uidKey));
+
+  const toFixed2 = (value) => {
+    if (value === null || value === undefined) return null;
+    const num = Number(value);
+    if (!Number.isFinite(num)) return null;
+    return Number(num.toFixed(2));
+  };
+
+  const snapshotRows = [];
+  const rows = Array.from(userIdSet.values()).map((uidKey) => {
+    const uid = Number(uidKey);
+    const pointsMonthMap = pointsByUserMonth.get(uidKey) ?? new Map();
+    const hoursMonthMap = hoursByUserMonth.get(uidKey) ?? new Map();
+    const adjustedMonthMap = adjustedByUserMonth.get(uidKey) ?? new Map();
+
+    const actualPoints = {};
+    const adjustedPoints = {};
+
+    months.forEach((recordMonth) => {
+      const recordMonthBase = dayjs(`${recordMonth}-01`).startOf('month');
+      const windowStartBase = recordMonthBase.subtract(6, 'month').startOf('month');
+      const windowEndBase = recordMonthBase.subtract(1, 'month').startOf('month');
+
+      let totalPoints = 0;
+      let totalHours = 0;
+      for (let i = 0; i < 6; i += 1) {
+        const monthKey = windowStartBase.add(i, 'month').format('YYYY-MM');
+        totalPoints += toNumber(pointsMonthMap.get(monthKey), 0);
+        totalHours += toNumber(hoursMonthMap.get(monthKey), 0);
+      }
+
+      const actual = totalHours > 0 ? totalPoints / totalHours : null;
+      actualPoints[recordMonth] = toFixed2(actual);
+
+      const adjusted = adjustedMonthMap.has(recordMonth) ? adjustedMonthMap.get(recordMonth) : null;
+      adjustedPoints[recordMonth] = adjusted === null || adjusted === undefined ? null : toFixed2(adjusted);
+
+      snapshotRows.push({
+        user_id: uid,
+        end_month: recordMonth,
+        actual_points: actual,
+        total_points: totalPoints,
+        total_hours: totalHours,
+        range_start_month: windowStartBase.format('YYYY-MM'),
+        range_end_month: windowEndBase.format('YYYY-MM')
+      });
+    });
+
+    return { userId: uid, userName: '', actualPoints, adjustedPoints };
+  });
+
+  // 覆盖更新实际值快照（修正值保持不变）
+  if (snapshotRows.length > 0) {
+    await AdjustedHourlyPoints.bulkCreate(snapshotRows, {
+      updateOnDuplicate: ['actual_points', 'total_points', 'total_hours', 'range_start_month', 'range_end_month']
+    });
+  }
+
+  // 回填用户姓名
+  const userIds = rows.map(r => r.userId).filter(Boolean);
   if (userIds.length > 0) {
     const users = await User.findAll({
       where: { id: { [Op.in]: userIds } },
       attributes: ['id', 'real_name', 'username']
     });
+    const nameMap = new Map();
     users.forEach((u) => {
-      const row = userMap.get(u.id);
-      if (row) {
-        row.userName = u.real_name || u.username || '';
-      }
+      const name = resolveText(u.real_name) ? u.real_name : resolveText(u.username);
+      nameMap.set(Number(u.id), name);
+    });
+    rows.forEach((row) => {
+      row.userName = nameMap.get(row.userId) ?? '';
     });
   }
 
-  const allRows = Array.from(userMap.values());
-  allRows.sort((a, b) => (a.userName ?? '').localeCompare(b.userName ?? ''));
+  rows.sort((a, b) => (a.userName ?? '').localeCompare(b.userName ?? ''));
 
-  // 分页
-  const total = allRows.length;
-  const offset = (Number(page) - 1) * Number(pageSize);
-  const list = allRows.slice(offset, offset + Number(pageSize));
+  const total = rows.length;
+  const offset = (page - 1) * pageSize;
+  const list = rows.slice(offset, offset + pageSize);
 
   ctx.body = {
     code: 200,
     message: 'success',
-    data: { list, months, total, page: Number(page), pageSize: Number(pageSize) }
+    data: { list, months, total, page, pageSize }
   };
 };
 

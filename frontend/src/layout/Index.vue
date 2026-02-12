@@ -97,6 +97,23 @@
             <Expand v-else />
           </el-icon>
 
+          <div v-if="canUseSimpleMode" class="ui-mode-switch">
+            <el-button
+              size="small"
+              :type="uiModeStore.mode === UI_MODES.STANDARD ? 'primary' : 'default'"
+              @click="switchUiMode(UI_MODES.STANDARD)"
+            >
+              标准版
+            </el-button>
+            <el-button
+              size="small"
+              :type="uiModeStore.mode === UI_MODES.SIMPLE ? 'primary' : 'default'"
+              @click="switchUiMode(UI_MODES.SIMPLE)"
+            >
+              简洁版
+            </el-button>
+          </div>
+
 
         </div>
 
@@ -171,6 +188,7 @@
 import { ref, computed, onMounted, onBeforeUnmount, onErrorCaptured, watch, nextTick } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
 import { useUserStore } from '@/store/modules/user';
+import { UI_MODES, useUiModeStore } from '@/store/modules/uiMode';
 import { menuConfig, bottomMenus, getMenuCatalogItemByPath } from '@/config/menuConfig';
 import { usePermissionCatalogStore } from '@/store/modules/permissionCatalog';
 import { buildAugmentedMenus, filterMenusByMenuCodes } from '@/utils/menuBuilder';
@@ -182,6 +200,7 @@ import dayjs from 'dayjs';
 const router = useRouter();
 const route = useRoute();
 const userStore = useUserStore();
+const uiModeStore = useUiModeStore();
 const permissionCatalogStore = usePermissionCatalogStore();
 const displayName = computed(() => userStore.realName || userStore.userInfo?.username || '');
 const displayRole = computed(() => {
@@ -198,6 +217,13 @@ const displayUserLabel = computed(() => {
   if (name && role) return `${name}_${role}`;
   return name || role || '';
 });
+
+const canUseSimpleMode = computed(() => userStore.roleCode === 'dev_test' || userStore.baseRoleCode === 'dev_test');
+
+const switchUiMode = (mode) => {
+  if (!canUseSimpleMode.value) return;
+  uiModeStore.setMode(mode);
+};
 
 const isCollapse = ref(false);
 const menuRef = ref(null);
@@ -829,6 +855,14 @@ const handleCommand = (command) => {
   }
 };
 
+watch(canUseSimpleMode, (allowed) => {
+  uiModeStore.ensureAllowed(allowed);
+}, { immediate: true });
+
+watch(() => uiModeStore.mode, (mode) => {
+  document.documentElement.setAttribute('data-ui-mode', mode);
+}, { immediate: true });
+
 // Keep parent menus expanded on route change
 watch([menus, () => route.path], () => {
   ensureActiveParentOpen(activeMenu.value);
@@ -1042,6 +1076,16 @@ onBeforeUnmount(() => {
 
       &:hover {
         color: #409EFF;
+      }
+    }
+
+    .ui-mode-switch {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+
+      :deep(.el-button + .el-button) {
+        margin-left: 0;
       }
     }
 

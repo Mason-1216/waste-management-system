@@ -13,6 +13,11 @@ export const registerTemporaryTaskLibraryRoutes = (router) => {
     checkRole(['admin', 'station_manager', 'department_manager', 'deputy_manager']),
     temporaryTaskLibraryController.batchImportTemporaryTaskLibrary
   );
+  router.post(
+    '/temporary-task-library/batch-import-preview',
+    checkRole(['admin', 'station_manager', 'department_manager', 'deputy_manager']),
+    temporaryTaskLibraryController.previewBatchImportTemporaryTaskLibrary
+  );
   router.put(
     '/temporary-task-library/:id',
     checkRole(['admin', 'station_manager', 'department_manager', 'deputy_manager']),
